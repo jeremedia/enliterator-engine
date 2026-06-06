@@ -29,10 +29,16 @@ module Enliterator
           @model_id
         end
 
-        def tend(text:, stream:, state:, neighbors:)
+        # +contract+ (v0.3) is an optional `{key => description}` hash. When
+        # present the tool's input_schema enums claim `key` to the allowed set and
+        # adds an optional top-level `suggestions` array, and the system message
+        # gains a controlled-vocabulary block. When absent (the default) the call
+        # is byte-identical to v0.2: input_schema.json == RESPONSE_SCHEMA and the
+        # original system text.
+        def tend(text:, stream:, state:, neighbors:, contract: nil)
           response = client.converse(
             model_id: @model_id,
-            system:   [ { text: build_system } ],
+            system:   [ { text: system_for(contract) } ],
             messages: [
               {
                 role: "user",
@@ -45,7 +51,7 @@ module Enliterator
                   tool_spec: {
                     name: TOOL_NAME,
                     description: "Emit the reconciled claims and overall confidence for this record.",
-                    input_schema: { json: RESPONSE_SCHEMA }
+                    input_schema: { json: schema_for(contract) }
                   }
                 }
               ],

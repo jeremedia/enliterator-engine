@@ -34,7 +34,7 @@ module Enliterator
       DEFAULT_MAX_PROMOTIONS = 1
 
       attr_reader :assignments, :ladder_tiers, :embedding_alias, :on_prem_tier_list,
-                  :context_caps
+                  :context_caps, :key_contracts
 
       def initialize(&block)
         @assignments       = {}
@@ -46,6 +46,7 @@ module Enliterator
         @verify_floor      = nil
         @on_prem_tier_list = []
         @context_caps      = {}
+        @key_contracts     = {}
 
         instance_eval(&block) if block
       end
@@ -55,6 +56,19 @@ module Enliterator
       # Map a stream (role) to a capability tier (alias).
       def assign(stream, tier:)
         @assignments[stream.to_s] = tier.to_s
+        self
+      end
+
+      # Map a stream (role) to a tier AND bind its output contract: the controlled
+      # vocabulary of claim keys the model may assert on this stream. `keys` is a
+      # `{ key_sym => "description" }` hash. Sets the tier exactly as #assign does,
+      # then records the contract so the Visitor can constrain the prompt/schema and
+      # route off-list observations into `suggestions`. Streams declared with #assign
+      # (no contract) remain unconstrained — open keys, back-compat.
+      def stream(name, tier:, keys:)
+        assign(name, tier: tier)
+        @key_contracts[name.to_s] =
+          keys.each_with_object({}) { |(k, v), h| h[k.to_s] = v.to_s }
         self
       end
 
@@ -122,6 +136,22 @@ module Enliterator
       # (or the embedding alias as a last resort) so an unmapped stream still runs.
       def tier_for(stream)
         @assignments.fetch(stream.to_s) { @ladder_tiers.first || @embedding_alias }
+      end
+
+      # The output contract for a stream: a `{ key => description }` hash of the
+      # claim keys the model may assert, or nil when the stream is unconstrained
+      # (declared via #assign or not at all). nil ⇒ open keys (v0.2 behavior).
+      def keys_for(stream)
+        @key_contracts[stream.to_s]
+      end
+
+      # The allowed claim keys for a stream as a `[String]`, or nil when the stream
+      # is unconstrained. nil (not []) signals "no contract" so callers can branch
+      # on presence without confusing it with an empty allow-list.
+      def allowed_keys(stream)
+        contract = @key_contracts[stream.to_s]
+        return nil if contract.nil?
+        contract.keys
       end
 
       # Tiers at/after `tier` in ladder order (the remaining climb). If `tier`

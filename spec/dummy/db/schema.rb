@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_06_190001) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_06_200001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -426,6 +426,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_190001) do
     t.string "tendable_type", null: false
     t.datetime "updated_at", null: false
     t.index ["tendable_type", "tendable_id", "name"], name: "idx_enliterator_facets_on_tendable_and_name", unique: true
+  end
+
+  create_table "enliterator_suggestions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.jsonb "example_value", default: {}
+    t.string "model"
+    t.string "proposed_key"
+    t.text "rationale"
+    t.text "review_note"
+    t.string "status", default: "pending", null: false
+    t.string "stream"
+    t.string "tendable_id"
+    t.string "tendable_type"
+    t.string "tier"
+    t.datetime "updated_at", null: false
+    t.bigint "visit_id"
+    t.index ["proposed_key", "status"], name: "idx_enliterator_suggestions_on_key_and_status"
+    t.index ["stream", "status"], name: "idx_enliterator_suggestions_on_stream_and_status"
+    t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_suggestions_on_tendable"
   end
 
   create_table "enliterator_visits", force: :cascade do |t|

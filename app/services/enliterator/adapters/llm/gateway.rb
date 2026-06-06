@@ -50,10 +50,17 @@ module Enliterator
         # attribution; defaults to [] so v0.1-shaped callers (which pass no tags)
         # keep working unchanged.
         #
+        # +contract+ (v0.3) is an optional `{key => description}` hash. When
+        # present the tool's parameter schema enums claim `key` to the allowed set
+        # and adds an optional top-level `suggestions` array, and the system
+        # message gains a controlled-vocabulary block. When absent (the default)
+        # the request is byte-identical to v0.2: parameters == RESPONSE_SCHEMA and
+        # the original system text.
+        #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, stream:, state:, neighbors:, tags: [])
+        def tend(text:, stream:, state:, neighbors:, tags: [], contract: nil)
           messages = [
-            { role: "system", content: build_system },
+            { role: "system", content: system_for(contract) },
             {
               role: "user",
               content: build_user(text: text, stream: stream, state: state, neighbors: neighbors)
@@ -69,7 +76,7 @@ module Enliterator
                 function: {
                   name: TOOL_NAME,
                   description: "Emit the reconciled claims and overall confidence for this record.",
-                  parameters: RESPONSE_SCHEMA
+                  parameters: schema_for(contract)
                 }
               }
             ],
@@ -139,7 +146,27 @@ module Enliterator
           }
           esc = input.key?("escalate") ? input["escalate"] : input[:escalate]
           parsed["escalate"] = !!esc unless esc.nil?
+
+          # v0.3: pass through any model-proposed suggestions (contract path). The
+          # Visitor persists these as Enliterator::Suggestion rows. Absent on the
+          # no-contract path, so the key only appears when the model emits it.
+          sugg = input.key?("suggestions") ? input["suggestions"] : input[:suggestions]
+          parsed["suggestions"] = normalize_suggestions(sugg) unless sugg.nil?
+
           parsed
+        end
+
+        # Normalize the optional suggestions array into string-keyed hashes the
+        # Visitor can persist directly. Tolerant of symbol/string keys.
+        def normalize_suggestions(suggestions)
+          Array(suggestions).map do |s|
+            h = s.is_a?(Hash) ? s : {}
+            {
+              "proposed_key"  => h["proposed_key"]  || h[:proposed_key],
+              "rationale"     => h["rationale"]     || h[:rationale],
+              "example_value" => h.key?("example_value") ? h["example_value"] : h[:example_value]
+            }.compact
+          end
         end
 
         # The first tool call on the first choice's message, across struct/hash shapes.

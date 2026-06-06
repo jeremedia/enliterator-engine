@@ -181,4 +181,74 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
       expect(result.parsed["escalate"]).to be(true)
     end
   end
+
+  # v0.3 §2 — when a contract is passed, the request's tool schema constrains the
+  # claim `key` to an enum over the allowed keys AND advertises an optional
+  # top-level `suggestions` array, while the system message gains a controlled-
+  # vocabulary block. When NO contract is passed the request stays byte-identical
+  # to v0.2 (parameters == RESPONSE_SCHEMA, no suggestions, original system text).
+  describe "#tend with a stream contract" do
+    let(:contract) do
+      { author: "Who authored the work.", date: "When the work was created." }
+    end
+
+    def request_params!
+      adapter.tend(
+        text:      "x",
+        stream:    "metadata",
+        state:     {},
+        neighbors: [],
+        contract:  contract
+      )
+      fake_client.completions.last_kwargs
+    end
+
+    it "enums the claim key to the contract's allowed keys" do
+      params = request_params!
+      key_schema = params[:tools].first[:function][:parameters]
+                         .dig("properties", "claims", "items", "properties", "key")
+      expect(key_schema["enum"]).to contain_exactly("author", "date")
+    end
+
+    it "adds an optional top-level suggestions array to the schema" do
+      params = request_params!
+      schema = params[:tools].first[:function][:parameters]
+      expect(schema["properties"]).to have_key("suggestions")
+      expect(schema.dig("properties", "suggestions", "type")).to eq("array")
+      # suggestions stays OPTIONAL — never added to required.
+      expect(schema["required"]).not_to include("suggestions")
+      item_required = schema.dig("properties", "suggestions", "items", "required")
+      expect(item_required).to include("proposed_key", "rationale")
+    end
+
+    it "does NOT mutate the shared RESPONSE_SCHEMA constant" do
+      request_params!
+      # The constant must remain the open-key, suggestion-free v0.2 schema.
+      const = Enliterator::Adapters::LLM::Base::RESPONSE_SCHEMA
+      expect(const["properties"]).not_to have_key("suggestions")
+      expect(const.dig("properties", "claims", "items", "properties", "key"))
+        .not_to have_key("enum")
+    end
+
+    it "appends a controlled-vocabulary block to the system message" do
+      params = request_params!
+      system = params[:messages].find { |m| m[:role] == "system" }[:content]
+      expect(system).to match(/CONTROLLED VOCABULARY/i)
+      expect(system).to include("author")
+      expect(system).to include("date")
+    end
+  end
+
+  describe "#tend with NO contract is byte-identical to v0.2" do
+    it "sends RESPONSE_SCHEMA verbatim and the original system text" do
+      adapter.tend(text: "x", stream: "summary", state: {}, neighbors: [])
+      params = fake_client.completions.last_kwargs
+
+      expect(params[:tools].first[:function][:parameters])
+        .to eq(Enliterator::Adapters::LLM::Base::RESPONSE_SCHEMA)
+
+      system = params[:messages].find { |m| m[:role] == "system" }[:content]
+      expect(system).not_to match(/CONTROLLED VOCABULARY/i)
+    end
+  end
 end

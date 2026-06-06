@@ -110,6 +110,11 @@ module Enliterator
         policy  = Enliterator.staffing
         allowed = policy.allowed_tiers(tendable, stream)
 
+        # v0.3 output contract for this stream (the controlled key vocabulary), or
+        # nil when the stream is unconstrained (declared via #assign / not at all).
+        # nil ⇒ open keys + no suggestions ⇒ byte-identical to v0.2.
+        contract = policy.keys_for(stream)
+
         # No tier may legally run this record (e.g. on-prem-only with no on-prem
         # ladder). Record a failed visit and surface the misconfiguration.
         if allowed.empty?
@@ -134,7 +139,8 @@ module Enliterator
             tier:              current_tier,
             step:              step,
             escalated_from:    prior_visit,
-            proposed_by_lower: proposed
+            proposed_by_lower: proposed,
+            contract:          contract
           )
 
           # Decide whether to climb: low confidence / self-flag, a higher tier
@@ -153,8 +159,9 @@ module Enliterator
           current_tier = next_tier
         end
 
-        # Only the FINAL tier's visit reconciles and writes claims.
-        finalize_final_visit!(current_visit, current_parsed, current_tier, policy)
+        # Only the FINAL tier's visit reconciles and writes claims. It is also the
+        # only place v0.3 suggestions are persisted (junior visits never persist).
+        finalize_final_visit!(current_visit, current_parsed, current_tier, policy, contract: contract)
         Enliterator::Facets.recompute!(tendable)
         current_visit
       end
@@ -258,7 +265,7 @@ module Enliterator
       # Run one tending at a tier, recording the Visit (tier, tokens, raw,
       # escalation linkage). Does NOT reconcile — the loop decides which visit
       # writes. Returns [visit, parsed].
-      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:)
+      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil)
         adapter = Enliterator.llm(tier: tier)
         started = Time.current
 
@@ -283,13 +290,14 @@ module Enliterator
           neighbors = nearest_neighbors(tendable, limit: 5)
           tags      = spend_tags(tier: tier, step: step)
 
-          response = tend_with_optional_tags(
+          response = tend_with_optional_kwargs(
             adapter,
             text:      tendable.enliterator_text,
             stream:    stream,
             state:     state,
             neighbors: neighbors,
-            tags:      tags
+            tags:      tags,
+            contract:  contract
           )
           parsed = response.parsed || {}
 
@@ -315,17 +323,75 @@ module Enliterator
       end
 
       # Apply the final tier's reconciliation and stamp the visit's reconciliation
-      # summary. This is the ONLY place claims are written in the staffing path.
-      def finalize_final_visit!(visit, parsed, tier, policy)
+      # summary. This is the ONLY place claims are written in the staffing path —
+      # and the ONLY place v0.3 suggestions are persisted (junior visits never do).
+      #
+      # CONTRACT (v0.3): when the stream has an output contract, reconcile ONLY the
+      # claims whose key is in the allowed vocabulary; off-list keys are dropped (the
+      # schema enum should already prevent them — this is the safety net). When no
+      # contract, reconcile ALL proposed claims (v0.2, byte-identical).
+      def finalize_final_visit!(visit, parsed, tier, policy, contract: nil)
         may_verify = policy.may_verify?(tier)
+        claims     = contract.nil? ? parsed["claims"] : filter_claims_to_contract(parsed["claims"], contract)
+
         recon = reconcile!(
-          parsed["claims"], visit,
+          claims, visit,
           attributed_to: "#{tier}:#{visit.model}",
           tier:          tier.to_s,
           may_verify:    may_verify
         )
         visit.update!(reconciliation: recon, applied: true)
+
+        # Persist the model's proposed key additions for governance. No-op when the
+        # model emitted no suggestions (so the contract-absent path never touches the
+        # suggestions table).
+        persist_suggestions!(parsed["suggestions"], visit: visit, tier: tier)
+
         recon
+      end
+
+      # Keep only proposed claims whose key is in the contract's allowed vocabulary.
+      # Preserves order; drops nothing extra. A nil/blank proposal array stays as-is.
+      def filter_claims_to_contract(proposed, contract)
+        return proposed if proposed.blank?
+        allowed = Array(contract.keys).map(&:to_s).to_set
+        proposed.select do |raw|
+          key = (raw["key"] || raw[:key]).to_s
+          allowed.include?(key)
+        end
+      end
+
+      # Materialize each suggestion the model proposed into an Enliterator::Suggestion
+      # row carrying full provenance (tendable, stream, final tier/model, final visit).
+      # Fires Enliterator.configuration.suggestion_sink per row when configured.
+      def persist_suggestions!(suggestions, visit:, tier:)
+        return if suggestions.blank?
+
+        sink = Enliterator.configuration.suggestion_sink
+
+        Array(suggestions).each do |raw|
+          next unless raw.respond_to?(:[])
+          proposed_key = (raw["proposed_key"] || raw[:proposed_key]).to_s
+          next if proposed_key.blank?
+
+          attrs = {
+            tendable:     tendable,
+            stream:       stream,
+            proposed_key: proposed_key,
+            rationale:    raw["rationale"] || raw[:rationale],
+            tier:         tier.to_s,
+            model:        visit.model,
+            visit:        visit
+          }
+          # Only set example_value when the model provided one, so the column keeps
+          # its jsonb default ({}) otherwise.
+          example = raw.key?("example_value") ? raw["example_value"] : raw[:example_value]
+          attrs[:example_value] = example unless example.nil?
+
+          suggestion = Enliterator::Suggestion.create!(**attrs)
+
+          sink.call(suggestion) if sink.respond_to?(:call)
+        end
       end
 
       # A junior visit whose reconciliation was discarded by escalation. It stays
@@ -349,19 +415,22 @@ module Enliterator
         allowed[idx..] || [ start_tier ]
       end
 
-      # Call #tend with tags only when the adapter accepts them (the Gateway does;
-      # Null/back-compat stubs do not). Keeps non-gateway adapters working.
-      def tend_with_optional_tags(adapter, text:, stream:, state:, neighbors:, tags:)
-        if adapter_accepts_tags?(adapter)
-          adapter.tend(text: text, stream: stream, state: state, neighbors: neighbors, tags: tags)
-        else
-          adapter.tend(text: text, stream: stream, state: state, neighbors: neighbors)
-        end
+      # Call #tend, passing the optional `tags:`/`contract:` keywords ONLY when the
+      # adapter's #tend accepts them. `contract:` is additionally passed only when
+      # non-nil, so an unconstrained stream (no contract) yields a call byte-identical
+      # to v0.2 even on adapters that DO accept `contract:`. The Gateway accepts both;
+      # Null/Bedrock accept `contract:` (and ignore it); per-tier stubs that accept
+      # only `tags:` (escalation spec) still work — they're never handed a contract.
+      def tend_with_optional_kwargs(adapter, text:, stream:, state:, neighbors:, tags:, contract:)
+        kwargs = { text: text, stream: stream, state: state, neighbors: neighbors }
+        kwargs[:tags]     = tags     if adapter_accepts_kwarg?(adapter, :tags)
+        kwargs[:contract] = contract if !contract.nil? && adapter_accepts_kwarg?(adapter, :contract)
+        adapter.tend(**kwargs)
       end
 
-      def adapter_accepts_tags?(adapter)
+      def adapter_accepts_kwarg?(adapter, name)
         method = adapter.method(:tend)
-        method.parameters.any? { |type, name| name == :tags && %i[key keyreq].include?(type) }
+        method.parameters.any? { |type, pname| pname == name && %i[key keyreq].include?(type) }
       rescue NameError
         false
       end

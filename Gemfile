@@ -13,6 +13,10 @@ gem "rubocop-rails-omakase", require: false
 group :development, :test do
   gem "rspec-rails"
   gem "debug", ">= 1.0.0"
+  # Provider gem for exercising the real Gateway/OpenAI adapters in dev (live
+  # smoke tests). The engine itself does not depend on it — adapters lazy-require
+  # it and hosts supply it. Specs use injected fakes and don't need it.
+  gem "openai"
 end
 
 # Provider gems are host-supplied in real apps (lazy-required by adapters).

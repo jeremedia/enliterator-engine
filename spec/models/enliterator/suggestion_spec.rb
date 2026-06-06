@@ -1,0 +1,112 @@
+# frozen_string_literal: true
+
+require "rails_helper"
+
+# v0.3 §3 — the governed suggestion: a model's sanctioned proposal to add a claim
+# key to a stream's controlled vocabulary. The model records bio (provenance +
+# rationale); a human renders a verdict (approve/map/reject); and #gaps aggregates
+# open proposals into a demand-ranked report so the vocabulary can be tended.
+RSpec.describe Enliterator::Suggestion do
+  let(:widget_a) { Widget.create!(title: "A", body: "first") }
+  let(:widget_b) { Widget.create!(title: "B", body: "second") }
+  let(:widget_c) { Widget.create!(title: "C", body: "third") }
+
+  def suggest!(record:, key:, rationale: "needed", example: nil, status: "pending")
+    attrs = {
+      tendable:     record,
+      stream:       "metadata",
+      proposed_key: key,
+      rationale:    rationale,
+      status:       status
+    }
+    attrs[:example_value] = example unless example.nil?
+    described_class.create!(**attrs)
+  end
+
+  describe ".gaps — demand-ranked aggregation of open proposals" do
+    before do
+      # "institution" requested across THREE distinct records.
+      suggest!(record: widget_a, key: "institution", rationale: "first ask", example: { "name" => "NPS" })
+      suggest!(record: widget_b, key: "institution", rationale: "second ask")
+      suggest!(record: widget_c, key: "institution", rationale: "third ask")
+      # "doi" requested by ONE record.
+      suggest!(record: widget_a, key: "doi", rationale: "for citation")
+      # A REJECTED proposal must NOT count toward the gap report.
+      suggest!(record: widget_b, key: "doi", rationale: "dup", status: "rejected")
+    end
+
+    it "ranks proposed keys by distinct-tendable demand, descending" do
+      gaps = described_class.gaps
+      keys = gaps.map { |g| g[:proposed_key] }
+      expect(keys).to eq(%w[institution doi])
+    end
+
+    it "counts DISTINCT tendables, ignoring non-pending proposals" do
+      gaps = described_class.gaps.index_by { |g| g[:proposed_key] }
+      expect(gaps["institution"][:count]).to eq(3)
+      # doi has one pending (widget_a) and one rejected (widget_b) — only the
+      # pending one counts.
+      expect(gaps["doi"][:count]).to eq(1)
+    end
+
+    it "carries a sample rationale and example for context" do
+      gaps = described_class.gaps.index_by { |g| g[:proposed_key] }
+      inst = gaps["institution"]
+      expect(inst[:sample_rationale]).to be_present
+      expect(inst[:sample_example]).to eq("name" => "NPS")
+    end
+
+    it "can be narrowed to a single stream" do
+      # A proposal on a different stream must not appear when scoped.
+      described_class.create!(
+        tendable: widget_a, stream: "other", proposed_key: "tag", rationale: "x", status: "pending"
+      )
+      keys = described_class.gaps(stream: "metadata").map { |g| g[:proposed_key] }
+      expect(keys).to contain_exactly("institution", "doi")
+      expect(keys).not_to include("tag")
+    end
+  end
+
+  describe "status setters (the human's governance verdict)" do
+    let(:suggestion) { suggest!(record: widget_a, key: "institution") }
+
+    it "#approve! sets status approved and records the note" do
+      suggestion.approve!(note: "good catch")
+      suggestion.reload
+      expect(suggestion.status).to eq("approved")
+      expect(suggestion.review_note).to eq("good catch")
+    end
+
+    it "#map! sets status mapped (a synonym of an existing key)" do
+      suggestion.map!(note: "== author")
+      suggestion.reload
+      expect(suggestion.status).to eq("mapped")
+      expect(suggestion.review_note).to eq("== author")
+    end
+
+    it "#reject! sets status rejected" do
+      suggestion.reject!(note: "not needed")
+      suggestion.reload
+      expect(suggestion.status).to eq("rejected")
+      expect(suggestion.review_note).to eq("not needed")
+    end
+
+    it "removes a now-resolved proposal from the pending scope and gap report" do
+      suggestion.reject!(note: "no")
+      expect(described_class.pending).to be_empty
+      expect(described_class.gaps).to be_empty
+    end
+  end
+
+  describe "associations" do
+    it "belongs to a polymorphic tendable" do
+      s = suggest!(record: widget_a, key: "institution")
+      expect(s.tendable).to eq(widget_a)
+    end
+
+    it "optionally belongs to a visit (nil is allowed)" do
+      s = suggest!(record: widget_a, key: "institution")
+      expect(s.visit).to be_nil
+    end
+  end
+end
