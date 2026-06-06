@@ -486,3 +486,88 @@ map → $). Tags are the join key to LiteLLM's authoritative dollars.
 - README `## Deferred`: move routing/staffing → implemented; remaining deferred = entity graph,
   MCP tools, human-in-the-loop UI, Bedrock tier, dynamic per-host scheduler UI, input chunking
   for small-context tiers.
+
+---
+
+# v0.3 — Stream Contracts + Governed Suggestion Loop + Locked-Claim Import
+
+Discovered at the first HSDL thesis batch: a stream with no output contract lets the model
+freelance claim keys (`author` vs `authored_by`, redundant `institution`/`date`). Key drift
+breaks reconciliation (re-tend ADDs duplicates instead of UPDATE) — it corrupts compounding
+at scale. The fix is BOTH a controlled vocabulary AND a sanctioned channel to propose
+additions. The ontology itself becomes a tended, governed thing. See Basic Memory:
+"The Vocabulary Compounds — Controlled Claim Keys + a Governed Suggestion Loop."
+
+**Hard back-compat rule:** v0.1+v0.2 ship GREEN at 114 examples. Keep them green. Every new
+behavior is gated on a contract being PRESENT; when absent, behavior is identical to v0.2
+(open keys, no suggestions, injected-llm path untouched).
+
+## 1. Stream output contract (Staffing::Policy)
+- New DSL: `stream(name, tier:, keys:)` where `keys` is `{ key_sym => "description", ... }`.
+  Sets BOTH the tier assignment (like `assign`) AND the allowed-key contract. `assign(name, tier:)`
+  stays (no contract → unconstrained, back-compat).
+- API: `keys_for(stream)` → `{key => desc}` or `nil`; `allowed_keys(stream)` → `[String]` or `nil`
+  (nil = unconstrained). `validate!` unchanged.
+
+## 2. Prompt + schema (Adapters::LLM::Base)
+- `#tend` gains keyword `contract: nil` (a `{key => description}` hash). Thread it through
+  `build_system`/`build_user` and schema. ALL adapters' `#tend` accept `contract:` (Null/Bedrock
+  may ignore; Gateway honors).
+- When `contract` present:
+  - `build_system` lists the allowed keys + descriptions and instructs: "Use ONLY these keys.
+    If you observe something worth asserting that no allowed key covers, DO NOT invent a key —
+    add it to `suggestions` instead."
+  - Build a per-call schema where claim `key` is `{enum: allowed_keys}`.
+  - Always include optional top-level `suggestions: [{proposed_key, rationale, example_value}]`
+    in the schema (not required).
+- When `contract` absent: byte-identical to v0.2 (open `key` string, no suggestions emphasis).
+  RESPONSE_SCHEMA stays the default; build a contract-variant only when contract is passed.
+
+## 3. Enliterator::Suggestion (engine-local, pluggable sink)
+- Migration `enliterator_suggestions`: `tendable_type:string`, `tendable_id:string`,
+  `stream:string`, `proposed_key:string`, `rationale:text`, `example_value:jsonb default {}`,
+  `tier:string`, `model:string`, `visit_id:bigint`, `status:string default "pending"`
+  (pending/approved/mapped/rejected), `review_note:text`, timestamps. Index
+  `[proposed_key, status]`, `[stream, status]`, `[tendable_type, tendable_id]`.
+- Model: `belongs_to :tendable, polymorphic: true`; `belongs_to :visit, optional: true`;
+  scopes `pending`; class `gaps(stream: nil)` → group by proposed_key (count distinct tendables,
+  sample rationale/example), ranked desc; instance `approve!(note:)/map!(note:)/reject!(note:)`.
+- `config.suggestion_sink` (callable, default nil): if set, called with each new Suggestion on
+  create (stub for forwarding to a shared tracker / KN later).
+
+## 4. Visitor changes
+- POLICY path: `contract = Enliterator.staffing.keys_for(stream)`; pass `contract:` to `tend`.
+- After parse: if contract present, reconcile ONLY claims whose key ∈ allowed_keys (drop/ignore
+  off-list — schema enum should already prevent them; this is the safety net). When absent,
+  reconcile all (v0.2).
+- Persist `response.parsed["suggestions"]` (Array) as `Enliterator::Suggestion` rows
+  (tendable, stream, proposed_key, rationale, example_value, tier=final tier, model, visit).
+  Fire `config.suggestion_sink` per row if set.
+- Injected-`llm:` path (v0.1 back-compat): no contract, no suggestions — unchanged.
+
+## 5. Locked-claim import (Tendable)
+- `Tendable#assert_claim!(key:, value:, locked: true, status: "verified", attributed_to: "host", tier: nil)`:
+  upsert the current live claim for `key` on this record with these attributes; idempotent
+  (find live claim by key → update; else create). Used by hosts to seed structured metadata as
+  first-class claims the LLM never derives. reconcile already NOOPs locked claims on UPDATE, so
+  tending will not overwrite them.
+
+## Done = all of (this phase):
+- `Staffing::Policy#stream`/`keys_for`/`allowed_keys`; back-compat `assign`.
+- Base/Gateway/Null/Bedrock `#tend(contract:)`; contract-variant schema (key enum + suggestions);
+  contract-absent path byte-identical to v0.2.
+- `Enliterator::Suggestion` model + migration + `gaps` + status setters + `config.suggestion_sink`.
+- Visitor: contract-aware reconcile + suggestion persistence (policy path only).
+- `Tendable#assert_claim!` (locked/verified upsert, idempotent).
+- Migration adds `enliterator_suggestions` (additive).
+- Specs green, ADDING (keep the 114 green):
+  - `staffing/contract_spec.rb`: `stream` DSL sets tier+keys; `allowed_keys`/`keys_for`.
+  - `tending/contract_spec.rb` (policy path, stub per-tier llm honoring `contract:`): a claim with an
+    allowed key is written; an off-list key is NOT written; a returned `suggestions` entry becomes an
+    `Enliterator::Suggestion` row with provenance; `suggestion_sink` fires.
+  - `suggestion_spec.rb`: `gaps` aggregation + `approve!/map!/reject!`.
+  - `tendable_assert_claim_spec.rb`: seeds a locked verified claim; a subsequent tend UPDATE NOOPs it;
+    `assert_claim!` is idempotent.
+  - `adapters/llm/gateway_spec.rb`: extend — when `contract:` passed, the request's tool schema enums
+    `key` to the allowed set and includes `suggestions` (fake client; no network).
+- README: add "Stream Contracts & Suggestions" section; note `assert_claim!` for host metadata.

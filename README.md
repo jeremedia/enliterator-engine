@@ -274,6 +274,64 @@ v0.1 single adapter.
 `Enliterator::Spend.by_stream(host:, since:)` is the engine's own local ledger,
 grouping `Visit.tokens` by stream and tier (with an optional price map → $).
 
+## Stream Contracts & Suggestions
+
+A stream with no output contract lets the model freelance claim keys — `author`
+vs `authored_by`, redundant `institution`/`date`. Key drift breaks reconciliation
+(a re-tend ADDs a duplicate instead of UPDATEing) and so corrupts compounding at
+scale. The fix is **both** a controlled vocabulary **and** a sanctioned channel to
+propose additions: the ontology itself becomes a tended, governed thing.
+
+**Controlled keys.** Declare a stream with `stream(name, tier:, keys:)` — the
+contract-bearing sibling of `assign`. It sets the tier exactly as `assign` does,
+**and** binds the allowed claim-key vocabulary:
+
+```ruby
+Enliterator.configure do |c|
+  c.staffing = Enliterator::Staffing::Policy.new do
+    stream :metadata, tier: "quality", keys: {
+      author: "Who authored the work.",
+      date:   "When the work was created."
+    }
+    assign :summary, tier: "cheap"   # NO keys => unconstrained (open keys, v0.2)
+    ladder ["cheap", "quality"]
+  end
+end
+```
+
+When a stream has a contract, the Visitor threads it into the adapter's `#tend`:
+the structured-output schema enums each claim `key` to the allowed set and the
+system prompt gains a CONTROLLED VOCABULARY block. After parse, the Visitor
+reconciles **only** claims whose key is in the vocabulary (off-list keys are
+dropped — the enum should already prevent them; this is the safety net).
+
+**The suggestion loop.** The schema also advertises an optional top-level
+`suggestions` array. When the model observes something no allowed key covers, it
+does **not** invent a key — it proposes one: `{proposed_key, rationale,
+example_value}`. The Visitor persists each as an `Enliterator::Suggestion` with
+full provenance (tendable, stream, final tier/model, final visit) and fires
+`config.suggestion_sink` per row (a callable for forwarding to a shared vocabulary
+tracker — KN, a review queue — default `nil`, local-only).
+
+A human renders the verdict — `approve!(note:)`, `map!(note:)` (a synonym of an
+existing key), `reject!(note:)` — and `Enliterator::Suggestion.gaps(stream: nil)`
+aggregates open proposals into a **demand-ranked** report (which keys are asked for
+most often, across how many distinct records, with a sample rationale/example) so
+the vocabulary can be tended where it is actually too narrow.
+
+**`assert_claim!` — host metadata as locked claims.** Some facts the LLM should
+never derive: an authoritative `published_at`, an institution pulled straight from
+the source record. `tendable.assert_claim!(key:, value:, locked: true, status:
+"verified", attributed_to: "host")` seeds (or in-place upserts) such a fact as a
+first-class, **locked**, verified Claim — idempotent, and it creates no Visit
+(this is import, not tending). Because reconcile NOOPs locked claims on UPDATE, a
+host-asserted claim survives all subsequent tending untouched.
+
+**Back-compat.** Every contract behavior is gated on a contract being present.
+A stream declared with `assign` (or never declared) is unconstrained: open keys,
+no suggestions emphasis, default `RESPONSE_SCHEMA` — byte-identical to v0.2. The
+injected-`llm:` (v0.1) path threads no contract at all.
+
 ## Architecture notes
 
 - **Polymorphic ids are strings.** Every `*_id` column on engine tables is

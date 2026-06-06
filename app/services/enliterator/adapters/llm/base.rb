@@ -79,12 +79,129 @@ module Enliterator
         end
 
         # Read the record + its compounding context, return a Result.
+        #
+        # +contract+ (v0.3) is an optional `{key_sym => "description"}` hash naming
+        # the allowed claim keys for this stream. When present, subclasses thread
+        # `schema_for(contract)` into their structured-output schema (claim `key`
+        # becomes an enum + an optional top-level `suggestions` array) and
+        # `system_for(contract)` into the system message. When nil/absent, behavior
+        # is byte-identical to v0.2 (open `key` string, default RESPONSE_SCHEMA, no
+        # suggestions emphasis).
+        #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, stream:, state:, neighbors:)
+        def tend(text:, stream:, state:, neighbors:, contract: nil)
           raise NotImplementedError, "#{self.class} must implement #tend"
         end
 
+        # The structured-output schema for a call. With no contract this is the
+        # default RESPONSE_SCHEMA constant ITSELF (identity preserved, so the v0.2
+        # adapter specs comparing against RESPONSE_SCHEMA stay green). With a
+        # contract it is a per-call variant where claim `key` is an enum over the
+        # allowed keys AND an optional top-level `suggestions` array is added.
+        #
+        # @param contract [Hash, nil] `{key => description}` or nil.
+        # @return [Hash] JSON Schema.
+        def schema_for(contract)
+          keys = allowed_keys_from(contract)
+          return RESPONSE_SCHEMA if keys.nil? || keys.empty?
+
+          schema = deep_dup(RESPONSE_SCHEMA)
+          schema["properties"]["claims"]["items"]["properties"]["key"] = {
+            "type" => "string",
+            "enum" => keys,
+            "description" => "Stable claim key. Use ONLY one of the allowed keys for this stream."
+          }
+          schema["properties"]["suggestions"] = SUGGESTIONS_SCHEMA_PROPERTY
+          # "suggestions" stays OPTIONAL — do not add it to "required".
+          schema
+        end
+
+        # The system instruction for a call. With no contract this is the exact
+        # v0.2 `build_system` text (byte-identical). With a contract it appends a
+        # controlled-vocabulary block listing the allowed keys + descriptions and
+        # instructing the model to use ONLY those keys and route gaps to
+        # `suggestions` rather than inventing a key.
+        #
+        # @param contract [Hash, nil] `{key => description}` or nil.
+        # @return [String]
+        def system_for(contract)
+          base = build_system
+          keys = allowed_keys_from(contract)
+          return base if keys.nil? || keys.empty?
+
+          base + "\n\n" + contract_system_block(contract)
+        end
+
         private
+
+        # Optional top-level "suggestions" schema fragment, attached only when a
+        # contract is present. Each entry is the model's sanctioned channel to
+        # propose a NEW claim key it could not express within the allowed set.
+        SUGGESTIONS_SCHEMA_PROPERTY = {
+          "type" => "array",
+          "description" =>
+            "Sanctioned channel for proposing NEW claim keys. If you observe " \
+            "something worth asserting that no allowed key covers, DO NOT invent " \
+            "a key on a claim — add an entry here instead. Optional; omit when the " \
+            "allowed keys suffice.",
+          "items" => {
+            "type" => "object",
+            "properties" => {
+              "proposed_key" => {
+                "type" => "string",
+                "description" => "The new claim key you would add to the controlled vocabulary."
+              },
+              "rationale" => {
+                "type" => "string",
+                "description" => "Why this key is needed and not covered by an allowed key."
+              },
+              "example_value" => {
+                "description" => "An example value this key would carry for this record.",
+                "type" => [ "string", "array", "object", "number", "boolean", "null" ]
+              }
+            },
+            "required" => %w[proposed_key rationale]
+          }
+        }.freeze
+
+        # Normalize a contract hash into a sorted list of allowed key STRINGS,
+        # or nil when there is no usable contract.
+        def allowed_keys_from(contract)
+          return nil if contract.nil?
+          return nil unless contract.is_a?(Hash)
+          keys = contract.keys.map(&:to_s).reject(&:empty?)
+          keys.empty? ? nil : keys
+        end
+
+        # The controlled-vocabulary instruction appended to the system message
+        # when a contract is present.
+        def contract_system_block(contract)
+          lines = contract.map { |k, desc| "  - #{k}: #{desc}" }.join("\n")
+          <<~CONTRACT.strip
+            CONTROLLED VOCABULARY — this stream has a fixed set of allowed claim keys.
+            Use ONLY these keys for the `key` of every claim:
+
+            #{lines}
+
+            If you observe something worth asserting that NONE of these keys covers,
+            DO NOT invent a new key on a claim. Instead add it to the optional
+            top-level `suggestions` array as {proposed_key, rationale, example_value}.
+            Never put an off-list key on a claim.
+          CONTRACT
+        end
+
+        # Recursively duplicate a (frozen) nested Hash/Array structure so a
+        # per-call schema variant can be mutated without touching RESPONSE_SCHEMA.
+        def deep_dup(obj)
+          case obj
+          when Hash
+            obj.each_with_object({}) { |(k, v), h| h[k] = deep_dup(v) }
+          when Array
+            obj.map { |v| deep_dup(v) }
+          else
+            obj
+          end
+        end
 
         # The SYSTEM instruction shared across providers.
         def build_system

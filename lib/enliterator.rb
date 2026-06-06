@@ -58,6 +58,14 @@ module Enliterator
     # here so a host can tune escalation without rebuilding the whole policy block.
     attr_accessor :escalation_threshold
 
+    # ---- v0.3 Governed Suggestion Loop -----------------------------------
+
+    # A callable (default nil) invoked with each newly-created Enliterator::Suggestion
+    # when the model proposes a claim key outside a stream's contract. The hook lets a
+    # host forward proposals to a shared vocabulary tracker (KN, a review queue, etc.).
+    # nil ⇒ suggestions are persisted locally only (no forwarding) — the default path.
+    attr_accessor :suggestion_sink
+
     attr_writer :logger
 
     def initialize
@@ -72,6 +80,7 @@ module Enliterator
       @gateway_api_key = nil
       @staffing = nil
       @escalation_threshold = 0.6
+      @suggestion_sink = nil
     end
 
     def logger
