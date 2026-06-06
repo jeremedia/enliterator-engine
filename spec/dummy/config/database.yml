@@ -1,0 +1,16 @@
+# Local PostgreSQL for the engine's dummy host app.
+# Mirrors the hsdl-ai local connection convention on this machine: connect over
+# the default Unix domain socket as the OS user (no host/username/password).
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  timeout: 5000
+
+development:
+  <<: *default
+  database: enliterator_development
+
+test:
+  <<: *default
+  database: enliterator_test
