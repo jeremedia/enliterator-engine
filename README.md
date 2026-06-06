@@ -213,6 +213,67 @@ task. The job is `retry_on StandardError` (polynomial backoff, 3 attempts) and
 `discard_on ActiveJob::DeserializationError` (the record was deleted between
 enqueue and run).
 
+## Staffing & Routing
+
+Routing is not a config knob — it is a first-class **org chart**. A tending
+**stream is a ROLE**; a LiteLLM **alias is a capability TIER**;
+`Enliterator::Staffing::Policy` is the policy that maps roles to tiers, defines
+the escalation ladder, and enforces constraints. Deciding *how much mind to bring
+to a record* in a given state IS the curatorial act.
+
+The routing target is the **LiteLLM gateway** (`https://llm.domt.app/v1`,
+OpenAI-compatible). Tiers are aliases (`cheap`, `quality`, `embed`, …); the
+gateway owns provider/fallback/load-balancing/cost. The engine names intent (an
+alias) and tags the call — it never names a provider.
+
+```ruby
+Enliterator.configure do |c|
+  c.gateway_base_url = "https://llm.domt.app/v1"   # default
+  c.gateway_api_key  = ENV["LITELLM_KEY"]          # project key, from ENV — never committed
+  c.staffing = Enliterator::Staffing::Policy.new do
+    assign :summary, tier: "cheap"                 # stream → tier (role → capability)
+    embedding_tier "embed"
+    ladder ["cheap", "quality"]                    # escalation order, junior → senior
+    escalation_threshold 0.6                        # escalate below this confidence
+    max_promotions 1                                # bound the climb
+    verify_floor "quality"                          # min tier permitted to mint `verified`
+    on_prem_tiers ["cheap"]                          # tiers that never route off-prem
+  end
+end
+```
+
+**The loop, with escalation.** `tier_for(stream)` picks the starting tier;
+`allowed_tiers(tendable, stream)` clamps the ladder by constraints. The Visitor
+runs a visit at the tier, and while the result is low-confidence (or the model
+self-flags `escalate`), a higher allowed tier exists, and `escalation_step <
+max_promotions`, it **escalates** — handing the junior tier's proposed claims to
+the senior as `state["proposed_by_lower_tier"]` so the senior *reviews the
+junior's draft*. Only the **final tier's visit reconciles and writes claims**;
+junior visits are recorded as provenance only (`applied: false`), linked by
+`escalated_from_id`. Each Visit records its `tier` and `escalation_step`.
+
+**verify_floor** keeps a cheap pass from poisoning the compounding well: a claim
+may be minted `verified` only when the writing tier is at/above the floor **and**
+the model asserted it. Below the floor, claims stay `draft` regardless of
+confidence.
+
+**Constraints.** A tendable answering `enliterator_on_prem_only? => true` has its
+ladder clamped to `on_prem_tiers` and never routes off-prem, even on escalation.
+`validate!(available_aliases)` (against `GET /v1/models`) fails fast at boot if
+the policy names an unknown alias. When the host configures no staffing,
+`Policy.default` routes every stream to a single tier so the engine still runs.
+
+**Back-compat.** Injecting `llm:` into the Visitor (the v0.1 path) bypasses
+staffing entirely: one visit, direct write, claims `draft`. When `staffing` is
+unset and no gateway key is present, `Enliterator.llm(tier:)` falls back to the
+v0.1 single adapter.
+
+**Spend.** Every gateway request carries `metadata: {tags: [...]}`
+(`["enliterator", "host:<host>", "stream:<stream>", "tier:<tier>", "esc:<step>",
+"record:<Class>/<id>"]`) — the join key to LiteLLM's authoritative dollars.
+`Enliterator::Spend.by_stream(host:, since:)` is the engine's own local ledger,
+grouping `Visit.tokens` by stream and tier (with an optional price map → $).
+
 ## Architecture notes
 
 - **Polymorphic ids are strings.** Every `*_id` column on engine tables is
@@ -229,22 +290,30 @@ enqueue and run).
 
 ## Deferred
 
-Out of scope for v0.1 (deliberately not built):
+Out of scope (deliberately not built):
 
 - **Entity / relationship knowledge graph** — HSDL already has one; Enliterator
   tends records, it does not model cross-record entities or relationships.
 - **MCP tools** — no Model Context Protocol surface in this version.
-- **Slack / expert human-in-the-loop** — the schema supports it (`locked`,
+- **Slack / expert human-in-the-loop UI** — the schema supports it (`locked`,
   `review_state`) but no notification or approval workflow is built.
+- **Bedrock tier** — the Bedrock adapter exists, but the v0.2 routing path targets
+  the LiteLLM gateway; wiring Bedrock in as a staffing tier is deferred.
 - **Dynamic per-host scheduler UI** — scheduling is a flat rake walk; per-host
-  cadence/stream configuration UI is deferred.
-- **CE / MoMA adoption** — only the HSDL adoption guide is written.
+  cadence/stream/tier configuration UI is deferred.
+- **Input chunking for small-context tiers** — over-window inputs escalate to a
+  larger-context tier rather than being chunked.
+
+Implemented in v0.2 (was deferred in v0.1): **routing / staffing** — stream→tier
+assignment, the escalation ladder, `verify_floor`, on-prem constraints, the
+LiteLLM gateway adapter, and per-loop spend attribution (see *Staffing & Routing*
+above).
 
 ## Development
 
 ```bash
 bundle install
-bundle exec rspec     # 73 examples, 0 failures (Null/stub adapters; no network)
+bundle exec rspec     # 114 examples, 0 failures (Null/stub adapters; no network)
 ```
 
 The test host app lives in `spec/dummy` (a `Widget` model that includes
