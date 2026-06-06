@@ -17,10 +17,16 @@ module Enliterator
     end
 
     # The compounding context handed to each visit.
+    #
+    # recent_visits reflects only AUTHORITATIVE visits (applied: true). A junior
+    # visit that escalated and had its reconciliation discarded is recorded with
+    # applied: false (provenance only) and must NOT condition the next tending —
+    # otherwise a superseded draft would leak into future prompts. v0.1 visits are
+    # all applied: true, so this filter is a no-op for the existing contract.
     def literacy_state(stream: nil)
       {
         claims:        enliterator_claims.live.map(&:to_state),
-        recent_visits: enliterator_visits.where(stream: stream).order(created_at: :desc).limit(5).map(&:to_state),
+        recent_visits: enliterator_visits.applied.where(stream: stream).order(created_at: :desc).limit(5).map(&:to_state),
         facets:        enliterator_facets.each_with_object({}) { |f, h| h[f.name] = f.score }
       }
     end

@@ -1,49 +1,82 @@
 module Enliterator
   module Tending
-    # THE compounding contract (literacy rung 5).
+    # THE compounding contract (literacy rung 5), now WITH staffing & escalation.
     #
-    # One Visitor instance performs one tending pass over one record along one
-    # stream. It reads the record's accumulated understanding (prior claims +
-    # recent visits + facets) plus its corpus neighbors, hands all of that to the
-    # LLM, and reconciles the model's proposed claims against what already exists.
-    # Because each visit conditions the next, understanding compounds.
+    # One Visitor instance performs one tending of one record along one stream. It
+    # reads the record's accumulated understanding (prior claims + recent visits +
+    # facets) plus its corpus neighbors, hands all of that to a language model, and
+    # reconciles the model's proposed claims against what already exists. Because
+    # each visit conditions the next, understanding compounds.
     #
     #   Enliterator::Tending::Visitor.new(record, stream: "summary").call
     #
+    # TWO paths share this class:
+    #
+    # * BACK-COMPAT (v0.1): an explicit `llm:` is injected. One visit at that exact
+    #   adapter, reconciled and written directly — no staffing, no escalation. The
+    #   v0.1 spec drives this path and must stay green.
+    #
+    # * STAFFING (v0.2): no `llm:` is injected. The staffing policy picks the tier
+    #   for the stream, clamps the ladder by the record's constraints, runs a visit
+    #   at that tier, and — when the result is low-confidence or self-flagged —
+    #   ESCALATES up the ladder (bounded by max_promotions), handing the junior
+    #   tier's proposed claims to the senior for review. Only the FINAL tier's visit
+    #   reconciles and writes claims; junior visits are recorded as provenance only
+    #   (applied: false). A verify_floor gates which tier may mint `verified` claims.
     class Visitor
       # Bump when the prompt contract or reconcile semantics change in a way that
       # should invalidate cached interpretation. Stamped onto every Visit.
       PROMPT_VERSION = "v0.1".freeze
 
-      attr_reader :tendable, :stream, :llm, :embedder
+      attr_reader :tendable, :stream, :embedder
 
-      def initialize(tendable, stream:, llm: Enliterator.llm, embedder: Enliterator.embedder)
-        @tendable = tendable
-        @stream   = stream.to_s
-        @llm      = llm
-        @embedder = embedder
+      def initialize(tendable, stream:, llm: nil, embedder: Enliterator.embedder)
+        @tendable     = tendable
+        @stream       = stream.to_s
+        @injected_llm = llm           # non-nil => v0.1 back-compat path
+        @embedder     = embedder
       end
 
-      # Run the full visit lifecycle. Returns the finalized Visit.
+      # The LLM adapter for the back-compat path (kept as a public reader so
+      # callers/specs that referenced #llm in v0.1 still work). In the staffing
+      # path this is nil; the policy resolves a per-tier adapter instead.
+      def llm
+        @injected_llm
+      end
+
+      # Run the full tending. Returns the finalized (authoritative) Visit.
       def call
+        if @injected_llm
+          call_back_compat
+        else
+          call_with_staffing
+        end
+      end
+
+      # ---- BACK-COMPAT (v0.1): single visit, direct write -------------------
+
+      # Exactly the v0.1 lifecycle. One visit at the injected adapter, reconcile
+      # immediately, claims minted "draft" with attributed_to = model_id. The new
+      # `tier`/`applied` columns are stamped as harmless metadata (tier = the
+      # adapter's model_id, applied: true) — no v0.1 assertion depends on them.
+      def call_back_compat
+        adapter = @injected_llm
         started = Time.current
         visit = tendable.enliterator_visits.create!(
           stream:         stream,
           status:         "running",
-          model:          llm.model_id,
+          model:          adapter.model_id,
+          tier:           adapter.model_id,
+          applied:        true,
           prompt_version: PROMPT_VERSION,
           started_at:     started
         )
 
         begin
-          # 2. Prior understanding — this is what makes it compound.
-          state = tendable.literacy_state(stream: stream)
-
-          # 3. Corpus context via embeddings (gracefully empty if not embedded yet).
+          state     = tendable.literacy_state(stream: stream)
           neighbors = nearest_neighbors(tendable, limit: 5)
 
-          # 4. Ask the model to interpret the record in light of all of the above.
-          response = llm.tend(
+          response = adapter.tend(
             text:      tendable.enliterator_text,
             stream:    stream,
             state:     state,
@@ -51,43 +84,79 @@ module Enliterator
           )
           parsed = response.parsed || {}
 
-          # 5. Reconcile proposed claims against the existing live claim store.
-          recon = reconcile!(parsed["claims"], visit)
-
-          # 6. Finalize the visit with everything it read and produced.
-          finished     = Time.current
-          duration_ms  = ((finished - started) * 1000).round
-          input_refs   = {
-            prior_visit_ids: prior_visit_ids(visit),
-            neighbor_ids:    neighbors.map { |n| neighbor_id(n) }.compact,
-            claim_keys:      state[:claims].map { |c| c[:key] }.compact
-          }
-
-          visit.update!(
-            status:         "succeeded",
-            raw_response:   response.respond_to?(:raw) ? (response.raw || {}) : {},
-            reconciliation: recon,
-            confidence:     parsed["confidence"],
-            input_refs:     input_refs,
-            tokens:         response.respond_to?(:tokens) ? (response.tokens || {}) : {},
-            duration_ms:    duration_ms,
-            finished_at:    finished
+          recon = reconcile!(
+            parsed["claims"], visit,
+            attributed_to: adapter.model_id,
+            tier:          nil,            # v0.1 claims carry no tier
+            may_verify:    false           # v0.1 never mints verified
           )
 
-          # 7. Recompute quality facets now that claims/visits may have changed.
-          Enliterator::Facets.recompute!(tendable)
+          finalize_succeeded!(
+            visit, response, recon, parsed, started,
+            neighbors: neighbors, state: state
+          )
 
+          Enliterator::Facets.recompute!(tendable)
           visit
         rescue => e
-          # 9. Record the failure on the immutable history and re-raise.
-          visit.update_columns(
-            status:      "failed",
-            error:       e.message,
-            finished_at: Time.current,
-            updated_at:  Time.current
-          )
+          fail_visit!(visit, e)
           raise
         end
+      end
+
+      # ---- STAFFING (v0.2): tier routing + bounded escalation --------------
+
+      def call_with_staffing
+        policy  = Enliterator.staffing
+        allowed = policy.allowed_tiers(tendable, stream)
+
+        # No tier may legally run this record (e.g. on-prem-only with no on-prem
+        # ladder). Record a failed visit and surface the misconfiguration.
+        if allowed.empty?
+          raise Enliterator::ConfigurationError,
+                "No staffing tier may run #{tendable.class.name}/#{tendable.id} " \
+                "on stream #{stream.inspect} (allowed ladder is empty after constraints)."
+        end
+
+        start_tier = clamp_start_tier(policy.tier_for(stream), allowed)
+        # The remaining climb available to this record, in ladder order.
+        climb      = ladder_climb(start_tier, allowed)
+
+        prior_visit   = nil          # the junior visit we escalated from (provenance)
+        proposed      = nil          # the junior's proposed claims handed up for review
+        step          = 0
+        current_tier  = start_tier
+        current_visit = nil
+        current_parsed = nil
+
+        loop do
+          current_visit, current_parsed = run_tier_visit(
+            tier:              current_tier,
+            step:              step,
+            escalated_from:    prior_visit,
+            proposed_by_lower: proposed
+          )
+
+          # Decide whether to climb: low confidence / self-flag, a higher tier
+          # exists in the allowed ladder, and we are under the promotion bound.
+          next_tier = climb[step + 1]
+          break unless next_tier
+          break unless step < policy.max_promotions
+          break unless policy.escalate?(current_visit)
+
+          # Promote: this junior visit is provenance only — its reconciliation is
+          # NOT applied. Carry its proposed claims up for the senior to review.
+          mark_superseded!(current_visit)
+          prior_visit  = current_visit
+          proposed     = current_parsed["claims"]
+          step        += 1
+          current_tier = next_tier
+        end
+
+        # Only the FINAL tier's visit reconciles and writes claims.
+        finalize_final_visit!(current_visit, current_parsed, current_tier, policy)
+        Enliterator::Facets.recompute!(tendable)
+        current_visit
       end
 
       # The mem0-style ADD/UPDATE/DELETE/NOOP reconcile contract.
@@ -96,40 +165,54 @@ module Enliterator
       # op ∈ ADD | UPDATE | DELETE | NOOP. When op is absent it defaults to UPDATE
       # if a live claim already exists for the key, otherwise ADD.
       #
+      # `attributed_to` / `tier` are stamped on created claims (provenance). When
+      # `may_verify` is true AND the model asserted high confidence for a claim,
+      # that claim is minted `verified`; otherwise `draft`.
+      #
       # Returns `{added:[keys], updated:[keys], deleted:[keys], noop:[keys]}`.
-      def reconcile!(proposed, visit)
+      def reconcile!(proposed, visit, attributed_to:, tier:, may_verify:)
         recon = { added: [], updated: [], deleted: [], noop: [] }
         return recon if proposed.blank?
 
         proposed.each do |raw|
-          key        = raw["key"] || raw[:key]
+          key = raw["key"] || raw[:key]
           next if key.blank?
 
           value      = raw.key?("value") ? raw["value"] : raw[:value]
           confidence = raw["confidence"] || raw[:confidence]
           existing   = live_claim_for(key)
           op         = normalize_op(raw["op"] || raw[:op], existing)
+          status     = claim_status(may_verify: may_verify, confidence: confidence, raw: raw)
 
           case op
           when "ADD"
-            create_claim(key: key, value: value, confidence: confidence, visit: visit)
+            create_claim(
+              key: key, value: value, confidence: confidence, visit: visit,
+              attributed_to: attributed_to, tier: tier, status: status
+            )
             recon[:added] << key
 
           when "UPDATE"
             if existing.nil?
               # Nothing to update — treat as an ADD so the claim isn't lost.
-              create_claim(key: key, value: value, confidence: confidence, visit: visit)
+              create_claim(
+                key: key, value: value, confidence: confidence, visit: visit,
+                attributed_to: attributed_to, tier: tier, status: status
+              )
               recon[:added] << key
             elsif existing.locked
               # Curator anchor — never auto-supersede.
               recon[:noop] << key
             else
               fresh = create_claim(
-                key:         key,
-                value:       value,
-                confidence:  confidence,
-                visit:       visit,
-                derived_from: [ { "type" => "claim", "id" => existing.id } ]
+                key:           key,
+                value:         value,
+                confidence:    confidence,
+                visit:         visit,
+                attributed_to: attributed_to,
+                tier:          tier,
+                status:        status,
+                derived_from:  [ { "type" => "claim", "id" => existing.id } ]
               )
               existing.supersede!(fresh)
               recon[:updated] << key
@@ -170,6 +253,216 @@ module Enliterator
 
       private
 
+      # ---- staffing helpers ------------------------------------------------
+
+      # Run one tending at a tier, recording the Visit (tier, tokens, raw,
+      # escalation linkage). Does NOT reconcile — the loop decides which visit
+      # writes. Returns [visit, parsed].
+      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:)
+        adapter = Enliterator.llm(tier: tier)
+        started = Time.current
+
+        visit = tendable.enliterator_visits.create!(
+          stream:           stream,
+          status:           "running",
+          model:            adapter.model_id,
+          tier:             tier.to_s,
+          applied:          true,                 # provisional; flipped to false if superseded
+          escalation_step:  step,
+          escalated_from:   escalated_from,
+          prompt_version:   PROMPT_VERSION,
+          started_at:       started
+        )
+
+        begin
+          state = tendable.literacy_state(stream: stream)
+          # Senior REVIEWS junior: hand the lower tier's draft claims up so the
+          # prompt presents them explicitly (Base#build_user pulls this key out).
+          state = state.merge("proposed_by_lower_tier" => proposed_by_lower) if proposed_by_lower
+
+          neighbors = nearest_neighbors(tendable, limit: 5)
+          tags      = spend_tags(tier: tier, step: step)
+
+          response = tend_with_optional_tags(
+            adapter,
+            text:      tendable.enliterator_text,
+            stream:    stream,
+            state:     state,
+            neighbors: neighbors,
+            tags:      tags
+          )
+          parsed = response.parsed || {}
+
+          # Stamp the per-visit record. raw_response carries the model's self-
+          # escalate flag (if any) so Policy#escalate? can read it back.
+          finished    = Time.current
+          duration_ms = ((finished - started) * 1000).round
+          visit.update!(
+            status:         "succeeded",
+            raw_response:   raw_with_escalate(response, parsed),
+            confidence:     parsed["confidence"],
+            input_refs:     input_refs_for(visit, neighbors: neighbors, state: state),
+            tokens:         tokens_of(response),
+            duration_ms:    duration_ms,
+            finished_at:    finished
+          )
+
+          [ visit, parsed ]
+        rescue => e
+          fail_visit!(visit, e)
+          raise
+        end
+      end
+
+      # Apply the final tier's reconciliation and stamp the visit's reconciliation
+      # summary. This is the ONLY place claims are written in the staffing path.
+      def finalize_final_visit!(visit, parsed, tier, policy)
+        may_verify = policy.may_verify?(tier)
+        recon = reconcile!(
+          parsed["claims"], visit,
+          attributed_to: "#{tier}:#{visit.model}",
+          tier:          tier.to_s,
+          may_verify:    may_verify
+        )
+        visit.update!(reconciliation: recon, applied: true)
+        recon
+      end
+
+      # A junior visit whose reconciliation was discarded by escalation. It stays
+      # in the immutable history as provenance, but is NOT authoritative.
+      def mark_superseded!(visit)
+        visit.update!(applied: false)
+      end
+
+      # Clamp the policy's chosen tier into the allowed ladder. If the assigned
+      # tier is disallowed (constraints), start at the first allowed tier.
+      def clamp_start_tier(tier, allowed)
+        tier = tier.to_s
+        allowed.include?(tier) ? tier : allowed.first
+      end
+
+      # The escalation climb available from `start_tier`, restricted to the
+      # allowed set, order preserved. Always begins with start_tier.
+      def ladder_climb(start_tier, allowed)
+        idx = allowed.index(start_tier)
+        return [ start_tier ] if idx.nil?
+        allowed[idx..] || [ start_tier ]
+      end
+
+      # Call #tend with tags only when the adapter accepts them (the Gateway does;
+      # Null/back-compat stubs do not). Keeps non-gateway adapters working.
+      def tend_with_optional_tags(adapter, text:, stream:, state:, neighbors:, tags:)
+        if adapter_accepts_tags?(adapter)
+          adapter.tend(text: text, stream: stream, state: state, neighbors: neighbors, tags: tags)
+        else
+          adapter.tend(text: text, stream: stream, state: state, neighbors: neighbors)
+        end
+      end
+
+      def adapter_accepts_tags?(adapter)
+        method = adapter.method(:tend)
+        method.parameters.any? { |type, name| name == :tags && %i[key keyreq].include?(type) }
+      rescue NameError
+        false
+      end
+
+      # LiteLLM spend tags for one gateway request. The join key to LiteLLM's
+      # authoritative dollars; also the shape Spend.by_stream approximates locally.
+      def spend_tags(tier:, step:)
+        [
+          "enliterator",
+          "host:#{host_name}",
+          "stream:#{stream}",
+          "tier:#{tier}",
+          "esc:#{step}",
+          "record:#{tendable.class.name}/#{tendable.id}"
+        ]
+      end
+
+      def host_name
+        if defined?(Rails) && Rails.respond_to?(:application) && Rails.application
+          Rails.application.class.module_parent_name.to_s.underscore
+        else
+          "host"
+        end
+      rescue StandardError
+        "host"
+      end
+
+      # ---- shared visit finalization (back-compat path) --------------------
+
+      def finalize_succeeded!(visit, response, recon, parsed, started, neighbors:, state:)
+        finished    = Time.current
+        duration_ms = ((finished - started) * 1000).round
+
+        visit.update!(
+          status:         "succeeded",
+          raw_response:   response.respond_to?(:raw) ? (response.raw || {}) : {},
+          reconciliation: recon,
+          confidence:     parsed["confidence"],
+          input_refs:     input_refs_for(visit, neighbors: neighbors, state: state),
+          tokens:         tokens_of(response),
+          duration_ms:    duration_ms,
+          finished_at:    finished
+        )
+      end
+
+      def fail_visit!(visit, error)
+        visit.update_columns(
+          status:      "failed",
+          error:       error.message,
+          finished_at: Time.current,
+          updated_at:  Time.current
+        )
+      end
+
+      def input_refs_for(visit, neighbors:, state:)
+        {
+          prior_visit_ids: prior_visit_ids(visit),
+          neighbor_ids:    neighbors.map { |n| neighbor_id(n) }.compact,
+          claim_keys:      Array(state[:claims]).map { |c| c[:key] }.compact
+        }
+      end
+
+      def tokens_of(response)
+        response.respond_to?(:tokens) ? (response.tokens || {}) : {}
+      end
+
+      # Merge the parsed self-escalate flag into the raw response hash so
+      # Policy#escalate? (which reads visit.raw_response) can see it. Leaves the
+      # raw provider payload otherwise intact.
+      def raw_with_escalate(response, parsed)
+        raw = response.respond_to?(:raw) ? (response.raw || {}) : {}
+        raw = raw.is_a?(Hash) ? raw.dup : {}
+        flag = parsed.is_a?(Hash) ? (parsed["escalate"] || parsed[:escalate]) : nil
+        raw["escalate"] = !!flag unless flag.nil?
+        raw
+      end
+
+      # ---- reconcile helpers (shared) --------------------------------------
+
+      # A created/updated claim may be `verified` only when the tier is permitted
+      # AND the model asserted it — a high per-claim confidence or an explicit
+      # verified/asserted flag. Otherwise it stays `draft`. Below the verify floor,
+      # may_verify is false and claims are always draft (no cheap pass poisons the well).
+      def claim_status(may_verify:, confidence:, raw:)
+        return "draft" unless may_verify
+        return "verified" if model_asserts_verified?(raw, confidence)
+        "draft"
+      end
+
+      def model_asserts_verified?(raw, confidence)
+        return true if truthy?(raw["verified"] || raw[:verified])
+        asserted = raw["status"] || raw[:status]
+        return true if asserted.to_s.downcase == "verified"
+        confidence.to_f >= Enliterator.configuration.escalation_threshold &&
+          confidence.to_f >= 0.6
+      end
+
+      def truthy?(value)
+        value == true || value == "true" || value == 1 || value == "1"
+      end
+
       # Resolve the proposed op, defaulting based on whether a live claim exists.
       def normalize_op(op, existing)
         normalized = op.to_s.strip.upcase
@@ -182,10 +475,11 @@ module Enliterator
         tendable.enliterator_claims.live.find_by(key: key)
       end
 
-      # The prior visits this pass read for context (same stream, the 5 most
-      # recent that precede the visit being finalized — matching literacy_state).
+      # The prior AUTHORITATIVE visits this pass read for context (same stream, the
+      # 5 most recent applied visits preceding this one — matching literacy_state).
       def prior_visit_ids(visit)
         tendable.enliterator_visits
+          .applied
           .where(stream: stream)
           .where.not(id: visit.id)
           .order(created_at: :desc)
@@ -193,15 +487,16 @@ module Enliterator
           .pluck(:id)
       end
 
-      def create_claim(key:, value:, confidence:, visit:, derived_from: [])
+      def create_claim(key:, value:, confidence:, visit:, attributed_to:, tier:, status: "draft", derived_from: [])
         tendable.enliterator_claims.create!(
-          key:          key,
-          value:        value,
-          confidence:   confidence,
-          status:       "draft",
-          visit:        visit,
-          attributed_to: llm.model_id,
-          derived_from: derived_from
+          key:           key,
+          value:         value,
+          confidence:    confidence,
+          status:        status,
+          visit:         visit,
+          attributed_to: attributed_to,
+          tier:          tier,
+          derived_from:  derived_from
         )
       end
 

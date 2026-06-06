@@ -56,6 +56,15 @@ module Enliterator
               "minimum" => 0.0,
               "maximum" => 1.0,
               "description" => "Overall confidence in this visit's reconciliation, 0..1."
+            },
+            # OPTIONAL self-escalation flag (v0.2). A model may set this true to ask
+            # that a more capable tier review this record — e.g. the input is
+            # ambiguous, conflicting, or beyond this tier's competence — even when
+            # its numeric confidence is otherwise acceptable. NOT required, so older
+            # adapters and prompts that never emit it stay valid against this schema.
+            "escalate" => {
+              "type" => "boolean",
+              "description" => "Set true to request that a senior tier review this record."
             }
           },
           "required" => %w[claims confidence]
@@ -104,7 +113,16 @@ module Enliterator
 
         # The USER payload: the record text plus a JSON dump of its compounding
         # context (state) and neighbor summaries.
+        #
+        # When escalation hands a record up the ladder, the Visitor puts the junior
+        # tier's proposed claims into state under "proposed_by_lower_tier". We pull
+        # that out and present it as an explicit REVIEW section so a senior tier
+        # treats the junior's draft as a thing to confirm/correct, not as buried
+        # context. Tolerated optionally: when absent, the prompt is unchanged.
         def build_user(text:, stream:, state:, neighbors:)
+          state_hash = state.is_a?(Hash) ? state : {}
+          proposed   = state_hash["proposed_by_lower_tier"] || state_hash[:proposed_by_lower_tier]
+
           payload = {
             "stream" => stream.to_s,
             "record_text" => text.to_s,
@@ -112,10 +130,26 @@ module Enliterator
             "neighbors" => summarize_neighbors(neighbors)
           }
 
+          review_block =
+            if proposed
+              <<~REVIEW.strip + "\n\n"
+
+                REVIEW — DRAFT CLAIMS PROPOSED BY A LOWER TIER:
+                A junior tier already tended this record and proposed the claims below.
+                You are the senior reviewer. Confirm what is correct, correct what is
+                wrong, and add anything it missed — your reconciliation is the one that
+                will be written. Do not simply restate the draft without judgment.
+
+                #{JSON.pretty_generate("proposed_by_lower_tier" => proposed)}
+              REVIEW
+            else
+              ""
+            end
+
           <<~USER.strip
             Tend this record along the "#{stream}" stream.
 
-            CONTEXT (JSON — prior claims, recent visits, facets, and corpus neighbors):
+            #{review_block}CONTEXT (JSON — prior claims, recent visits, facets, and corpus neighbors):
             #{JSON.pretty_generate(payload)}
 
             Reconcile the record's understanding and emit claims via the structured

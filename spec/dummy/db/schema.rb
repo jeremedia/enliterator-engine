@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_06_180005) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_06_190001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -394,6 +394,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_180005) do
     t.bigint "superseded_by_id"
     t.string "tendable_id", null: false
     t.string "tendable_type", null: false
+    t.string "tier"
     t.datetime "updated_at", null: false
     t.jsonb "value"
     t.bigint "visit_id"
@@ -428,10 +429,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_180005) do
   end
 
   create_table "enliterator_visits", force: :cascade do |t|
+    t.boolean "applied", default: true, null: false
     t.float "confidence"
     t.datetime "created_at", null: false
     t.integer "duration_ms"
     t.text "error"
+    t.bigint "escalated_from_id"
+    t.integer "escalation_step", default: 0, null: false
     t.datetime "finished_at"
     t.jsonb "input_refs", default: {}
     t.string "model"
@@ -443,10 +447,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_180005) do
     t.string "stream", null: false
     t.string "tendable_id", null: false
     t.string "tendable_type", null: false
+    t.string "tier"
     t.jsonb "tokens", default: {}
     t.datetime "updated_at", null: false
     t.index ["tendable_type", "tendable_id", "created_at"], name: "idx_enliterator_visits_on_tendable_and_created_at"
     t.index ["tendable_type", "tendable_id", "stream"], name: "idx_enliterator_visits_on_tendable_and_stream"
+    t.index ["tendable_type", "tendable_id", "tier"], name: "idx_enliterator_visits_on_tendable_and_tier"
   end
 
   create_table "evidence_experiences", force: :cascade do |t|
@@ -1652,6 +1658,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_180005) do
   add_foreign_key "emanations", "provenance_and_rights", column: "provenance_and_rights_id"
   add_foreign_key "enliterator_claims", "enliterator_claims", column: "superseded_by_id", on_delete: :nullify
   add_foreign_key "enliterator_claims", "enliterator_visits", column: "visit_id", on_delete: :nullify
+  add_foreign_key "enliterator_visits", "enliterator_visits", column: "escalated_from_id", on_delete: :nullify
   add_foreign_key "evidence_experiences", "evidences"
   add_foreign_key "evidence_experiences", "experiences"
   add_foreign_key "evidences", "provenance_and_rights", column: "provenance_and_rights_id"

@@ -27,10 +27,14 @@ module Enliterator
 
         # @param model [String] OpenAI embedding model id
         # @param api_key [String, nil] OpenAI API key; falls back to ENV["OPENAI_API_KEY"] when the real client is built
+        # @param base_url [String, nil] OpenAI-compatible base URL. Default nil => the gem's
+        #   own default (https://api.openai.com/v1). Set to the LiteLLM gateway
+        #   (https://llm.example.com/v1) to embed via the `embed` alias instead of OpenAI directly.
         # @param client [Object, nil] injected client responding to embeddings.create (for specs)
-        def initialize(model: DEFAULT_MODEL, api_key: nil, client: nil)
+        def initialize(model: DEFAULT_MODEL, api_key: nil, base_url: nil, client: nil)
           @model = model
           @api_key = api_key
+          @base_url = base_url
           @client = client
         end
 
@@ -67,7 +71,11 @@ module Enliterator
                   'Add `gem "openai"` to your host Gemfile.'
           end
 
-          ::OpenAI::Client.new(api_key: @api_key || ENV["OPENAI_API_KEY"])
+          # Pass base_url only when set so we inherit the gem's default
+          # (https://api.openai.com/v1) when the host hasn't pointed us at a gateway.
+          opts = { api_key: @api_key || ENV["OPENAI_API_KEY"] }
+          opts[:base_url] = @base_url if @base_url
+          ::OpenAI::Client.new(**opts)
         end
 
         # Pull the float vector out of the embeddings response. Handles the
