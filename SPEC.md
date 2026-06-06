@@ -362,3 +362,127 @@ transactional fixtures. Keep specs fast and deterministic.
   registering two Embedding kinds or backfilling; Bedrock + OpenAI config; wire
   `enliterator:tend` to sidekiq-cron; backfill plan; nothing in HSDL's prod code
   is edited by us — this is a guide).
+
+---
+
+# v0.2 — Staffing & Routing (escalation is FOUNDATIONAL; build it in the first routing pass)
+
+Supersedes v0.1's "routing deferred" stance. **Routing is not a config knob; it is a
+first-class StaffingPolicy.** Enliteration is the allocation of cognitive capacity to
+records — deciding how much mind to bring to a record in a given state IS the curatorial
+act (see Basic Memory: "Enliteration as Staffing — Capability Allocation Is the Curatorial
+Act"). A tending **stream is a ROLE**; a LiteLLM **alias is a capability TIER**; the policy
+is the **org chart**.
+
+**Why escalation is foundational, not deferred:** the per-Visit `tier` and the escalation
+chain are the substrate every later capability reads — re-staffing ("re-tend everything last
+touched by `cheap`"), cost attribution, and trust (which tier asserted a claim). If that data
+is not recorded from the first routing commit, it can never be reconstructed. Build it now.
+
+Routing target: the **LiteLLM gateway** (`https://llm.domt.app/v1`, OpenAI-compatible,
+v1.82.3). Tiers are aliases; LiteLLM owns provider/fallback/load-balancing/cost. The engine
+names intent (alias) + tags the call; it NEVER names a provider. Validate the policy against
+`GET /v1/models` at boot. (Live alias facts: `cheap`/`fast`/`balanced`→gemma4 [tool_choice
+only, 8192 ctx, free, on-prem], `quality`→gpt-5.4 [tools+json_schema], `embed`→
+text-embedding-3-small 1536d, `instant`→apfel [4096 ctx], `claude-*` DOWN. Portable
+structured-output path across tiers = forced `tool_choice` — already what the engine uses.)
+
+## Config (extends Enliterator.configure)
+- `gateway_base_url` (default `"https://llm.domt.app/v1"`)
+- `gateway_api_key` (LiteLLM project key; from ENV — never committed)
+- `staffing` → an `Enliterator::Staffing::Policy`
+
+## Enliterator::Staffing::Policy  (app/services/enliterator/staffing/policy.rb)
+Declarative org chart.
+- `assign(stream, tier:)` — role→tier map; `embedding_tier` for the embed alias.
+- `ladder` — ordered tiers for escalation, e.g. `["cheap", "quality"]`.
+- `escalate_when` — callable `(visit) -> Bool`; default `->(v){ v.confidence.to_f < escalation_threshold }`
+  (default threshold 0.6). ALSO escalate when the model's parsed output sets an optional
+  `escalate`/`needs_review` flag (add optional boolean `escalate` to RESPONSE_SCHEMA).
+- `max_promotions` (default 1) — bound the climb.
+- `verify_floor` — minimum tier permitted to mint `verified` claims (default: top configured
+  tier). Below the floor, claims stay `draft` regardless of model assertion. (Prevents a
+  cheap pass from poisoning the compounding well.)
+- Constraints: `on_prem_tiers` (e.g. `["cheap"]`); a tendable/stream may declare
+  `on_prem_only` (host hook, e.g. `enliterator_on_prem_only?`) → ladder restricted to
+  on-prem tiers, never routed off-prem even on escalation; `context_cap_for(tier)` →
+  never route inputs over a tier's window (apfel 4096), escalate to a larger-context tier
+  or (future) chunk.
+- API: `tier_for(stream)`, `ladder_from(tier)`, `escalate?(visit)`, `may_verify?(tier)`,
+  `allowed_tiers(tendable, stream)` (applies constraints), `validate!(available_aliases)`
+  (raises on unknown alias — fail fast at boot).
+- Provide a safe DEFAULT policy when the host configures none (all streams → first available
+  alias; ladder = [that]; verify_floor = that) so the engine still runs.
+
+## Schema additions (new migration; additive to v0.1)
+- `enliterator_visits`: add `tier:string` (alias used), `escalated_from_id:bigint`
+  (self FK nullable — senior→junior link), `escalation_step:integer default 0`,
+  `applied:boolean default true` (false for a junior visit whose reconciliation was NOT
+  applied because it escalated). Index `[tendable_type, tendable_id, tier]`.
+- `enliterator_claims`: add `tier:string` (tier that minted/last-updated the live claim);
+  keep `attributed_to` as `"<tier>:<model_id>"`.
+
+## Adapters
+- `Enliterator::Adapters::LLM::Gateway` (`adapters/llm/gateway.rb`): OpenAI-compatible
+  (`require "openai"`; `OpenAI::Client.new(api_key:, base_url:)`);
+  `initialize(tier:, base_url:, api_key:, client: nil)`; `model_id` = the tier alias;
+  `#tend` = chat completions with FORCED `tool_choice` on `emit_claims` (portable across
+  gpt-5.x + gemma4; do NOT rely on json_schema). Passes `metadata: {tags: [...]}` (see Spend).
+  Reuses Base#build_system/#build_user/RESPONSE_SCHEMA. Raises ConfigurationError if the
+  `openai` gem is missing.
+- `Adapters::Embedder::OpenAI`: add `base_url:` passthrough so it can point at the gateway
+  `embed` alias (default nil → api.openai.com; host sets gateway).
+- Tier→adapter resolution: `Enliterator.llm(tier:)` builds/memoizes a Gateway adapter per
+  tier from gateway config. The Visitor requests the tier the policy returns. BACK-COMPAT:
+  if `staffing` is unset, fall back to the v0.1 single `llm_adapter`/Null path (keeps existing
+  specs green).
+
+## Visitor changes — the loop WITH escalation
+1. `tier = staffing.tier_for(stream)`; `allowed = staffing.allowed_tiers(tendable, stream)`;
+   clamp tier + ladder to `allowed` (on-prem / context constraints).
+2. Run a visit at `tier` → proposed claims + confidence. Record the Visit (`tier`, tokens,
+   raw). Do NOT reconcile yet.
+3. Escalation loop: while `staffing.escalate?(current_visit)` AND a higher tier exists in the
+   allowed ladder AND `escalation_step < max_promotions`: run a higher-tier visit, passing the
+   junior's proposed claims into `state` as `proposed_by_lower_tier` (senior REVIEWS junior —
+   compounding within one tending). Set `escalated_from_id`, `escalation_step += 1`, and mark
+   the superseded junior `applied: false`.
+4. **Only the final tier's visit reconciles/writes claims** (single `reconcile!` on the final
+   parsed claims). Junior visits are provenance only (`applied:false`) — no double writes.
+5. Verification gate: a created/updated claim may be `verified` ONLY if
+   `staffing.may_verify?(final_tier)` AND the model asserted it; else `draft`. Set
+   `claim.tier = final_tier`, `attributed_to = "<final_tier>:<model_id>"`.
+6. `Facets.recompute!` as before.
+
+## Spend attribution (per loop)
+Every gateway request carries `metadata: {tags: [...]}`:
+`["enliterator", "host:<host>", "stream:<stream>", "tier:<tier>", "esc:<step>",
+"record:<Class>/<id>"]`. LiteLLM logs to `LiteLLM_SpendLogs.request_tags` / `DailyTagSpend`
+(NOTE: project keys cannot read those back — master-key/admin only). The engine's OWN
+per-loop ledger is `Visit.tokens` grouped by `stream`/`tier`; add
+`Enliterator::Spend.by_stream(host:, since:)` over Visit rows (tokens; optional local price
+map → $). Tags are the join key to LiteLLM's authoritative dollars.
+
+## Done = all of (this phase):
+- `Staffing::Policy` (assign/ladder/escalate_when/max_promotions/verify_floor/constraints +
+  `validate!` against `/v1/models`); safe default policy.
+- `LLM::Gateway` adapter (forced tool_choice) + embedder `base_url`; `Enliterator.llm(tier:)`.
+- Visitor escalates `cheap`→`quality` on low confidence (bounded); senior conditions on the
+  junior's proposed claims; only the final tier writes; junior recorded `applied:false`.
+- `verify_floor` enforced (`cheap` cannot mint `verified`).
+- Migration adds `visits.tier/escalated_from_id/escalation_step/applied` + `claims.tier`.
+- Spend tags emitted; `Spend.by_stream` helper.
+- Specs green, ADDING:
+  - `staffing/escalation_spec.rb`: low-confidence junior → exactly one senior visit; senior's
+    `state` contains the junior's proposed claims; only the senior is `applied:true` and writes;
+    `escalated_from_id` set; `max_promotions` respected.
+  - `staffing/verify_floor_spec.rb`: with `verify_floor "quality"`, a `cheap` visit leaves
+    claims `draft` even on high asserted confidence; a `quality` visit may verify.
+  - `staffing/constraint_spec.rb`: an `on_prem_only` tendable never escalates off-prem (ladder
+    clamped).
+  - `staffing/policy_spec.rb`: `validate!` raises on unknown alias; `tier_for`/`ladder_from`.
+  - `adapters/llm/gateway_spec.rb`: injected fake OpenAI client → `#tend` parses `tool_calls`
+    into claims; `metadata.tags` present on the request. (No network.)
+- README `## Deferred`: move routing/staffing → implemented; remaining deferred = entity graph,
+  MCP tools, human-in-the-loop UI, Bedrock tier, dynamic per-host scheduler UI, input chunking
+  for small-context tiers.
