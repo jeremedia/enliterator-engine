@@ -77,7 +77,7 @@ module Enliterator
           neighbors = nearest_neighbors(tendable, limit: 5)
 
           response = adapter.tend(
-            text:      tendable.enliterator_text,
+            text:      tendable.enliterator_text(stream: stream),
             stream:    stream,
             state:     state,
             neighbors: neighbors
@@ -244,9 +244,12 @@ module Enliterator
         recon
       end
 
-      # The tendable's "primary" embedding's nearest corpus neighbors (excluding
-      # self). Returns Embedding rows ordered nearest-first, or [] if the record
-      # has no primary embedding yet.
+      # The tendable's "primary" embedding's nearest corpus NEIGHBORS (excluding
+      # self), resolved to the embeddable RECORDS so the model can actually read
+      # and reference them (title/summary) — the chapter's "corpus meeting the
+      # record". Returns records ordered nearest-first, or [] if this record has no
+      # primary embedding yet. (v0.4: previously returned bare Embedding rows, which
+      # carried no title/text — the model couldn't connect to records it couldn't see.)
       def nearest_neighbors(tendable, limit:)
         own = tendable.enliterator_embeddings.find_by(kind: "primary")
         return [] if own.nil? || own.embedding.nil?
@@ -256,6 +259,8 @@ module Enliterator
           .nearest_to(own.embedding, kind: "primary", limit: limit + 1)
           .reject { |e| e.id == own.id }
           .first(limit)
+          .map(&:embeddable)
+          .compact
       end
 
       private
@@ -292,7 +297,7 @@ module Enliterator
 
           response = tend_with_optional_kwargs(
             adapter,
-            text:      tendable.enliterator_text,
+            text:      tendable.enliterator_text(stream: stream),
             stream:    stream,
             state:     state,
             neighbors: neighbors,

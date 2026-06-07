@@ -12,8 +12,19 @@ module Enliterator
 
     # Host SHOULD override to provide the text representation used for embedding + tending.
     # Default tries common fields.
-    def enliterator_text
-      return to_enliterator_text if respond_to?(:to_enliterator_text)
+    #
+    # v0.4: stream-aware. Different streams may need different source text (e.g. an
+    # authorship stream wants the title page, not the abstract). If the host's
+    # `to_enliterator_text` accepts a `stream:` keyword, it's passed through; otherwise
+    # the zero-arg override is called (back-compat). `stream:` defaults to nil so
+    # `enliterator_text` with no args keeps working everywhere.
+    def enliterator_text(stream: nil)
+      if respond_to?(:to_enliterator_text)
+        if method(:to_enliterator_text).parameters.any? { |type, name| name == :stream && %i[key keyreq].include?(type) }
+          return to_enliterator_text(stream: stream)
+        end
+        return to_enliterator_text
+      end
       [ try(:title), try(:name), try(:description) ].compact.join("\n")
     end
 
