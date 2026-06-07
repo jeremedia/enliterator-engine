@@ -274,11 +274,16 @@ module Enliterator
           USER
         end
 
-        # Reduce neighbor records/embeddings to a compact, JSON-safe shape.
+        # Reduce neighbor records/embeddings to a compact, JSON-safe shape. The text
+        # is truncated to a short identifying snippet (title + opening) so the model
+        # can reference a neighbor without bloating the prompt with full abstracts.
+        NEIGHBOR_SNIPPET_CHARS = 280
+
         def summarize_neighbors(neighbors)
           Array(neighbors).map do |n|
             if n.respond_to?(:enliterator_text)
-              { "type" => n.class.name, "id" => n.id.to_s, "text" => n.enliterator_text.to_s }
+              { "type" => n.class.name, "id" => n.id.to_s,
+                "text" => n.enliterator_text.to_s[0, NEIGHBOR_SNIPPET_CHARS] }
             elsif n.is_a?(Enliterator::Embedding)
               { "type" => n.embeddable_type, "id" => n.embeddable_id.to_s, "kind" => n.kind }
             else
