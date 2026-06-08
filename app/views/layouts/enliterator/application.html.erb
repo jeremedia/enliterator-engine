@@ -2,16 +2,73 @@
 <html>
 <head>
   <title>Enliterator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <%= csrf_meta_tags %>
   <%= csp_meta_tag %>
 
   <%= yield :head %>
 
-  <%= stylesheet_link_tag    "enliterator/application", media: "all" %>
+  <%# Host may also bundle this; all real styling is inline below so the UI works
+      under ANY host pipeline (or none). %>
+  <%= stylesheet_link_tag "enliterator/application", media: "all" %>
+  <style>
+    :root {
+      --bg: #f7f7f5; --panel: #fff; --ink: #1c1c1a; --muted: #6b6b66;
+      --line: #e3e3df; --accent: #2d6a4f; --accent-soft: #e8f0ec; --warn: #b4231f;
+      --chip: #eef0f2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    nav.enl { display: flex; gap: 1.25rem; align-items: baseline;
+      padding: .8rem 1.25rem; background: var(--panel); border-bottom: 1px solid var(--line); }
+    nav.enl .brand { font-weight: 700; letter-spacing: .02em; }
+    nav.enl .brand small { color: var(--muted); font-weight: 400; margin-left: .4rem; }
+    main.enl { max-width: 980px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+    h1 { font-size: 1.45rem; margin: .2rem 0 1rem; }
+    h2 { font-size: 1.05rem; margin: 1.6rem 0 .6rem; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 1rem 1.1rem; margin: .75rem 0; }
+    .row { display: flex; flex-wrap: wrap; gap: .75rem; }
+    .row .card { flex: 1 1 280px; }
+    .chip { display: inline-block; background: var(--chip); border-radius: 999px;
+      padding: .1rem .55rem; font-size: .8rem; color: var(--muted); }
+    .chip.tier { background: var(--accent-soft); color: var(--accent); }
+    .muted { color: var(--muted); }
+    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid var(--line);
+      vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
+    .warn { color: var(--warn); font-weight: 600; }
+    tr.warn-row td { background: #fdeceb; }
+    .big { font-size: 1.6rem; font-weight: 700; }
+    .samples { color: var(--muted); font-size: .82rem; }
+
+    /* chat */
+    .thread { display: flex; flex-direction: column; gap: .6rem; margin: 1rem 0; }
+    .bubble { padding: .6rem .85rem; border-radius: 10px; max-width: 80%; white-space: pre-wrap; }
+    .bubble.user { align-self: flex-end; background: var(--accent-soft); }
+    .bubble.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+    .provenance { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .4rem; }
+    .ask { display: flex; gap: .5rem; margin-top: 1rem; }
+    .ask textarea { flex: 1; padding: .6rem; border: 1px solid var(--line); border-radius: 8px;
+      font: inherit; resize: vertical; min-height: 2.6rem; }
+    .ask button { padding: 0 1.1rem; border: 0; border-radius: 8px; background: var(--accent);
+      color: #fff; font-weight: 600; cursor: pointer; }
+    .ask button:disabled { opacity: .5; cursor: default; }
+  </style>
 </head>
 <body>
-
-<%= yield %>
-
+  <nav class="enl">
+    <span class="brand">Enliterator<small>the collection, tended</small></span>
+    <%= link_to "Status", root_path %>
+    <%= link_to "Chat", conversation_path %>
+  </nav>
+  <main class="enl">
+    <%= yield %>
+  </main>
 </body>
 </html>

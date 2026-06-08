@@ -1,0 +1,54 @@
+<p><%= link_to "← Status", root_path %></p>
+<h1><%= @record.try(:title) || @record.try(:name) || "#{@type}/#{@record.id}" %></h1>
+<p class="muted mono"><%= @type %>/<%= @record.id %></p>
+
+<h2>Live claims <span class="muted" style="font-weight:400">(<%= @claims.size %>)</span></h2>
+<div class="card">
+  <% if @claims.any? %>
+    <table>
+      <tr><th>key</th><th>value</th><th>conf</th><th>status</th><th></th></tr>
+      <% @claims.each do |c| %>
+        <tr>
+          <td><code><%= c.key %></code></td>
+          <td><%= truncate(c.value.is_a?(String) ? c.value : c.value.to_json, length: 240) %></td>
+          <td><%= c.confidence %></td>
+          <td><span class="chip"><%= c.status %></span></td>
+          <td><%= "🔒" if c.locked %></td>
+        </tr>
+      <% end %>
+    </table>
+  <% else %>
+    <p class="muted">No live claims yet.</p>
+  <% end %>
+</div>
+
+<h2>Recent visits</h2>
+<div class="card">
+  <% if @visits.any? %>
+    <table>
+      <tr><th>stream</th><th>tier</th><th>step</th><th>conf</th><th>status</th><th>applied</th><th>at</th></tr>
+      <% @visits.each do |v| %>
+        <tr class="<%= "warn-row" if v.model == "null" %>">
+          <td><%= v.stream %></td>
+          <td><%= v.tier %><% if v.model == "null" %> <span class="warn">null</span><% end %></td>
+          <td><%= v.escalation_step %></td>
+          <td><%= v.confidence %></td>
+          <td><%= v.status %></td>
+          <td><%= v.applied ? "✓" : "—" %></td>
+          <td class="muted"><%= v.created_at&.strftime("%Y-%m-%d %H:%M") %></td>
+        </tr>
+      <% end %>
+    </table>
+  <% else %>
+    <p class="muted">No visits yet.</p>
+  <% end %>
+</div>
+
+<% if @facets.any? %>
+  <h2>Facets</h2>
+  <div class="card">
+    <% @facets.each do |name, score| %>
+      <div><strong><%= name %></strong>: <span class="mono"><%= score %></span></div>
+    <% end %>
+  </div>
+<% end %>

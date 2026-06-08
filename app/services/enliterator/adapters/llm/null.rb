@@ -21,6 +21,21 @@ module Enliterator
             tokens: {}
           )
         end
+
+        # The inert conversational response (v0.6). Returns a deterministic canned
+        # answer so CI (no gateway key) exercises the chat + SSE path. When streaming,
+        # yields it token-by-token (whitespace preserved) so the streaming code path
+        # is covered. Does NOT raise — conversation writes no rows, so the v0.5
+        # phantom-Visit hazard doesn't apply here; the caller surfaces the degraded
+        # state instead.
+        CANNED_REPLY =
+          "The Null adapter is active: no language model was called. Configure a " \
+          "gateway tier (ENLITERATOR_LLM_KEY) to converse with the enliteration.".freeze
+
+        def converse(messages:, tags: [], stream: false, &block)
+          CANNED_REPLY.split(/(\s+)/).each { |tok| block.call(tok) } if stream && block
+          CANNED_REPLY
+        end
       end
     end
   end

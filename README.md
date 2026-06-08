@@ -59,6 +59,27 @@ engine owns its pgvector enablement):
 bin/rails db:migrate
 ```
 
+### Mounting the UI (v0.6)
+
+Mount the engine in the host's routes to get two read-only web surfaces — a **status
+browser** and a **conversation UI** — for free:
+
+```ruby
+# config/routes.rb
+mount Enliterator::Engine => "/enliterator"
+```
+
+- `/enliterator/` — status browser: per-stream health (the smoke alarm in the browser),
+  claim-key vocabulary with samples, the connection graph, vocabulary-gap suggestions, and
+  per-record drill-down at `/enliterator/status/<Type>/<id>`.
+- `/enliterator/chat` — converse with the enliteration's top-level potential: answers stream
+  token-by-token, grounded in a collection self-portrait plus the records retrieved per
+  question, with source chips linking back to the status browser.
+
+The UI is self-contained (inline CSS/JS, no asset-build step) and renders under any host
+pipeline. The conversation tier defaults to the staffing ladder's top tier; pin it with
+`config.conversation_tier` in the initializer. Wrap the mount in the host's auth as needed.
+
 Make a model tendable:
 
 ```ruby

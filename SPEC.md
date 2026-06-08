@@ -631,3 +631,39 @@ being present.
   - `tending/required_keys_spec.rb`: escalates on absent + blank (`""`/`[]`); no escalation when satisfied; top-tier-unmet → succeeded, no verified, `reconciliation["required_unmet"]==true`; respects `max_promotions`; byte-identical when required unset.
   - `tending/logging_spec.rb`: `resolve` names the Null class + `model_id=null`; `visit` on success; `fail` on raise (raise propagates).
   - `report_spec.rb`: status/totals, adapter mix surfaces null, escalation + empty-final rates, confidence buckets (incl. nil), required_unmet, Spend merge, stream filter.
+
+---
+
+# v0.6 — Mountable UI (Status Browser + Conversation)
+
+The engine grows its first web surface: mount `Enliterator::Engine` and a host gets two
+read-paths over its enliteration. (1) A STATUS BROWSER — the `Report` smoke alarm in the
+browser, the claim-key vocabulary with live counts + samples, the connection graph,
+vocabulary-gap suggestions, and per-record drill-down. (2) A CONVERSATION UI — chat with
+the collection's top-level potential, HYBRID-grounded: each turn opens from a collection
+SELF-PORTRAIT (what the enliteration knows about itself) AND retrieves the specific tended
+records relevant to the question, answering in free-form streamed prose. The engine writes
+no new tables; both views are read-only over the v0.1–v0.5 substrate.
+
+**Constraints:** self-contained ERB + inline vanilla JS + inline CSS — NO JS build step, NO
+turbo/stimulus/importmap, NO new gems. Engine-generic (works for any host's tended records).
+All edits to existing files are additive; the 181 prior specs stay green.
+
+## 1. `Enliterator::Synopsis` (new pure-read service) — the self-portrait
+`Synopsis.build(host:, since:, sample_cap: 3, value_chars: 80)` → `{ generated_at, streams:[{stream,tier,tended_count,vocabulary:[{key,description,live_claims,samples}]}], connections:[{key,live_claims,samples}], health, gaps, models }`. tended_count from Visits (Claim has NO stream column); vocabulary from `staffing.keys_for`; connections from connection-named streams (else a key heuristic); health = `Report.summary`; gaps = `Suggestion.gaps`. `Synopsis.to_prompt` → bounded one-line-per-item text for LLM grounding.
+
+## 2. `Enliterator::Conversation` (new service) — the hybrid answerer
+`reply(question:, history:, stream:, &block)` → embeds the question, retrieves nearest records (`Embedding.nearest_to`) + their live claims (mirrors `nearest_neighbors`/`literacy_state`), assembles `system = self-portrait` + `user = question + retrieved claims`, calls the adapter's free-form chat, yields streamed deltas, returns `{ answer, records:[refs+distance], tier, degraded }`. Tier = `configuration.conversation_tier || staffing.ladder.last || "quality"`. Bounded by `retrieve_k`/`history_cap`/claim cap.
+
+## 3. `converse` on the LLM adapters (additive)
+`Base#converse(messages:, tags:, stream:, &block)` interface; `Gateway#converse` streams via the official gem's `chat.completions.stream_raw(...).each` (NOT `create(stream:true)`), tags via `extra_body`; `Null#converse` returns a canned answer (yields it word-by-word when streaming) and NEVER raises (conversation writes no rows — the v0.5 phantom-Visit hazard doesn't apply; `Conversation` surfaces a soft `degraded: "null-llm"` instead). `Configuration#conversation_tier` added.
+
+## 4. Controllers, routes, views (additive)
+Routes: `root → status#index`, `status`, `status/:type/:id` (drill-down; id constraint allows uuids), `chat → conversation#index`, `chat/stream → conversation#stream` (POST). `StatusController` (index = Synopsis; show = a record's live claims/visits/facets, with a `tendable_models` allow-list on the polymorphic Type). `ConversationController` includes `ActionController::Live`; `stream` writes `text/event-stream` token/provenance/done events, `ensure response.stream.close`. Views are ERB; the chat client is inline vanilla JS (fetch + `ReadableStream`, NOT EventSource — it can't POST). The layout gains a Status|Chat nav + inline CSS so it renders under any host pipeline.
+
+## Done = all of (this phase):
+- `Enliterator::Synopsis` (self-portrait, `build` + `to_prompt`) and `Enliterator::Conversation` (hybrid, streaming) services.
+- `converse` on Base/Gateway/Null; `Configuration#conversation_tier`; Null-converse never raises.
+- Mountable routes + `StatusController` + `ConversationController` (Live SSE) + ERB views + inline-CSS layout with nav.
+- Specs green at 206 (was 181), ADDING: `adapters/llm/converse_spec.rb`, `synopsis_spec.rb`, `conversation_spec.rb`, `requests/enliterator/{status,conversation}_spec.rb`.
+- README: "Mounting the UI" note.
