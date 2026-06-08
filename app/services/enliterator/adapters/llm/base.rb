@@ -89,7 +89,7 @@ module Enliterator
         # suggestions emphasis).
         #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, stream:, state:, neighbors:, contract: nil)
+        def tend(text:, stream:, state:, neighbors:, contract: nil, required: nil)
           raise NotImplementedError, "#{self.class} must implement #tend"
         end
 
@@ -124,12 +124,12 @@ module Enliterator
         #
         # @param contract [Hash, nil] `{key => description}` or nil.
         # @return [String]
-        def system_for(contract)
+        def system_for(contract, required: nil)
           base = build_system
           keys = allowed_keys_from(contract)
           return base if keys.nil? || keys.empty?
 
-          base + "\n\n" + contract_system_block(contract)
+          base + "\n\n" + contract_system_block(contract, required: required)
         end
 
         private
@@ -174,10 +174,13 @@ module Enliterator
         end
 
         # The controlled-vocabulary instruction appended to the system message
-        # when a contract is present.
-        def contract_system_block(contract)
+        # when a contract is present. When +required+ names keys, a REQUIRED block
+        # is appended emphasizing they must be asserted (instruction-level — a JSON
+        # schema cannot force array CONTENTS, only shape). With no required keys the
+        # text is byte-identical to v0.3/v0.4.
+        def contract_system_block(contract, required: nil)
           lines = contract.map { |k, desc| "  - #{k}: #{desc}" }.join("\n")
-          <<~CONTRACT.strip
+          block = <<~CONTRACT.strip
             CONTROLLED VOCABULARY — this stream has a fixed set of allowed claim keys.
             Use ONLY these keys for the `key` of every claim:
 
@@ -188,6 +191,16 @@ module Enliterator
             top-level `suggestions` array as {proposed_key, rationale, example_value}.
             Never put an off-list key on a claim.
           CONTRACT
+
+          req = Array(required).map(&:to_s).reject(&:empty?)
+          return block if req.empty?
+
+          block + "\n\n" + <<~REQUIRED.strip
+            REQUIRED keys — you MUST assert a claim for EACH of: #{req.join(', ')}.
+            These facts are present in the record; find and assert them. Only if a
+            required key is genuinely absent from the record, assert it with an empty
+            value and low confidence rather than omitting it.
+          REQUIRED
         end
 
         # Recursively duplicate a (frozen) nested Hash/Array structure so a

@@ -12,9 +12,9 @@ module Enliterator
           "null"
         end
 
-        # Accepts +contract:+ (v0.3) for signature parity with the contract-aware
-        # adapters; the inert adapter ignores it and proposes nothing.
-        def tend(text:, stream:, state:, neighbors:, contract: nil)
+        # Accepts +contract:+ (v0.3) and +required:+ (v0.5) for signature parity with
+        # the contract-aware adapters; the inert adapter ignores both and proposes nothing.
+        def tend(text:, stream:, state:, neighbors:, contract: nil, required: nil)
           Result.new(
             parsed: { "claims" => [], "confidence" => 0.0 },
             raw:    { "adapter" => "null" },

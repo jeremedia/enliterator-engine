@@ -34,6 +34,11 @@ RSpec.configure do |config|
   # not leak into the next.
   config.before(:each) do
     Enliterator.reset_configuration!
+    # v0.5: the suite legitimately runs the inert Null adapter (deterministic, no
+    # network). Opt in suite-wide so the production-only "refuse Null" guard stays
+    # inert in tests. reset_configuration! restores the false default each example,
+    # so a spec exercising the guard can flip it back off explicitly.
+    Enliterator.configuration.allow_null_llm = true
   end
 
   # Use transactional fixtures: each example runs inside a transaction that is

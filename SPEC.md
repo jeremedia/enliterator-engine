@@ -571,3 +571,63 @@ behavior is gated on a contract being PRESENT; when absent, behavior is identica
   - `adapters/llm/gateway_spec.rb`: extend — when `contract:` passed, the request's tool schema enums
     `key` to the allowed set and includes `suggestions` (fake client; no network).
 - README: add "Stream Contracts & Suggestions" section; note `assert_claim!` for host metadata.
+
+---
+
+# v0.5 — Silent-Failure Hardening + Required Keys + Active Observability
+
+Discovered tending the first HSDL thesis batch: with no `ENLITERATOR_LLM_KEY`, `Enliterator.llm(tier:)`
+falls back to the inert Null adapter, whose `#tend` returns empty claims at confidence 0.0 and writes
+`status: succeeded, applied: true` Visit rows. A 38-record run "succeeded" in 2.7s having called no
+model — and the Visitor emitted ZERO log lines, so nothing surfaced it. The truth was in the Visit
+table (`model: "null"`) but completely unsignalled. Separately, a required author came back EMPTY at
+confidence 1.0 and passed as success (the model never escalated). v0.5 makes the Null fallback LOUD,
+lets a stream declare a key REQUIRED (so a confidently-empty fact forces escalation), and makes tending
+OBSERVABLE (per-tend logs + a status rollup that exposes a `null` adapter at a glance).
+
+**Hard back-compat rule:** v0.1–v0.4 ship GREEN (156). The contract-absent and required-absent paths
+stay byte-identical. New behavior is gated on `allow_null_llm` (a flag) and `required:` (a contract field)
+being present.
+
+## 1. Null-adapter refusal (Configuration + Visitor)
+- `Configuration#allow_null_llm` (default `false`). Do NOT modify `Enliterator.llm` (no-tier Null path stays identical).
+- Visitor `run_tier_visit`: after resolving the tier adapter and BEFORE `enliterator_visits.create!`, raise
+  `ConfigurationError` when `adapter.is_a?(Adapters::LLM::Null) && !configuration.allow_null_llm`. Raising
+  before the create means a misconfigured real run leaves ZERO phantom Visit rows.
+- `spec/rails_helper.rb`: opt the suite in (`allow_null_llm = true`) after each `reset_configuration!`.
+
+## 2. Required keys (Staffing::Policy + Base + Visitor)
+- `Policy#stream(name, tier:, keys:, required: nil)` stores `@required_key_map`; `required_keys(stream)` → `[String]` or nil.
+  Keys hash stays pristine (contract spec asserts it exactly). `assign` unchanged.
+- `Base#system_for(contract, required:)` appends a REQUIRED-keys emphasis block (instruction-level; a JSON
+  schema can't force array contents). `tend(... required:)` threaded through Base/Null/Gateway.
+- Visitor: read `required = policy.required_keys(stream)`; thread to the adapter only when it accepts `:required`
+  AND required is non-nil (mirrors the `contract:`/`tags:` arity guard). In the climb loop, `required_unmet =
+  required.present? && required_keys_unmet?(required, parsed["claims"])` (claim absent OR value blank);
+  one changed line: `break unless policy.escalate?(current_visit) || required_unmet`. At finalize,
+  `may_verify &&= !required_unmet`; write `reconciliation["required_unmet"] = true` ONLY when true.
+
+## 3. Structured logging (Visitor)
+- `log_event(event, **fields)` → `Enliterator.logger&.info("[enliterator] event=… k=v …")`; nil-safe, never raises.
+- Events: `resolve` (tier, adapter class, model_id — the line that would have named Null), `visit` (per outcome),
+  `reconcile` (op-counts + required_unmet), `fail` (error). Both staffing and back-compat paths.
+
+## 4. Enliterator::Report + enliterator:status rake (the smoke alarm)
+- `Report.summary(host:, since:, stream:)` — pure Visit read. Per stream: status counts, **adapter/model mix**
+  (null surfaces), tier mix, escalation rate, empty-final rate (succeeded+applied that wrote nothing),
+  required_unmet count, confidence buckets, merged `Spend.by_stream`.
+- `enliterator:status` rake (matches `enliterator:tend` style; `SINCE`/`STREAM` env) prints it and appends
+  `<-- WARNING: null adapter ran N visit(s)` when the model mix contains `null`.
+
+## Done = all of (this phase):
+- `Configuration#allow_null_llm` default false; Visitor refuses a Null tier on the staffing path before any Visit row; rails_helper opts the suite in.
+- `Policy#stream(..., required:)` + `required_keys`; back-compat `assign`/keys-only unchanged.
+- `Base#system_for` required emphasis; Base/Null/Gateway `#tend(required:)`; Visitor escalates on unmet required key (bounded by `max_promotions`), bars verified + flags `required_unmet` at the top.
+- Structured `[enliterator]` logging at resolve/visit/reconcile/fail on both paths; nil-safe.
+- `Enliterator::Report.summary` + `enliterator:status` rake (adapter/model mix surfaces null; empty-final + escalation rates; confidence buckets; required_unmet; Spend rollup).
+- Specs green at 181 (was 156), ADDING:
+  - `tending/null_guard_spec.rb`: staffing-path Null raises (zero Visit rows) when flag false; permitted when true; no-tier path unaffected.
+  - `staffing/required_keys_spec.rb`: storage/reader; nil for `assign`/keys-only.
+  - `tending/required_keys_spec.rb`: escalates on absent + blank (`""`/`[]`); no escalation when satisfied; top-tier-unmet → succeeded, no verified, `reconciliation["required_unmet"]==true`; respects `max_promotions`; byte-identical when required unset.
+  - `tending/logging_spec.rb`: `resolve` names the Null class + `model_id=null`; `visit` on success; `fail` on raise (raise propagates).
+  - `report_spec.rb`: status/totals, adapter mix surfaces null, escalation + empty-final rates, confidence buckets (incl. nil), required_unmet, Spend merge, stream filter.

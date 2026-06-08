@@ -115,6 +115,11 @@ module Enliterator
         # nil ⇒ open keys + no suggestions ⇒ byte-identical to v0.2.
         contract = policy.keys_for(stream)
 
+        # v0.5: keys this stream MUST yield a non-blank claim for (subset of contract),
+        # or nil. An unmet required key forces escalation regardless of confidence and
+        # bars `verified` at the top tier. nil ⇒ byte-identical to v0.3/v0.4.
+        required = policy.required_keys(stream)
+
         # No tier may legally run this record (e.g. on-prem-only with no on-prem
         # ladder). Record a failed visit and surface the misconfiguration.
         if allowed.empty?
@@ -140,15 +145,20 @@ module Enliterator
             step:              step,
             escalated_from:    prior_visit,
             proposed_by_lower: proposed,
-            contract:          contract
+            contract:          contract,
+            required:          required
           )
 
-          # Decide whether to climb: low confidence / self-flag, a higher tier
-          # exists in the allowed ladder, and we are under the promotion bound.
+          # v0.5: a required key that came back empty forces escalation even when the
+          # model reported high confidence (the confidently-empty author case).
+          required_unmet = required.present? && required_keys_unmet?(required, current_parsed["claims"])
+
+          # Decide whether to climb: low confidence / self-flag / unmet required key,
+          # a higher tier exists in the allowed ladder, and we are under the bound.
           next_tier = climb[step + 1]
           break unless next_tier
           break unless step < policy.max_promotions
-          break unless policy.escalate?(current_visit)
+          break unless policy.escalate?(current_visit) || required_unmet
 
           # Promote: this junior visit is provenance only — its reconciliation is
           # NOT applied. Carry its proposed claims up for the senior to review.
@@ -159,9 +169,15 @@ module Enliterator
           current_tier = next_tier
         end
 
+        # Recompute unmet against the FINAL tier's claims. If still unmet at the top
+        # of the climb, the visit finalizes succeeded but mints no verified and is
+        # flagged (reconciliation["required_unmet"] = true).
+        final_unmet = required.present? && required_keys_unmet?(required, current_parsed["claims"])
+
         # Only the FINAL tier's visit reconciles and writes claims. It is also the
         # only place v0.3 suggestions are persisted (junior visits never persist).
-        finalize_final_visit!(current_visit, current_parsed, current_tier, policy, contract: contract)
+        finalize_final_visit!(current_visit, current_parsed, current_tier, policy,
+                              contract: contract, required_unmet: final_unmet)
         Enliterator::Facets.recompute!(tendable)
         current_visit
       end
@@ -270,8 +286,11 @@ module Enliterator
       # Run one tending at a tier, recording the Visit (tier, tokens, raw,
       # escalation linkage). Does NOT reconcile — the loop decides which visit
       # writes. Returns [visit, parsed].
-      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil)
+      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil, required: nil)
         adapter = Enliterator.llm(tier: tier)
+        log_event("resolve", tier: tier, adapter: adapter.class.name, model_id: adapter.model_id,
+                             stream: stream, tendable: tendable_ref, step: step)
+        refuse_null!(adapter, tier)
         started = Time.current
 
         visit = tendable.enliterator_visits.create!(
@@ -302,7 +321,8 @@ module Enliterator
             state:     state,
             neighbors: neighbors,
             tags:      tags,
-            contract:  contract
+            contract:  contract,
+            required:  required
           )
           parsed = response.parsed || {}
 
@@ -319,6 +339,10 @@ module Enliterator
             duration_ms:    duration_ms,
             finished_at:    finished
           )
+          log_event("visit", visit_id: visit.id, stream: stream, tier: tier, step: step,
+                             confidence: visit.confidence, applied: visit.applied,
+                             tokens: token_total(visit.tokens), duration_ms: duration_ms,
+                             status: "succeeded")
 
           [ visit, parsed ]
         rescue => e
@@ -335,8 +359,11 @@ module Enliterator
       # claims whose key is in the allowed vocabulary; off-list keys are dropped (the
       # schema enum should already prevent them — this is the safety net). When no
       # contract, reconcile ALL proposed claims (v0.2, byte-identical).
-      def finalize_final_visit!(visit, parsed, tier, policy, contract: nil)
-        may_verify = policy.may_verify?(tier)
+      def finalize_final_visit!(visit, parsed, tier, policy, contract: nil, required_unmet: false)
+        # v0.5: a still-unmet required key at the top of the climb bars `verified` —
+        # we never mint a verified claim for a stream that failed to produce a
+        # mandated fact. When required_unmet is false this is unchanged from v0.4.
+        may_verify = policy.may_verify?(tier) && !required_unmet
         claims     = contract.nil? ? parsed["claims"] : filter_claims_to_contract(parsed["claims"], contract)
 
         recon = reconcile!(
@@ -345,7 +372,12 @@ module Enliterator
           tier:          tier.to_s,
           may_verify:    may_verify
         )
+        # Flag ONLY when truly unmet, so the contract-absent / required-absent path
+        # writes the exact same reconciliation hash as v0.4 (specs assert it).
+        recon[:required_unmet] = true if required_unmet
         visit.update!(reconciliation: recon, applied: true)
+        log_event("reconcile", visit_id: visit.id, stream: stream, tier: tier,
+                              ops: recon_ops(recon), required_unmet: (required_unmet || nil))
 
         # Persist the model's proposed key additions for governance. No-op when the
         # model emitted no suggestions (so the contract-absent path never touches the
@@ -426,10 +458,11 @@ module Enliterator
       # to v0.2 even on adapters that DO accept `contract:`. The Gateway accepts both;
       # Null/Bedrock accept `contract:` (and ignore it); per-tier stubs that accept
       # only `tags:` (escalation spec) still work — they're never handed a contract.
-      def tend_with_optional_kwargs(adapter, text:, stream:, state:, neighbors:, tags:, contract:)
+      def tend_with_optional_kwargs(adapter, text:, stream:, state:, neighbors:, tags:, contract:, required: nil)
         kwargs = { text: text, stream: stream, state: state, neighbors: neighbors }
         kwargs[:tags]     = tags     if adapter_accepts_kwarg?(adapter, :tags)
         kwargs[:contract] = contract if !contract.nil? && adapter_accepts_kwarg?(adapter, :contract)
+        kwargs[:required] = required if !required.nil? && adapter_accepts_kwarg?(adapter, :required)
         adapter.tend(**kwargs)
       end
 
@@ -463,6 +496,90 @@ module Enliterator
         "host"
       end
 
+      # ---- v0.5: silent-failure refusal + structured logging ---------------
+
+      # Refuse to run a real tend through the inert Null adapter on the staffing
+      # path. Raising HERE — before any Visit row is created — means a misconfigured
+      # run (e.g. no ENLITERATOR_LLM_KEY) fails LOUDLY with ZERO phantom "succeeded"
+      # Visit rows, instead of silently no-op-succeeding. Tests that legitimately
+      # exercise Null set configuration.allow_null_llm = true (the suite opts in).
+      def refuse_null!(adapter, tier)
+        return unless adapter.is_a?(Enliterator::Adapters::LLM::Null)
+        return if Enliterator.configuration.allow_null_llm
+
+        raise Enliterator::ConfigurationError,
+              "Enliterator resolved the Null LLM adapter for tier #{tier.inspect} on a real tend " \
+              "(#{tendable_ref}, stream #{stream.inspect}): no gateway key and no llm_adapter are " \
+              "configured, so nothing would actually run. Set ENLITERATOR_LLM_KEY (or " \
+              "configuration.llm_adapter), or set configuration.allow_null_llm = true to permit the " \
+              "inert adapter."
+      end
+
+      # A stable "Class/id" reference for logs and error messages.
+      def tendable_ref
+        "#{tendable.class.name}/#{tendable.id}"
+      end
+
+      # True when ANY required key is absent from the proposed claims, or present
+      # with a blank value. The signal that forces escalation / bars verified. A
+      # claim "meets" a required key when it carries a non-blank value (op-agnostic:
+      # ADD/UPDATE/NOOP of a real value all assert the fact).
+      def required_keys_unmet?(required, claims)
+        req = Array(required).map(&:to_s)
+        return false if req.empty?
+
+        satisfied = {}
+        Array(claims).each do |c|
+          next unless c.is_a?(Hash)
+          key = (c["key"] || c[:key]).to_s
+          val = c.key?("value") ? c["value"] : c[:value]
+          satisfied[key] = true unless blank_value?(val)
+        end
+        req.any? { |k| !satisfied[k] }
+      end
+
+      # Blank = nil, empty/whitespace string, or empty array/hash.
+      def blank_value?(value)
+        return true if value.nil?
+        return value.strip.empty? if value.is_a?(String)
+        return value.empty? if value.respond_to?(:empty?)
+        false
+      end
+
+      # Emit one structured log line for a tending event, nil-safe (no logger → no-op).
+      # Shape: "[enliterator] event=<event> k=v k=v ...". Whitespace values are quoted;
+      # nils dropped. Cheap; never raises. This is the active layer the silent failure
+      # lacked — the `resolve` event names the adapter class + model_id every tend.
+      def log_event(event, **fields)
+        logger = Enliterator.logger
+        return unless logger
+
+        pairs = fields.compact.map { |k, v| "#{k}=#{log_val(v)}" }
+        logger.info("[enliterator] event=#{event} #{pairs.join(' ')}".strip)
+      rescue StandardError
+        nil
+      end
+
+      def log_val(value)
+        s = value.to_s
+        s.match?(/\s/) ? s.inspect : s
+      end
+
+      # Total tokens out of a Visit.tokens jsonb, tolerant of string/symbol keys.
+      def token_total(tokens)
+        return 0 unless tokens.is_a?(Hash)
+        (tokens["total"] || tokens[:total] || 0).to_i
+      end
+
+      # Op-count summary "+a ~u -d =n" from a reconciliation hash, for one-line logs.
+      def recon_ops(recon)
+        r = recon || {}
+        "+#{Array(r[:added] || r['added']).size}" \
+        " ~#{Array(r[:updated] || r['updated']).size}" \
+        " -#{Array(r[:deleted] || r['deleted']).size}" \
+        " =#{Array(r[:noop] || r['noop']).size}"
+      end
+
       # ---- shared visit finalization (back-compat path) --------------------
 
       def finalize_succeeded!(visit, response, recon, parsed, started, neighbors:, state:)
@@ -479,6 +596,10 @@ module Enliterator
           duration_ms:    duration_ms,
           finished_at:    finished
         )
+        log_event("visit", visit_id: visit.id, stream: stream, tier: visit.tier, step: 0,
+                           confidence: visit.confidence, applied: visit.applied,
+                           ops: recon_ops(recon), tokens: token_total(visit.tokens),
+                           duration_ms: duration_ms, status: "succeeded", back_compat: true)
       end
 
       def fail_visit!(visit, error)
@@ -488,6 +609,8 @@ module Enliterator
           finished_at: Time.current,
           updated_at:  Time.current
         )
+        log_event("fail", visit_id: visit.id, stream: stream, tier: visit.tier,
+                          status: "failed", error: error.message)
       end
 
       def input_refs_for(visit, neighbors:, state:)
