@@ -60,6 +60,17 @@ RSpec.describe Enliterator::Conversation do
       expect(user_msg).to match(/Alpha is about human trafficking\.|Beta detects trafficking/)
     end
 
+    it "cites records by human-readable label (title + author + year), not raw ids" do
+      alpha.enliterator_claims.create!(key: "authored_by", value: "Jane Roe", status: "draft")
+      alpha.enliterator_claims.create!(key: "publication_year", value: 2024, status: "draft")
+      conv.reply(question: "trafficking?")
+      user_msg   = stub.messages.last[:content]
+      system_msg = stub.messages.first[:content]
+      expect(user_msg).to include('"Alpha"').and include("by Jane Roe").and include("(2024)")
+      expect(system_msg).to match(/human-readable/i)
+      expect(system_msg).to match(/never by a raw internal id/i)
+    end
+
     it "streams deltas in order via the block and returns the full answer" do
       got = []
       prov = conv.reply(question: "link?", stream: true) { |d| got << d }
