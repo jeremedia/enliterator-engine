@@ -125,9 +125,14 @@ module Enliterator
       <<~SYS.strip
         You ARE the enliteration of a collection — you speak about the collection as a
         whole and about its individual records, grounded ONLY in the SELF-PORTRAIT and
-        the RETRIEVED RECORDS provided. Do not invent facts beyond them. When you draw
-        on a specific record, cite it by its ref (Type/id). If the retrieved records do
-        not cover the question, say so plainly rather than guessing.
+        the RETRIEVED RECORDS provided. Do not invent facts beyond them. If the
+        retrieved records do not cover the question, say so plainly rather than guessing.
+
+        Cite records by a HUMAN-READABLE label — the title, optionally followed by the
+        author and year shown for that record — never by a raw internal id. Do NOT print
+        record ids (e.g. "Type/id" or UUIDs) in your answer unless the user explicitly
+        asks for them. After first mention you may shorten a long title when it stays
+        unambiguous. If a record has no usable title, say so rather than inventing one.
 
         #{Enliterator::Synopsis.to_prompt(synopsis)}
       SYS
@@ -151,8 +156,37 @@ module Enliterator
 
     def record_block(r)
       claim_lines = Array(r[:claims]).map { |c| "    #{c[:key]}: #{render_value(c[:value])}" }.join("\n")
-      header = "- #{r[:type]}/#{r[:id]} — #{r[:label]}"
-      [ header, ("  #{r[:snippet]}" if r[:snippet].present?), claim_lines.presence ].compact.join("\n")
+      # Lead with the human-readable citation (title + author + year), NOT the raw
+      # id — the model cites what it's handed. The id travels separately in the
+      # provenance channel (the source chips), which carry the working links.
+      [ "- #{citation_label(r)}",
+        ("  #{r[:snippet]}" if r[:snippet].present?),
+        claim_lines.presence ].compact.join("\n")
+    end
+
+    # "Title" — by Author (Year). Author/year are pulled from the record's own
+    # claims; the collection's metadata is uneven, so each part degrades gracefully.
+    def citation_label(r)
+      title  = r[:label].presence || "#{r[:type]}/#{r[:id]}"
+      author = display_author(claim_value(r[:claims], "authored_by"))
+      year   = claim_value(r[:claims], "publication_year")
+      out = %("#{title}")
+      out += " — by #{author}" if author.present?
+      out += " (#{year})" if year.to_s.present?
+      out
+    end
+
+    def claim_value(claims, key)
+      c = Array(claims).find { |x| (x[:key] || x["key"]).to_s == key }
+      c && (c[:value] || c["value"])
+    end
+
+    def display_author(value)
+      case value
+      when Array  then value.compact.join(", ")
+      when String then value
+      else value
+      end
     end
 
     def render_value(value)
