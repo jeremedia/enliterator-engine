@@ -24,50 +24,96 @@
   var send = document.getElementById("send");
   var history = [];
 
-  function bubble(role, text) {
-    var el = document.createElement("div");
-    el.className = "bubble " + role;
-    el.textContent = text || "";
-    thread.appendChild(el);
-    thread.scrollTop = thread.scrollHeight;
-    return el;
+  // --- compact, safe markdown -> HTML (no deps). Escapes first, then formats the
+  //     subset LLMs emit: headers, bold/italic, inline code, bullet/numbered lists,
+  //     links, paragraphs. HTML in the source is neutralized before formatting. ---
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function inline(s) {
+    // s is already HTML-escaped, so the link URL ($2) cannot contain a raw quote.
+    return s
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/(^|[\s(])_([^_\n]+)_/g, "$1<em>$2</em>");
+    }
+  function mdToHtml(src) {
+    var lines = esc(src).split("\n");
+    var out = "", list = null;
+    function closeList() { if (list) { out += "</" + list + ">"; list = null; } }
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      var h = ln.match(/^(#{1,6})\s+(.*)$/);
+      var ul = ln.match(/^\s*[-*]\s+(.*)$/);
+      var ol = ln.match(/^\s*\d+\.\s+(.*)$/);
+      if (h) { closeList(); var lvl = Math.min(h[1].length + 1, 6); out += "<h" + lvl + ">" + inline(h[2]) + "</h" + lvl + ">"; }
+      else if (ul) { if (list !== "ul") { closeList(); out += "<ul>"; list = "ul"; } out += "<li>" + inline(ul[1]) + "</li>"; }
+      else if (ol) { if (list !== "ol") { closeList(); out += "<ol>"; list = "ol"; } out += "<li>" + inline(ol[1]) + "</li>"; }
+      else if (ln.trim() === "") { closeList(); }
+      else { closeList(); out += "<p>" + inline(ln) + "</p>"; }
+    }
+    closeList();
+    return out;
   }
 
-  function renderProvenance(el, records) {
+  function userBubble(text) {
+    var el = document.createElement("div");
+    el.className = "bubble user";
+    el.textContent = text;
+    thread.appendChild(el);
+    thread.scrollTop = thread.scrollHeight;
+  }
+  function assistantBubble() {
+    var el = document.createElement("div"); el.className = "bubble assistant";
+    var md = document.createElement("div"); md.className = "md"; md.textContent = "…";
+    var prov = document.createElement("div"); prov.className = "provenance";
+    el.appendChild(md); el.appendChild(prov);
+    thread.appendChild(el); thread.scrollTop = thread.scrollHeight;
+    return { md: md, prov: prov };
+  }
+
+  function renderProvenance(provEl, records) {
     if (!records || !records.length) return;
-    var box = document.createElement("div");
-    box.className = "provenance";
     records.forEach(function (r) {
       var a = document.createElement("a");
       a.className = "chip";
       a.href = statusBase + "/" + encodeURIComponent(r.type) + "/" + encodeURIComponent(r.id);
       a.textContent = r.label || (r.type + "/" + r.id);
-      box.appendChild(a);
+      provEl.appendChild(a);
     });
-    el.appendChild(box);
   }
 
-  function handleFrame(frame, assistantEl, state) {
+  function scheduleRender(els, state) {
+    if (state.timer) return;
+    state.timer = setTimeout(function () {
+      state.timer = null;
+      els.md.innerHTML = mdToHtml(state.text);
+      thread.scrollTop = thread.scrollHeight;
+    }, 70);
+  }
+
+  function handleFrame(frame, els, state) {
     var ev = "message", data = "";
     frame.split("\n").forEach(function (line) {
       if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
       else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
     });
     if (!data) return;
-    var payload;
-    try { payload = JSON.parse(data); } catch (e) { return; }
-    if (ev === "token") { state.text += payload.t || ""; assistantEl.textContent = state.text; thread.scrollTop = thread.scrollHeight; }
-    else if (ev === "provenance") { renderProvenance(assistantEl, payload.records); }
-    else if (ev === "error") { assistantEl.textContent = state.text + "\n[" + (payload.message || "error") + "]"; }
+    var payload; try { payload = JSON.parse(data); } catch (e) { return; }
+    if (ev === "token") { state.text += payload.t || ""; scheduleRender(els, state); }
+    else if (ev === "provenance") { renderProvenance(els.prov, payload.records); }
+    else if (ev === "error") { state.text += "\n\n_[" + (payload.message || "error") + "]_"; }
   }
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var q = (input.value || "").trim();
     if (!q) return;
-    bubble("user", q);
-    var assistantEl = bubble("assistant", "…");
-    var state = { text: "" };
+    userBubble(q);
+    var els = assistantBubble();
+    var state = { text: "", timer: null };
     input.value = ""; send.disabled = true;
 
     var body = new FormData();
@@ -82,6 +128,8 @@
         function pump() {
           return reader.read().then(function (res) {
             if (res.done) {
+              if (state.timer) { clearTimeout(state.timer); state.timer = null; }
+              els.md.innerHTML = mdToHtml(state.text); // final flush
               history.push({ role: "user", content: q });
               history.push({ role: "assistant", content: state.text });
               send.disabled = false;
@@ -90,14 +138,16 @@
             buf += decoder.decode(res.value, { stream: true });
             var parts = buf.split("\n\n");
             buf = parts.pop();
-            parts.forEach(function (f) { handleFrame(f, assistantEl, state); });
+            parts.forEach(function (f) { handleFrame(f, els, state); });
             return pump();
           });
         }
-        if (assistantEl.textContent === "…") assistantEl.textContent = "";
         return pump();
       })
-      .catch(function () { assistantEl.textContent = state.text + "\n[connection error]"; send.disabled = false; });
+      .catch(function () {
+        els.md.innerHTML = mdToHtml(state.text + "\n\n_[connection error]_");
+        send.disabled = false;
+      });
   });
 })();
 </script>

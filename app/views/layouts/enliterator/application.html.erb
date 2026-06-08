@@ -50,9 +50,18 @@
 
     /* chat */
     .thread { display: flex; flex-direction: column; gap: .6rem; margin: 1rem 0; }
-    .bubble { padding: .6rem .85rem; border-radius: 10px; max-width: 80%; white-space: pre-wrap; }
-    .bubble.user { align-self: flex-end; background: var(--accent-soft); }
+    .bubble { padding: .6rem .85rem; border-radius: 10px; max-width: 80%; }
+    .bubble.user { align-self: flex-end; background: var(--accent-soft); white-space: pre-wrap; }
     .bubble.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+    /* rendered markdown inside an assistant bubble */
+    .bubble.assistant .md > :first-child { margin-top: 0; }
+    .bubble.assistant .md > :last-child { margin-bottom: 0; }
+    .bubble.assistant .md p { margin: .45rem 0; }
+    .bubble.assistant .md h2, .bubble.assistant .md h3, .bubble.assistant .md h4 { margin: .7rem 0 .3rem; font-size: 1rem; line-height: 1.3; }
+    .bubble.assistant .md ul, .bubble.assistant .md ol { margin: .35rem 0 .35rem 1.25rem; padding: 0; }
+    .bubble.assistant .md li { margin: .15rem 0; }
+    .bubble.assistant .md code { background: var(--chip); padding: .05rem .3rem; border-radius: 4px; font-size: .9em; }
+    .bubble.assistant .md a { word-break: break-word; }
     .provenance { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .4rem; }
     .ask { display: flex; gap: .5rem; margin-top: 1rem; }
     .ask textarea { flex: 1; padding: .6rem; border: 1px solid var(--line); border-radius: 8px;
