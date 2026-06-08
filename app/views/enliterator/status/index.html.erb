@@ -64,7 +64,8 @@
 <% end %>
 
 <% if s[:gaps].any? %>
-  <h2>Vocabulary gaps <span class="muted" style="font-weight:400">— proposed, awaiting review</span></h2>
+  <h2>Vocabulary gaps <span class="muted" style="font-weight:400">— proposed, awaiting review</span>
+    <span style="font-weight:400; font-size:.85rem">· <%= link_to "Review all →", suggestions_path %></span></h2>
   <div class="card">
     <table>
       <tr><th>proposed key</th><th>records</th><th>rationale</th></tr>

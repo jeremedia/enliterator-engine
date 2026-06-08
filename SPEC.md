@@ -667,3 +667,38 @@ Routes: `root → status#index`, `status`, `status/:type/:id` (drill-down; id co
 - Mountable routes + `StatusController` + `ConversationController` (Live SSE) + ERB views + inline-CSS layout with nav.
 - Specs green at 206 (was 181), ADDING: `adapters/llm/converse_spec.rb`, `synopsis_spec.rb`, `conversation_spec.rb`, `requests/enliterator/{status,conversation}_spec.rb`.
 - README: "Mounting the UI" note.
+
+---
+
+# v0.7 — Suggestion Review (the ontology tends itself)
+
+The governed-vocabulary loop gets a curatorial surface. When a stream's contract can't express
+something, the model files an `Enliterator::Suggestion` (v0.3). v0.7 adds the third mounted view —
+a review queue where a curator renders a verdict per proposed_key and the vocabulary tightens.
+
+**Approve is advisory:** it records the verdict and the view surfaces the exact `keys:` diff to paste
+into the staffing policy — the contract stays a versioned, code-reviewed, reproducible artifact (no
+DB-backed contract drift). **Map records a structured target** (`mapped_to`) so a synonym is real data
+for future auto-routing. Verdicts act per proposed_key, scoped to pending (idempotent).
+
+## 1. Migration (additive)
+`add_column :enliterator_suggestions, :mapped_to, :string`.
+
+## 2. Suggestion — batch verdicts + diff (app/models/enliterator/suggestion.rb)
+`approve_key!(key, note:)`, `map_key!(key, to:, note:)`, `reject_key!(key, note:)` — batch over PENDING
+rows for a key, return the count. `contract_additions` → `{stream => [approved keys]}` (the paste diff).
+`synonyms` → `[{stream, proposed_key, mapped_to}]`. Instance `map!(to:, note:)` records `mapped_to`.
+
+## 3. Routes + controller + view
+`get suggestions` + `post suggestions/verdict`. `SuggestionsController#index` (gaps queue + canonical
+keys for the Map dropdown + additions + synonyms) and `#verdict` (dispatch by `decision`, guard
+unknown / missing map target, flash + redirect). `suggestions/index.html.erb`: ranked pending queue
+with Approve / Map(select existing key) / Reject per row; an "add to your contract" snippet per stream;
+a synonyms table. Layout gains a Requests nav link + flash; the status "Vocabulary gaps" panel links here.
+
+## Done = all of (this phase):
+- `mapped_to` migration; `Suggestion` batch verdicts + `contract_additions` + `synonyms`; `map!(to:)`.
+- `suggestions`/`suggestions/verdict` routes; `SuggestionsController`; `suggestions/index` view; nav + flash + status cross-link.
+- Approve advisory (no contract mutation; emits the diff); Map records `mapped_to`; verdicts pending-scoped.
+- Specs green at 219 (was 207), ADDING: `requests/enliterator/suggestions_spec.rb` + the batch-verdict block in `models/enliterator/suggestion_spec.rb`.
+- README: `/enliterator/suggestions` in the "Mounting the UI" list.

@@ -48,6 +48,17 @@
     .big { font-size: 1.6rem; font-weight: 700; }
     .samples { color: var(--muted); font-size: .82rem; }
 
+    /* flash + verdict controls */
+    .flash { padding: .55rem .8rem; border-radius: 8px; margin: 0 0 1rem; font-size: .9rem; }
+    .flash-notice { background: var(--accent-soft); color: var(--accent); }
+    .flash-alert { background: #fdeceb; color: var(--warn); }
+    .verdict { display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
+    .verdict form { display: inline; margin: 0; }
+    .verdict button, .verdict select { font: inherit; font-size: .8rem; padding: .2rem .5rem;
+      border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }
+    .verdict .v-approve { color: var(--accent); border-color: var(--accent-soft); }
+    .verdict .v-reject { color: var(--warn); }
+
     /* chat */
     .thread { display: flex; flex-direction: column; gap: .6rem; margin: 1rem 0; }
     .bubble { padding: .6rem .85rem; border-radius: 10px; max-width: 80%; }
@@ -81,8 +92,12 @@
     <span class="brand">Enliterator<small>the collection, tended</small></span>
     <%= link_to "Status", root_path %>
     <%= link_to "Chat", conversation_path %>
+    <%= link_to "Requests", suggestions_path %>
   </nav>
   <main class="enl">
+    <% flash.each do |type, msg| %>
+      <div class="flash flash-<%= type %>"><%= msg %></div>
+    <% end %>
     <%= yield %>
   </main>
 </body>

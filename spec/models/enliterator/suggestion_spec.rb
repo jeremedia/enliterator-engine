@@ -109,4 +109,52 @@ RSpec.describe Enliterator::Suggestion do
       expect(s.visit).to be_nil
     end
   end
+
+  describe "batch verdicts + contract diff (v0.7)" do
+    before do
+      suggest!(record: widget_a, key: "keywords", rationale: "kw")
+      suggest!(record: widget_b, key: "keywords", rationale: "kw2")
+      suggest!(record: widget_a, key: "author",   rationale: "syn")
+      # a NON-pending row for keywords must be untouched by a batch verdict
+      suggest!(record: widget_c, key: "keywords", rationale: "old", status: "rejected")
+    end
+
+    it ".approve_key! approves only PENDING rows for the key, returns the count" do
+      expect(described_class.approve_key!("keywords", note: "real gap")).to eq(2)
+      expect(described_class.where(proposed_key: "keywords", status: "approved").count).to eq(2)
+      expect(described_class.where(proposed_key: "keywords", status: "rejected").count).to eq(1) # untouched
+    end
+
+    it ".map_key! records the canonical target" do
+      described_class.map_key!("author", to: "authored_by", note: "synonym")
+      s = described_class.find_by(proposed_key: "author")
+      expect(s.status).to eq("mapped")
+      expect(s.mapped_to).to eq("authored_by")
+    end
+
+    it ".reject_key! rejects pending rows" do
+      expect(described_class.reject_key!("keywords")).to eq(2)
+    end
+
+    it ".contract_additions groups approved keys by stream" do
+      described_class.approve_key!("keywords")
+      described_class.approve_key!("author")
+      expect(described_class.contract_additions).to eq("metadata" => %w[author keywords])
+    end
+
+    it ".synonyms lists proposed -> mapped_to" do
+      described_class.map_key!("author", to: "authored_by")
+      expect(described_class.synonyms).to contain_exactly(
+        { stream: "metadata", proposed_key: "author", mapped_to: "authored_by" }
+      )
+    end
+
+    it "#map!(to:) records mapped_to on a single row" do
+      s = suggest!(record: widget_b, key: "publication_date")
+      s.map!(to: "publication_year", note: "more granular")
+      s.reload
+      expect(s.status).to eq("mapped")
+      expect(s.mapped_to).to eq("publication_year")
+    end
+  end
 end
