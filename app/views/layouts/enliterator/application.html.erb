@@ -8,9 +8,10 @@
 
   <%= yield :head %>
 
-  <%# Host may also bundle this; all real styling is inline below so the UI works
-      under ANY host pipeline (or none). %>
-  <%= stylesheet_link_tag "enliterator/application", media: "all" %>
+  <%# All styling is inline below so the UI works under ANY host asset pipeline
+      (Sprockets, Propshaft, or none) without the host needing to precompile an
+      engine stylesheet. Do NOT add stylesheet_link_tag here — a Sprockets host
+      raises AssetNotPrecompiledError for an engine asset it didn't declare. %>
   <style>
     :root {
       --bg: #f7f7f5; --panel: #fff; --ink: #1c1c1a; --muted: #6b6b66;
