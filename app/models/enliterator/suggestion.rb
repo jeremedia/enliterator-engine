@@ -33,14 +33,46 @@ module Enliterator
       }.sort_by { |g| -g[:count] }
     end
 
-    # Status setters — a human's governance verdict on the proposal.
+    # ---- batch verdicts (v0.7) -------------------------------------------
+    # The curatorial decision is about the VOCABULARY TERM, not each row — so
+    # verdicts apply to every PENDING suggestion for a proposed_key at once. Scoped
+    # to pending so a re-verdict never clobbers an already-decided row (idempotent).
+    # Each returns the number of rows affected.
+
+    def self.approve_key!(key, note: nil)
+      pending.where(proposed_key: key).update_all(status: "approved", review_note: note, updated_at: Time.current)
+    end
+
+    def self.map_key!(key, to:, note: nil)
+      pending.where(proposed_key: key).update_all(status: "mapped", mapped_to: to, review_note: note, updated_at: Time.current)
+    end
+
+    def self.reject_key!(key, note: nil)
+      pending.where(proposed_key: key).update_all(status: "rejected", review_note: note, updated_at: Time.current)
+    end
+
+    # Approved keys grouped by the stream that proposed them — the exact additions a
+    # curator pastes into that stream's contract. `{stream => [proposed_key, ...]}`.
+    def self.contract_additions
+      where(status: "approved").distinct.pluck(:stream, :proposed_key)
+        .group_by(&:first).transform_values { |pairs| pairs.map(&:last).uniq.sort }
+    end
+
+    # Recorded synonyms — proposed_key folded onto an existing canonical key.
+    def self.synonyms
+      where(status: "mapped").distinct.pluck(:stream, :proposed_key, :mapped_to)
+        .map { |s, k, t| { stream: s, proposed_key: k, mapped_to: t } }
+    end
+
+    # ---- per-row status setters — a human's governance verdict on one proposal ---
     def approve!(note: nil)
       update!(status: "approved", review_note: note)
     end
 
     # The proposed key maps onto an existing allowed key (a synonym, not a gap).
-    def map!(note: nil)
-      update!(status: "mapped", review_note: note)
+    # `to:` records the canonical key it folds into (v0.7).
+    def map!(to: nil, note: nil)
+      update!(status: "mapped", mapped_to: to, review_note: note)
     end
 
     def reject!(note: nil)

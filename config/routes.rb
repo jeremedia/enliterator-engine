@@ -9,4 +9,9 @@ Enliterator::Engine.routes.draw do
 
   get  "chat",        to: "conversation#index",  as: :conversation
   post "chat/stream", to: "conversation#stream", as: :conversation_stream
+
+  # Suggestion review (v0.7): the governed-vocabulary queue. Verdicts
+  # (approve / map / reject) act per proposed_key.
+  get  "suggestions",         to: "suggestions#index",   as: :suggestions
+  post "suggestions/verdict", to: "suggestions#verdict", as: :suggestions_verdict
 end

@@ -1,0 +1,73 @@
+<h1>Vocabulary requests</h1>
+<p class="muted">
+  When a stream's vocabulary can't express something, the model files a request instead of inventing a key.
+  Decide each: <strong>approve</strong> (a real gap — add it to the contract), <strong>map</strong>
+  (a synonym of an existing key), or <strong>reject</strong>.
+  <strong><%= @pending %></strong> pending · <%= @resolved %> resolved.
+</p>
+
+<% if @gaps.any? %>
+  <h2>Pending — <%= @gaps.size %> proposed key<%= "s" if @gaps.size != 1 %></h2>
+  <div class="card">
+    <table>
+      <tr><th>proposed key</th><th>records</th><th>from</th><th>rationale</th><th>verdict</th></tr>
+      <% @gaps.each do |g| %>
+        <% key = g[:proposed_key] %>
+        <tr>
+          <td><code><%= key %></code></td>
+          <td><%= g[:count] %></td>
+          <td class="samples"><%= (@streams_for[key] || []).join(", ") %></td>
+          <td class="samples">
+            <%= truncate(g[:sample_rationale].to_s, length: 130) %>
+            <% if g[:sample_example].present? %>
+              <br><em><%= truncate(g[:sample_example].is_a?(String) ? g[:sample_example] : g[:sample_example].to_json, length: 80) %></em>
+            <% end %>
+          </td>
+          <td>
+            <div class="verdict">
+              <%= button_to "Approve", suggestions_verdict_path,
+                    params: { proposed_key: key, decision: "approve" }, class: "v-approve" %>
+              <%= form_with url: suggestions_verdict_path, method: :post do |f| %>
+                <%= f.hidden_field :proposed_key, value: key %>
+                <%= f.hidden_field :decision, value: "map" %>
+                <%= f.select :mapped_to, @canonical, include_blank: "map onto…" %>
+                <%= f.submit "Map" %>
+              <% end %>
+              <%= button_to "Reject", suggestions_verdict_path,
+                    params: { proposed_key: key, decision: "reject" }, class: "v-reject" %>
+            </div>
+          </td>
+        </tr>
+      <% end %>
+    </table>
+  </div>
+<% else %>
+  <p class="muted">No pending requests — the vocabulary is fully tended.</p>
+<% end %>
+
+<% if @additions.any? %>
+  <h2>Approved — add to your contract</h2>
+  <p class="muted">Paste into the matching <code>stream</code> in your staffing policy initializer, then re-tend. (Approval is advisory — the contract stays a versioned code artifact.)</p>
+  <% @additions.each do |stream, keys| %>
+    <div class="card">
+      <div class="muted">stream <code><%= stream %></code></div>
+<pre class="mono" style="white-space:pre-wrap; margin:.4rem 0 0">keys: {
+<% keys.each do |k| -%>
+  <%= k %>: "TODO: describe <%= k %>",
+<% end -%>
+}</pre>
+    </div>
+  <% end %>
+<% end %>
+
+<% if @synonyms.any? %>
+  <h2>Mapped (synonyms)</h2>
+  <div class="card">
+    <table>
+      <tr><th>proposed</th><th>→ canonical</th><th>stream</th></tr>
+      <% @synonyms.each do |s| %>
+        <tr><td><code><%= s[:proposed_key] %></code></td><td><code><%= s[:mapped_to] %></code></td><td class="samples"><%= s[:stream] %></td></tr>
+      <% end %>
+    </table>
+  </div>
+<% end %>

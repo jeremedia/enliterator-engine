@@ -75,6 +75,10 @@ mount Enliterator::Engine => "/enliterator"
 - `/enliterator/chat` — converse with the enliteration's top-level potential: answers stream
   token-by-token, grounded in a collection self-portrait plus the records retrieved per
   question, with source chips linking back to the status browser.
+- `/enliterator/suggestions` — the governed-vocabulary review queue: when the model proposes a
+  claim key a stream's contract doesn't cover, a curator approves it (the view surfaces the exact
+  `keys:` diff to add), maps it onto an existing key (a synonym), or rejects it. The ontology tends
+  itself.
 
 The UI is self-contained (inline CSS/JS, no asset-build step) and renders under any host
 pipeline. The conversation tier defaults to the staffing ladder's top tier; pin it with
