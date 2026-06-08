@@ -1,0 +1,76 @@
+<% s = @synopsis %>
+<h1>Status</h1>
+<p class="muted">
+  <% if s[:models].any? %>Tended models: <strong><%= s[:models].join(", ") %></strong>. <% end %>
+  Drill into any record at <code>/status/&lt;Type&gt;/&lt;id&gt;</code>, or follow the source chips from <%= link_to "Chat", conversation_path %>.
+</p>
+
+<h2>Streams</h2>
+<div class="row">
+  <% s[:streams].each do |st| %>
+    <div class="card">
+      <div><strong><%= st[:stream] %></strong> <span class="chip tier"><%= st[:tier] %></span></div>
+      <div class="big"><%= st[:tended_count] %></div>
+      <div class="muted" style="margin-top:-.3rem">records tended</div>
+      <% if st[:vocabulary].any? %>
+        <table style="margin-top:.6rem">
+          <tr><th>claim key</th><th>live</th><th>e.g.</th></tr>
+          <% st[:vocabulary].each do |v| %>
+            <tr>
+              <td><code><%= v[:key] %></code></td>
+              <td><%= v[:live_claims] %></td>
+              <td class="samples"><%= v[:samples].first %></td>
+            </tr>
+          <% end %>
+        </table>
+      <% else %>
+        <div class="muted samples">no contract (open keys)</div>
+      <% end %>
+    </div>
+  <% end %>
+</div>
+
+<h2>Tending health <span class="muted" style="font-weight:400">— the smoke alarm</span></h2>
+<div class="card">
+  <table>
+    <tr><th>stream</th><th>visits</th><th>adapters</th><th>escalation</th><th>empty-final</th><th>required-unmet</th></tr>
+    <% s[:health].sort.each do |stream, b| %>
+      <% null_n = b[:adapter_mix]["null"].to_i %>
+      <tr class="<%= "warn-row" if null_n.positive? %>">
+        <td><%= stream %></td>
+        <td><%= b[:total] %></td>
+        <td class="mono">
+          <%= b[:adapter_mix].map { |m, n| "#{m}=#{n}" }.join("  ") %>
+          <% if null_n.positive? %><span class="warn">⚠ null adapter ran <%= null_n %> visit(s)</span><% end %>
+        </td>
+        <td><%= b[:escalation_rate] %></td>
+        <td><%= b[:empty_final_rate] %></td>
+        <td><%= b[:required_unmet] %></td>
+      </tr>
+    <% end %>
+  </table>
+</div>
+
+<% if s[:connections].any? %>
+  <h2>Connection graph</h2>
+  <div class="card">
+    <table>
+      <tr><th>link key</th><th>live</th><th>e.g.</th></tr>
+      <% s[:connections].each do |c| %>
+        <tr><td><code><%= c[:key] %></code></td><td><%= c[:live_claims] %></td><td class="samples"><%= c[:samples].first %></td></tr>
+      <% end %>
+    </table>
+  </div>
+<% end %>
+
+<% if s[:gaps].any? %>
+  <h2>Vocabulary gaps <span class="muted" style="font-weight:400">— proposed, awaiting review</span></h2>
+  <div class="card">
+    <table>
+      <tr><th>proposed key</th><th>records</th><th>rationale</th></tr>
+      <% s[:gaps].each do |g| %>
+        <tr><td><code><%= g[:proposed_key] %></code></td><td><%= g[:count] %></td><td class="samples"><%= g[:sample_rationale] %></td></tr>
+      <% end %>
+    </table>
+  </div>
+<% end %>

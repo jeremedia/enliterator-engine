@@ -93,6 +93,19 @@ module Enliterator
           raise NotImplementedError, "#{self.class} must implement #tend"
         end
 
+        # Free-form conversational completion (v0.6) — the conversational surface of
+        # an enliteration. UNLIKE #tend (forced structured tool output), this answers
+        # in natural language grounded in the +messages+ the caller assembles (a
+        # collection self-portrait + retrieved records' claims). When +stream+ is true
+        # AND a block is given, the block is yielded incremental text deltas as they
+        # arrive; either way the full concatenated answer string is returned. +tags+
+        # ride along as LiteLLM spend attribution, exactly as in #tend.
+        #
+        # @return [String] the full answer text.
+        def converse(messages:, tags: [], stream: false, &block)
+          raise NotImplementedError, "#{self.class} must implement #converse"
+        end
+
         # The structured-output schema for a call. With no contract this is the
         # default RESPONSE_SCHEMA constant ITSELF (identity preserved, so the v0.2
         # adapter specs comparing against RESPONSE_SCHEMA stay green). With a

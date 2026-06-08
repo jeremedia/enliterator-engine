@@ -1,0 +1,103 @@
+<h1>Chat with the enliteration</h1>
+<p class="muted">Ask about the collection as a whole, or about anything it has tended. Answers are grounded in the self-portrait below plus the records retrieved per question.</p>
+
+<details class="card">
+  <summary>What this collection knows about itself</summary>
+  <pre class="mono" style="white-space:pre-wrap; margin:.6rem 0 0"><%= Enliterator::Synopsis.to_prompt(@synopsis) %></pre>
+</details>
+
+<div id="thread" class="thread"></div>
+
+<form id="ask" class="ask">
+  <textarea id="q" placeholder="e.g. What does this collection know about itself? Which records connect to X?" rows="2"></textarea>
+  <button id="send" type="submit">Send</button>
+</form>
+
+<script>
+(function () {
+  var streamUrl = "<%= conversation_stream_path %>";
+  var statusBase = "<%= status_path %>"; // /…/status ; record path is statusBase + "/Type/id"
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
+  var thread = document.getElementById("thread");
+  var form = document.getElementById("ask");
+  var input = document.getElementById("q");
+  var send = document.getElementById("send");
+  var history = [];
+
+  function bubble(role, text) {
+    var el = document.createElement("div");
+    el.className = "bubble " + role;
+    el.textContent = text || "";
+    thread.appendChild(el);
+    thread.scrollTop = thread.scrollHeight;
+    return el;
+  }
+
+  function renderProvenance(el, records) {
+    if (!records || !records.length) return;
+    var box = document.createElement("div");
+    box.className = "provenance";
+    records.forEach(function (r) {
+      var a = document.createElement("a");
+      a.className = "chip";
+      a.href = statusBase + "/" + encodeURIComponent(r.type) + "/" + encodeURIComponent(r.id);
+      a.textContent = r.label || (r.type + "/" + r.id);
+      box.appendChild(a);
+    });
+    el.appendChild(box);
+  }
+
+  function handleFrame(frame, assistantEl, state) {
+    var ev = "message", data = "";
+    frame.split("\n").forEach(function (line) {
+      if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
+      else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
+    });
+    if (!data) return;
+    var payload;
+    try { payload = JSON.parse(data); } catch (e) { return; }
+    if (ev === "token") { state.text += payload.t || ""; assistantEl.textContent = state.text; thread.scrollTop = thread.scrollHeight; }
+    else if (ev === "provenance") { renderProvenance(assistantEl, payload.records); }
+    else if (ev === "error") { assistantEl.textContent = state.text + "\n[" + (payload.message || "error") + "]"; }
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var q = (input.value || "").trim();
+    if (!q) return;
+    bubble("user", q);
+    var assistantEl = bubble("assistant", "…");
+    var state = { text: "" };
+    input.value = ""; send.disabled = true;
+
+    var body = new FormData();
+    body.append("question", q);
+    body.append("history", JSON.stringify(history));
+
+    fetch(streamUrl, { method: "POST", headers: { "X-CSRF-Token": csrf }, body: body })
+      .then(function (resp) {
+        var reader = resp.body.getReader();
+        var decoder = new TextDecoder();
+        var buf = "";
+        function pump() {
+          return reader.read().then(function (res) {
+            if (res.done) {
+              history.push({ role: "user", content: q });
+              history.push({ role: "assistant", content: state.text });
+              send.disabled = false;
+              return;
+            }
+            buf += decoder.decode(res.value, { stream: true });
+            var parts = buf.split("\n\n");
+            buf = parts.pop();
+            parts.forEach(function (f) { handleFrame(f, assistantEl, state); });
+            return pump();
+          });
+        }
+        if (assistantEl.textContent === "…") assistantEl.textContent = "";
+        return pump();
+      })
+      .catch(function () { assistantEl.textContent = state.text + "\n[connection error]"; send.disabled = false; });
+  });
+})();
+</script>

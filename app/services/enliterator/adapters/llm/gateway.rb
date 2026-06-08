@@ -110,7 +110,65 @@ module Enliterator
           )
         end
 
+        # Free-form conversational completion (v0.6). No forced tool — the caller's
+        # +messages+ (system = self-portrait, user = question + retrieved claims) are
+        # answered in natural language. Streaming uses the official openai gem's
+        # `chat.completions.stream_raw(...)` (NOT create(stream: true)); each chunk
+        # carries an incremental `choices[0].delta.content`. Spend +tags+ ride via
+        # request_options[:extra_body] exactly as #tend.
+        def converse(messages:, tags: [], stream: false, &block)
+          params = { model: @tier, messages: messages }
+          request_options = {}
+          request_options[:extra_body] = { metadata: { tags: Array(tags) } } if Array(tags).any?
+
+          if stream && block
+            full = +""
+            args = params.dup
+            args[:request_options] = request_options unless request_options.empty?
+            client.chat.completions.stream_raw(**args).each do |chunk|
+              delta = extract_delta(chunk)
+              next if delta.nil? || delta.empty?
+              full << delta
+              block.call(delta)
+            end
+            full
+          else
+            response =
+              if request_options.empty?
+                client.chat.completions.create(**params)
+              else
+                client.chat.completions.create(**params, request_options: request_options)
+              end
+            extract_message_content(response).to_s
+          end
+        end
+
         private
+
+        # Incremental text from a streamed chat-completion chunk. Tolerates the gem's
+        # struct objects and plain Hashes (fakes in specs). nil when the chunk carries
+        # no content delta (e.g. the final role/finish chunk).
+        def extract_delta(chunk)
+          choice = first_choice(chunk)
+          return nil if choice.nil?
+          delta =
+            if choice.respond_to?(:delta) then choice.delta
+            elsif choice.is_a?(Hash) then choice[:delta] || choice["delta"]
+            end
+          return nil if delta.nil?
+          if delta.respond_to?(:content) then delta.content
+          elsif delta.is_a?(Hash) then delta[:content] || delta["content"]
+          end
+        end
+
+        # The assistant message content from a non-streamed chat completion.
+        def extract_message_content(response)
+          message = message_of(first_choice(response))
+          return nil if message.nil?
+          if message.respond_to?(:content) then message.content
+          elsif message.is_a?(Hash) then message[:content] || message["content"]
+          end
+        end
 
         # Memoized client. Building it triggers the lazy require so a missing gem
         # surfaces as a ConfigurationError at first real call (never at boot).

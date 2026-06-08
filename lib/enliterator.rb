@@ -66,6 +66,13 @@ module Enliterator
     # nil ⇒ suggestions are persisted locally only (no forwarding) — the default path.
     attr_accessor :suggestion_sink
 
+    # ---- v0.6 Conversation -----------------------------------------------
+
+    # The capability tier (LiteLLM alias) the conversation UI uses for free-form
+    # answers. nil ⇒ resolve at call time to the staffing ladder's top tier, else
+    # "quality" — conversation wants capability. A host can pin it explicitly.
+    attr_accessor :conversation_tier
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -92,6 +99,7 @@ module Enliterator
       @escalation_threshold = 0.6
       @suggestion_sink = nil
       @allow_null_llm = false
+      @conversation_tier = nil
     end
 
     def logger
