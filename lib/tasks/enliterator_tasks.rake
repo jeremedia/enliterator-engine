@@ -63,4 +63,43 @@ namespace :enliterator do
 
     log.call("done — enqueued #{total_enqueued} tending visit(s) across #{Enliterator.tendable_models.size} model(s) and #{streams.size} stream(s)")
   end
+
+  # The tending rollup / smoke alarm. Prints per-stream Visit health: status mix,
+  # adapter/model mix (a `null` model means a misconfigured run wrote phantom
+  # "succeeded" visits — flagged loudly), escalation + empty-final rates, confidence
+  # buckets, required_unmet count, and token spend.
+  #
+  #   bin/rails enliterator:status
+  #   SINCE=7 bin/rails enliterator:status         # last 7 days
+  #   STREAM=authorship bin/rails enliterator:status
+  desc "Per-stream tending health rollup (status, adapter mix, rates, spend). SINCE=days STREAM=name"
+  task status: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:status] #{msg}") : puts(msg) }
+
+    since  = ENV["SINCE"].present? ? ENV["SINCE"].to_i.days : nil
+    stream = ENV["STREAM"].presence
+    report = Enliterator::Report.summary(since: since, stream: stream)
+
+    if report.empty?
+      log.call("No tending visits found#{stream ? " for stream #{stream}" : ''}#{since ? " in the last #{ENV['SINCE']}d" : ''}.")
+      next
+    end
+
+    report.sort.each do |name, b|
+      log.call("── stream: #{name} ── #{b[:total]} visit(s)")
+      log.call("   status:    #{b[:status].sort.map { |k, v| "#{k}=#{v}" }.join('  ')}")
+
+      adapters = b[:adapter_mix].sort.map { |k, v| "#{k}=#{v}" }.join("  ")
+      null_n = b[:adapter_mix]["null"].to_i
+      warn = null_n.positive? ? "   <-- WARNING: null adapter ran #{null_n} visit(s) (no LLM called)" : ""
+      log.call("   adapters:  #{adapters}#{warn}")
+
+      log.call("   tiers:     #{b[:tier_mix].sort.map { |k, v| "#{k}=#{v}" }.join('  ')}")
+      log.call("   escalation_rate=#{b[:escalation_rate]}  empty_final_rate=#{b[:empty_final_rate]}  required_unmet=#{b[:required_unmet]}")
+      log.call("   confidence: #{b[:confidence].sort.map { |k, v| "#{k}=#{v}" }.join('  ')}")
+      tokens = b.dig(:spend, :tokens) || {}
+      log.call("   tokens:    in=#{tokens['input'].to_i} out=#{tokens['output'].to_i} total=#{tokens['total'].to_i}")
+    end
+  end
 end

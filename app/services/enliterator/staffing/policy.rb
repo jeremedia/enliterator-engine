@@ -34,7 +34,7 @@ module Enliterator
       DEFAULT_MAX_PROMOTIONS = 1
 
       attr_reader :assignments, :ladder_tiers, :embedding_alias, :on_prem_tier_list,
-                  :context_caps, :key_contracts
+                  :context_caps, :key_contracts, :required_key_map
 
       def initialize(&block)
         @assignments       = {}
@@ -47,6 +47,7 @@ module Enliterator
         @on_prem_tier_list = []
         @context_caps      = {}
         @key_contracts     = {}
+        @required_key_map  = {}
 
         instance_eval(&block) if block
       end
@@ -65,10 +66,17 @@ module Enliterator
       # then records the contract so the Visitor can constrain the prompt/schema and
       # route off-list observations into `suggestions`. Streams declared with #assign
       # (no contract) remain unconstrained — open keys, back-compat.
-      def stream(name, tier:, keys:)
+      # +required+ (v0.5, optional): a subset of `keys` the model MUST assert a
+      # non-blank claim for. When a required key comes back absent or empty, the
+      # Visitor forces escalation regardless of confidence, and the top tier refuses
+      # to mint `verified` while a required key is unmet. nil/omitted ⇒ no required
+      # keys ⇒ byte-identical to v0.3/v0.4.
+      def stream(name, tier:, keys:, required: nil)
         assign(name, tier: tier)
         @key_contracts[name.to_s] =
           keys.each_with_object({}) { |(k, v), h| h[k.to_s] = v.to_s }
+        req = Array(required).map(&:to_s).reject(&:empty?)
+        @required_key_map[name.to_s] = req unless req.empty?
         self
       end
 
@@ -152,6 +160,13 @@ module Enliterator
         contract = @key_contracts[stream.to_s]
         return nil if contract.nil?
         contract.keys
+      end
+
+      # The required claim keys for a stream as a `[String]`, or nil when the stream
+      # declares none. nil (not []) signals "no required keys" so callers branch on
+      # presence. Always a subset of allowed_keys(stream).
+      def required_keys(stream)
+        @required_key_map[stream.to_s]
       end
 
       # Tiers at/after `tier` in ladder order (the remaining climb). If `tier`

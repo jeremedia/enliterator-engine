@@ -58,9 +58,9 @@ module Enliterator
         # the original system text.
         #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, stream:, state:, neighbors:, tags: [], contract: nil)
+        def tend(text:, stream:, state:, neighbors:, tags: [], contract: nil, required: nil)
           messages = [
-            { role: "system", content: system_for(contract) },
+            { role: "system", content: system_for(contract, required: required) },
             {
               role: "user",
               content: build_user(text: text, stream: stream, state: state, neighbors: neighbors)

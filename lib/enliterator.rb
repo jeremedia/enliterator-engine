@@ -66,6 +66,16 @@ module Enliterator
     # nil ⇒ suggestions are persisted locally only (no forwarding) — the default path.
     attr_accessor :suggestion_sink
 
+    # ---- v0.5 Silent-failure hardening -----------------------------------
+
+    # When false (the default), a real tend that resolves to the inert Null LLM
+    # adapter on the STAFFING path RAISES instead of writing a phantom "succeeded"
+    # Visit with zero claims. This is the difference between a misconfiguration
+    # failing LOUDLY and silently no-op-succeeding (the engine's own docstring
+    # already promises Null "raises on real calls"). Tests that legitimately run
+    # the Null adapter set this true (the engine's spec suite opts in suite-wide).
+    attr_accessor :allow_null_llm
+
     attr_writer :logger
 
     def initialize
@@ -81,6 +91,7 @@ module Enliterator
       @staffing = nil
       @escalation_threshold = 0.6
       @suggestion_sink = nil
+      @allow_null_llm = false
     end
 
     def logger
