@@ -55,4 +55,34 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     expect(response).to redirect_to("/enliterator/suggestions")
     expect(Enliterator::Suggestion.pending.count).to eq(2)
   end
+
+  describe "the considerer (v0.8)" do
+    # Resolves via configuration.llm_adapter (gateway unconfigured in tests).
+    class ReqSlateStub
+      def model_id = "stub"
+      def decide(messages:, schema:, tool_name:, tags: [])
+        { "recommendations" => [
+          { "proposed_key" => "author",   "decision" => "map",     "map_to" => "authored_by", "rationale" => "synonym",     "confidence" => 0.95 },
+          { "proposed_key" => "keywords", "decision" => "approve", "rationale" => "new concept", "confidence" => 0.9 }
+        ] }
+      end
+    end
+    before { Enliterator.configure { |c| c.llm_adapter = ReqSlateStub.new } }
+
+    it "POST consider auto-applies the map and holds the approve for ratification" do
+      post "/enliterator/suggestions/consider"
+      expect(response).to redirect_to("/enliterator/suggestions")
+      expect(Enliterator::Suggestion.find_by(proposed_key: "author").status).to eq("mapped")
+      expect(Enliterator::ProposedTerm.find_by(proposed_key: "keywords").recommended_decision).to eq("approve")
+      follow_redirect!
+      expect(response.body).to include("Considered").and include("keywords")
+    end
+  end
+
+  it "ranks the pending queue by pressure" do
+    # bump author's pressure with a second proposal
+    Enliterator::Suggestion.create!(tendable: Widget.create!(title: "B", body: "y"), stream: "summary", proposed_key: "author", rationale: "again", status: "pending")
+    get "/enliterator/suggestions"
+    expect(response.body.index("author")).to be < response.body.index("keywords")
+  end
 end

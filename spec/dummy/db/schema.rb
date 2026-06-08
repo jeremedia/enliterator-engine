@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_08_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_08_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -426,6 +426,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_120000) do
     t.string "tendable_type", null: false
     t.datetime "updated_at", null: false
     t.index ["tendable_type", "tendable_id", "name"], name: "idx_enliterator_facets_on_tendable_and_name", unique: true
+  end
+
+  create_table "enliterator_proposed_terms", force: :cascade do |t|
+    t.jsonb "by_stream", default: {}, null: false
+    t.datetime "considered_at"
+    t.datetime "created_at", null: false
+    t.integer "distinct_records", default: 0, null: false
+    t.datetime "first_seen_at"
+    t.datetime "last_seen_at"
+    t.integer "pressure", default: 0, null: false
+    t.string "proposed_key", null: false
+    t.float "recommended_confidence"
+    t.string "recommended_decision"
+    t.string "recommended_map_to"
+    t.text "recommended_rationale"
+    t.integer "resurged_count", default: 0, null: false
+    t.jsonb "sample_example", default: {}
+    t.text "sample_rationale"
+    t.datetime "updated_at", null: false
+    t.index ["pressure"], name: "index_enliterator_proposed_terms_on_pressure"
+    t.index ["proposed_key"], name: "index_enliterator_proposed_terms_on_proposed_key", unique: true
   end
 
   create_table "enliterator_suggestions", force: :cascade do |t|

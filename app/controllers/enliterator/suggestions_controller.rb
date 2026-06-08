@@ -5,13 +5,22 @@ module Enliterator
   # existing key — record the canonical target), or REJECT. The ontology tends itself.
   class SuggestionsController < ApplicationController
     def index
-      @gaps         = Enliterator::Suggestion.gaps                 # pending, demand-ranked
-      @streams_for  = pending_streams_by_key                       # proposed_key => [streams]
-      @canonical    = canonical_keys                               # all existing contract keys (map targets)
-      @additions    = Enliterator::Suggestion.contract_additions   # {stream => [approved keys]}
-      @synonyms     = Enliterator::Suggestion.synonyms             # [{stream, proposed_key, mapped_to}]
+      Enliterator::ProposedTerm.refresh!                            # materialize pressure
+      @terms        = Enliterator::ProposedTerm.open.by_pressure    # pressure-ranked queue
+      @canonical    = canonical_keys                                # existing contract keys (map targets)
+      @additions    = Enliterator::Suggestion.contract_additions    # {stream => [approved keys]}
+      @synonyms     = Enliterator::Suggestion.synonyms              # [{stream, proposed_key, mapped_to}]
       @pending      = Enliterator::Suggestion.pending.count
       @resolved     = Enliterator::Suggestion.where.not(status: "pending").count
+    end
+
+    # Run the considerer over the whole open field — it auto-applies the safe
+    # verdicts (maps + confident rejects) and holds approves for ratification.
+    def consider
+      s = Enliterator::Considerer.new.consider!
+      redirect_to suggestions_path,
+        notice: "Considered #{s[:considered]}: auto-mapped #{s[:auto_mapped]}, auto-rejected #{s[:auto_rejected]}, " \
+                "#{s[:approves_recommended]} approval(s) recommended, #{s[:held]} held."
     end
 
     def verdict
@@ -38,11 +47,6 @@ module Enliterator
     end
 
     private
-
-    def pending_streams_by_key
-      Enliterator::Suggestion.pending.distinct.pluck(:proposed_key, :stream)
-        .group_by(&:first).transform_values { |pairs| pairs.map(&:last).compact.uniq.sort }
-    end
 
     # Every claim key that already exists in any stream's contract — the legal
     # targets a synonym can map onto.

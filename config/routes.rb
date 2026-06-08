@@ -12,6 +12,8 @@ Enliterator::Engine.routes.draw do
 
   # Suggestion review (v0.7): the governed-vocabulary queue. Verdicts
   # (approve / map / reject) act per proposed_key.
-  get  "suggestions",         to: "suggestions#index",   as: :suggestions
-  post "suggestions/verdict", to: "suggestions#verdict", as: :suggestions_verdict
+  get  "suggestions",          to: "suggestions#index",    as: :suggestions
+  post "suggestions/verdict",  to: "suggestions#verdict",  as: :suggestions_verdict
+  # v0.8: run the considerer over the whole open field (auto-apply safe verdicts).
+  post "suggestions/consider", to: "suggestions#consider", as: :suggestions_consider
 end

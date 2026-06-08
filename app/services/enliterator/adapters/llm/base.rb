@@ -106,6 +106,17 @@ module Enliterator
           raise NotImplementedError, "#{self.class} must implement #converse"
         end
 
+        # General forced-tool structured call (v0.8) — the considerer's substrate.
+        # Binds a single tool named +tool_name+ to the given JSON +schema+ and
+        # compels it, returning the parsed tool-call arguments as a Hash. Unlike
+        # #tend (whose schema is fixed to emit_claims) this takes an arbitrary
+        # schema, so any caller can get structured output.
+        #
+        # @return [Hash] the parsed arguments (shape == +schema+).
+        def decide(messages:, schema:, tool_name:, tags: [])
+          raise NotImplementedError, "#{self.class} must implement #decide"
+        end
+
         # The structured-output schema for a call. With no contract this is the
         # default RESPONSE_SCHEMA constant ITSELF (identity preserved, so the v0.2
         # adapter specs comparing against RESPONSE_SCHEMA stay green). With a

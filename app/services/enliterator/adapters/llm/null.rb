@@ -36,6 +36,12 @@ module Enliterator
           CANNED_REPLY.split(/(\s+)/).each { |tok| block.call(tok) } if stream && block
           CANNED_REPLY
         end
+
+        # Inert structured decision (v0.8): an empty result, so a considerer run
+        # with no gateway configured is a safe no-op (CI-friendly, never raises).
+        def decide(messages:, schema:, tool_name:, tags: [])
+          {}
+        end
       end
     end
   end

@@ -73,6 +73,16 @@ module Enliterator
     # "quality" — conversation wants capability. A host can pin it explicitly.
     attr_accessor :conversation_tier
 
+    # ---- v0.8 Considerer (the vocabulary tends itself) -------------------
+
+    # Tier the considerer agent reasons with (nil ⇒ ladder top, else "quality").
+    attr_accessor :considerer_tier
+    # Autonomy: :auto_safe (auto-apply maps/rejects, hold approves for ratification)
+    # or :recommend_only (hold everything as a recommendation).
+    attr_accessor :considerer_autonomy
+    # Min confidence for the considerer to AUTO-APPLY a map/reject (else held).
+    attr_accessor :considerer_min_confidence
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -100,6 +110,9 @@ module Enliterator
       @suggestion_sink = nil
       @allow_null_llm = false
       @conversation_tier = nil
+      @considerer_tier = nil
+      @considerer_autonomy = :auto_safe
+      @considerer_min_confidence = 0.75
     end
 
     def logger

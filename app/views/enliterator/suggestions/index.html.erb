@@ -1,26 +1,44 @@
 <h1>Vocabulary requests</h1>
 <p class="muted">
   When a stream's vocabulary can't express something, the model files a request instead of inventing a key.
-  Decide each: <strong>approve</strong> (a real gap — add it to the contract), <strong>map</strong>
-  (a synonym of an existing key), or <strong>reject</strong>.
+  The <strong>considerer</strong> reads the whole field, auto-applies the safe verdicts (synonym maps,
+  confident rejects), and leaves approvals — which change the contract — for you.
   <strong><%= @pending %></strong> pending · <%= @resolved %> resolved.
 </p>
 
-<% if @gaps.any? %>
-  <h2>Pending — <%= @gaps.size %> proposed key<%= "s" if @gaps.size != 1 %></h2>
+<div style="margin:1rem 0">
+  <%= button_to "Consider all requests →", suggestions_consider_path, class: "v-approve",
+        data: { turbo: false } %>
+  <span class="muted" style="font-size:.85rem">Runs the agent across all <%= @terms.size %> open key<%= "s" if @terms.size != 1 %>.</span>
+</div>
+
+<% if @terms.any? %>
+  <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure</h2>
   <div class="card">
     <table>
-      <tr><th>proposed key</th><th>records</th><th>from</th><th>rationale</th><th>verdict</th></tr>
-      <% @gaps.each do |g| %>
-        <% key = g[:proposed_key] %>
+      <tr><th>proposed key</th><th>pressure</th><th>from</th><th>rationale</th><th>considerer</th><th>verdict</th></tr>
+      <% @terms.each do |t| %>
+        <% key = t.proposed_key %>
         <tr>
-          <td><code><%= key %></code></td>
-          <td><%= g[:count] %></td>
-          <td class="samples"><%= (@streams_for[key] || []).join(", ") %></td>
+          <td>
+            <code><%= key %></code>
+            <% if t.resurged_count.to_i.positive? %><br><span class="warn" title="re-proposed after a verdict">⚠ resurged <%= t.resurged_count %></span><% end %>
+          </td>
+          <td><span class="big" style="font-size:1.1rem"><%= t.pressure %></span><br><span class="muted" style="font-size:.75rem"><%= t.distinct_records %> rec</span></td>
+          <td class="samples"><%= t.by_stream.keys.join(", ") %></td>
           <td class="samples">
-            <%= truncate(g[:sample_rationale].to_s, length: 130) %>
-            <% if g[:sample_example].present? %>
-              <br><em><%= truncate(g[:sample_example].is_a?(String) ? g[:sample_example] : g[:sample_example].to_json, length: 80) %></em>
+            <%= truncate(t.sample_rationale.to_s, length: 120) %>
+            <% if t.sample_example.present? %><br><em><%= truncate(t.sample_example.is_a?(String) ? t.sample_example : t.sample_example.to_json, length: 70) %></em><% end %>
+          </td>
+          <td class="samples">
+            <% if t.recommended_decision.present? %>
+              <span class="chip" style="background:var(--accent-soft); color:var(--accent)">
+                <%= t.recommended_decision %><%= " → #{t.recommended_map_to}" if t.recommended_map_to.present? %>
+                <%= "· #{(t.recommended_confidence.to_f * 100).round}%" if t.recommended_confidence %>
+              </span>
+              <br><%= truncate(t.recommended_rationale.to_s, length: 90) %>
+            <% else %>
+              <span class="muted">—</span>
             <% end %>
           </td>
           <td>
@@ -30,7 +48,7 @@
               <%= form_with url: suggestions_verdict_path, method: :post do |f| %>
                 <%= f.hidden_field :proposed_key, value: key %>
                 <%= f.hidden_field :decision, value: "map" %>
-                <%= f.select :mapped_to, @canonical, include_blank: "map onto…" %>
+                <%= f.select :mapped_to, @canonical, { selected: t.recommended_map_to, include_blank: "map onto…" } %>
                 <%= f.submit "Map" %>
               <% end %>
               <%= button_to "Reject", suggestions_verdict_path,

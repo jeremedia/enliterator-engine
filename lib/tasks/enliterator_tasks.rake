@@ -102,4 +102,19 @@ namespace :enliterator do
       log.call("   tokens:    in=#{tokens['input'].to_i} out=#{tokens['output'].to_i} total=#{tokens['total'].to_i}")
     end
   end
+
+  # Run the considerer over the open vocabulary requests: refresh pressure, ask the
+  # agent across the whole field, auto-apply the safe verdicts (maps + confident
+  # rejects), hold approves for ratification. Wire this AFTER enliterator:tend in
+  # the host scheduler so the vocabulary converges each cycle.
+  #
+  #   bin/rails enliterator:consider
+  desc "Consider open vocabulary requests (auto-apply safe verdicts; hold approves)."
+  task consider: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:consider] #{msg}") : puts(msg) }
+    s = Enliterator::Considerer.new.consider!
+    log.call("considered #{s[:considered]} — auto-mapped #{s[:auto_mapped]}, " \
+             "auto-rejected #{s[:auto_rejected]}, #{s[:approves_recommended]} approval(s) recommended, #{s[:held]} held")
+  end
 end

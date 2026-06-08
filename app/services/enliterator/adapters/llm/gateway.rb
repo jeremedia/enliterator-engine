@@ -143,6 +143,30 @@ module Enliterator
           end
         end
 
+        # General forced-tool structured call (v0.8). Forces +tool_name+ bound to
+        # +schema+ and returns the parsed arguments Hash. Reuses the tend tool
+        # plumbing with a caller-supplied schema.
+        def decide(messages:, schema:, tool_name:, tags: [])
+          params = {
+            model:    @tier,
+            messages: messages,
+            tools: [ { type: "function",
+                       function: { name: tool_name, description: "Return the structured decision.", parameters: schema } } ],
+            tool_choice: { type: "function", function: { name: tool_name } }
+          }
+          request_options = {}
+          request_options[:extra_body] = { metadata: { tags: Array(tags) } } if Array(tags).any?
+
+          response =
+            if request_options.empty?
+              client.chat.completions.create(**params)
+            else
+              client.chat.completions.create(**params, request_options: request_options)
+            end
+
+          parse_arguments(arguments_of(first_tool_call(response)))
+        end
+
         private
 
         # Incremental text from a streamed chat-completion chunk. Tolerates the gem's

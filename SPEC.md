@@ -702,3 +702,44 @@ a synonyms table. Layout gains a Requests nav link + flash; the status "Vocabula
 - Approve advisory (no contract mutation; emits the diff); Map records `mapped_to`; verdicts pending-scoped.
 - Specs green at 219 (was 207), ADDING: `requests/enliterator/suggestions_spec.rb` + the batch-verdict block in `models/enliterator/suggestion_spec.rb`.
 - README: `/enliterator/suggestions` in the "Mounting the UI" list.
+
+---
+
+# v0.8 — The Considerer (the vocabulary tends itself)
+
+178 proposed keys is more than a person can curate row-by-row, but cross-cutting synthesis over the
+whole field is what an LLM is good at. The considerer is the tending loop turned on the VOCABULARY:
+it reads every open proposed term together (with accumulated PRESSURE + resurgence), decides each —
+map onto an existing key, approve as new, or reject — then AUTO-APPLIES the reversible verdicts
+(maps + confident rejects) and HOLDS approves (a contract change) for human ratification.
+
+## 1. `Enliterator::ProposedTerm` (materialized pressure)
+Migration adds `enliterator_proposed_terms` (proposed_key unique, pressure, distinct_records, by_stream
+jsonb, resurged_count, first/last_seen, recommended_* + considered_at, sample_*). `refresh!` recomputes
+per-key aggregates from the Suggestion log (bulk `upsert_all` with `update_only:` so a stored
+recommendation survives). **pressure** = total proposals ever; **resurged_count** = pending proposals
+created after the key's most recent verdict. Scopes `open`/`by_pressure`/`resurged`. ADDITIVE — verdict
+authority + `contract_additions`/`synonyms` stay on `Suggestion`.
+
+## 2. Adapter `#decide` (general forced-tool structured call)
+`Base/Gateway/Null #decide(messages:, schema:, tool_name:, tags:)` — forces a caller-named tool bound to
+an arbitrary schema, returns the parsed args Hash (generalizes the `tend` plumbing). Null → `{}` (inert).
+
+## 3. `Enliterator::Considerer`
+`consider!` → `ProposedTerm.refresh!` → load `open.by_pressure` + canonical keys → `adapter.decide` with
+a recommendations schema → APPLY per autonomy (`:auto_safe`): auto-apply `map` (valid `map_to` ∈ canonical
++ confidence ≥ `min_confidence`) via `Suggestion.map_key!` and confident `reject` via `reject_key!`;
+HOLD `approve` (+ low-confidence) as a `ProposedTerm` recommendation. Returns a summary. Tier =
+`considerer_tier || ladder.last || "quality"`. Config: `considerer_tier`/`considerer_autonomy`/`considerer_min_confidence`.
+
+## 4. UI + rake
+`/enliterator/suggestions` now ranks by pressure, shows a ⚠ resurged badge + the considerer's held
+recommendation (pre-fills the Map target), and adds a "Consider all requests" button (`POST
+suggestions/consider`). Rake `enliterator:consider` (refresh + consider!) — wire after `enliterator:tend`.
+
+## Done = all of (this phase):
+- `ProposedTerm` migration + model (`refresh!`, pressure, resurged, scopes, recommendation fields).
+- `#decide` on Base/Gateway/Null; `Considerer` (auto-apply safe, hold approves); considerer config.
+- `suggestions/consider` route + controller action + pressure/resurged/recommendation UI + Consider button; `enliterator:consider` rake.
+- Specs green at 235 (was 219), ADDING: `models/enliterator/proposed_term_spec.rb`, `services/enliterator/considerer_spec.rb`, `services/enliterator/adapters/llm/decide_spec.rb`, + considerer/pressure cases in `requests/enliterator/suggestions_spec.rb`.
+- README: considerer note (`enliterator:consider` after `enliterator:tend`).
