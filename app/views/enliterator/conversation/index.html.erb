@@ -8,6 +8,14 @@
 
 <div id="thread" class="thread"></div>
 
+<div class="prompts" id="prompts">
+  <span class="label">Try asking:</span>
+  <button type="button" class="prompt">What's interesting about this collection?</button>
+  <button type="button" class="prompt">What does this collection know about itself?</button>
+  <button type="button" class="prompt">What are the strongest recurring themes, and which records anchor them?</button>
+  <button type="button" class="prompt">Where is this collection's knowledge thin or uneven?</button>
+</div>
+
 <form id="ask" class="ask">
   <textarea id="q" placeholder="e.g. What does this collection know about itself? Which records connect to X?" rows="2"></textarea>
   <button id="send" type="submit">Send</button>
@@ -109,7 +117,19 @@
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var q = (input.value || "").trim();
+    submitQuestion((input.value || "").trim());
+  });
+
+  // Click-to-populate starter prompts: fill the box (so the user sees it), then send.
+  document.querySelectorAll("#prompts button.prompt").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (send.disabled) return;            // a stream is in flight
+      input.value = b.textContent.trim();   // populate
+      submitQuestion(input.value);          // then send
+    });
+  });
+
+  function submitQuestion(q) {
     if (!q) return;
     userBubble(q);
     var els = assistantBubble();
@@ -148,6 +168,6 @@
         els.md.innerHTML = mdToHtml(state.text + "\n\n_[connection error]_");
         send.disabled = false;
       });
-  });
+  }
 })();
 </script>
