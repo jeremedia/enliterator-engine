@@ -11,6 +11,12 @@ module Enliterator
 
     scope :pending, -> { where(status: "pending") }
 
+    # Proposed keys with ANY verdict (mapped/approved/rejected). v0.9 tending
+    # suppresses re-proposals of these so the queue converges. Set of strings.
+    def self.resolved_keys
+      where.not(status: "pending").distinct.pluck(:proposed_key).to_set
+    end
+
     # Aggregate open proposals into a ranked gap report: which keys are being asked
     # for most often, across how many distinct records, with a sample for context.
     # Scoped to pending; optionally narrowed to one stream. Ranked by demand desc.

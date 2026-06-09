@@ -12,6 +12,8 @@ module Enliterator
       @synonyms     = Enliterator::Suggestion.synonyms              # [{stream, proposed_key, mapped_to}]
       @pending      = Enliterator::Suggestion.pending.count
       @resolved     = Enliterator::Suggestion.where.not(status: "pending").count
+      @reproposed   = reproposed_terms                             # v0.9: model re-asked after a verdict
+      @verdicts     = verdicts_for(@reproposed)                    # {proposed_key => {status:, mapped_to:}}
     end
 
     # Run the considerer over the whole open field — it auto-applies the safe
@@ -48,11 +50,27 @@ module Enliterator
 
     private
 
-    # Every claim key that already exists in any stream's contract — the legal
-    # targets a synonym can map onto.
+    # Every claim key in any stream's EFFECTIVE contract (code + approved) — the
+    # legal targets a synonym can map onto.
     def canonical_keys
-      policy = Enliterator.staffing
-      policy.assignments.keys.flat_map { |s| (policy.keys_for(s) || {}).keys }.uniq.sort
+      Enliterator.staffing.assignments.keys
+        .flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }.uniq.sort
+    end
+
+    # Terms the model has re-proposed AFTER a curator's verdict — the suppressed
+    # re-files (post_verdict_attempts), ranked by how insistent the model is. This is
+    # the "model overruling the curator" signal: the place to reconsider a verdict.
+    def reproposed_terms
+      Enliterator::ProposedTerm.where("post_verdict_attempts > 0").order(post_verdict_attempts: :desc)
+    end
+
+    # Most-recent verdict per re-proposed key (the thing the model is pushing back on).
+    def verdicts_for(terms)
+      keys = terms.map(&:proposed_key)
+      return {} if keys.empty?
+      Enliterator::Suggestion.where.not(status: "pending").where(proposed_key: keys)
+        .order(:updated_at) # last write per key wins → newest verdict
+        .each_with_object({}) { |s, h| h[s.proposed_key] = { status: s.status, mapped_to: s.mapped_to } }
     end
   end
 end

@@ -76,13 +76,15 @@ mount Enliterator::Engine => "/enliterator"
   token-by-token, grounded in a collection self-portrait plus the records retrieved per
   question, with source chips linking back to the status browser.
 - `/enliterator/suggestions` — the governed-vocabulary review queue: when the model proposes a
-  claim key a stream's contract doesn't cover, a curator approves it (the view surfaces the exact
-  `keys:` diff to add), maps it onto an existing key (a synonym), or rejects it. The ontology tends
-  itself. The queue ranks by accumulated **pressure** and flags **resurged** keys (re-proposed after
-  a verdict). The **"Consider all requests"** button (or `bin/rails enliterator:consider`) runs the
-  considerer agent — it reads the whole field, auto-applies the safe verdicts (synonym maps, confident
-  rejects), and leaves approvals for you. Wire `enliterator:consider` after `enliterator:tend` in your
-  scheduler so the vocabulary converges each cycle.
+  claim key a stream's contract doesn't cover, a curator approves it, maps it onto an existing key
+  (a synonym), or rejects it. The ontology tends itself. The queue ranks by accumulated **pressure**
+  and flags **resurged** keys (re-proposed after a verdict). The **"Consider all requests"** button
+  (or `bin/rails enliterator:consider`) runs the considerer agent — it reads the whole field,
+  auto-applies the safe verdicts (synonym maps, confident rejects), and leaves approvals for you.
+  In **v0.9** the loop *converges* (see below): an approved key goes **live** in the effective
+  contract immediately (the diff lets you codify it permanently), and a re-proposal of an
+  already-resolved key is **suppressed** — counted under "Re-proposed after a verdict" rather than
+  re-flooding the queue. Wire `enliterator:consider` after `enliterator:tend` in your scheduler.
 
 The UI is self-contained (inline CSS/JS, no asset-build step) and renders under any host
 pipeline. The conversation tier defaults to the staffing ladder's top tier; pin it with
@@ -360,6 +362,26 @@ host-asserted claim survives all subsequent tending untouched.
 A stream declared with `assign` (or never declared) is unconstrained: open keys,
 no suggestions emphasis, default `RESPONSE_SCHEMA` — byte-identical to v0.2. The
 injected-`llm:` (v0.1) path threads no contract at all.
+
+**The converging cycle (v0.9).** Earlier, a verdict didn't change what the model
+saw, so the next tend re-proposed the same synonyms and the queue never settled.
+v0.9 makes the loop reach a fixed point:
+
+1. **`enliterator:tend`** walks records; the model proposes keys the contract misses.
+2. **`enliterator:consider`** reads the whole field and renders verdicts — auto-mapping
+   synonyms and rejecting noise, holding genuine new concepts for your approval.
+3. The **next `enliterator:tend`** sees the *effective* contract — `Enliterator::Contract.for(stream)`
+   = code keys **+ approved keys** — so an approved key is emitted as a **claim**, not re-proposed;
+   and a re-proposal of an already-mapped/rejected key is **suppressed** (counted under "Re-proposed
+   after a verdict", not re-filed).
+
+Each lap the open field shrinks toward the genuinely contested terms instead of
+re-presenting the whole backlog. The effective contract is *derived from explicit
+approval verdicts* (auditable; code keys always win a name conflict), and the
+"Approved & live — codify in your policy" diff lets you fold any live key back into
+the versioned policy permanently — after which the DB derivation for it is redundant.
+Disable the live-extension behavior with `config.apply_approved_keys = false` (then
+only code-defined keys are ever in force).
 
 ## Architecture notes
 
