@@ -28,11 +28,17 @@ module Enliterator
       # should invalidate cached interpretation. Stamped onto every Visit.
       PROMPT_VERSION = "v0.1".freeze
 
-      attr_reader :tendable, :facet, :embedder
+      attr_reader :tendable, :facet, :context, :embedder
 
-      def initialize(tendable, facet:, llm: nil, embedder: Enliterator.embedder)
+      def initialize(tendable, facet:, context: nil, llm: nil, embedder: Enliterator.embedder)
         @tendable     = tendable
         @facet       = facet.to_s
+        # v0.13: the collection context this pass tends WITHIN (an
+        # Enliterator::Context or nil = root). Scopes the vocabulary, the claim
+        # reconcile, neighbor retrieval, and suggestion governance. Path lookups
+        # are memoized — this is the per-tend hot path.
+        @context      = context
+        @path_keys    = context&.path_keys
         @injected_llm = llm           # non-nil => v0.1 back-compat path
         @embedder     = embedder
       end
@@ -64,6 +70,7 @@ module Enliterator
         started = Time.current
         visit = tendable.enliterator_visits.create!(
           facet:         facet,
+          context:        context,
           status:         "running",
           model:          adapter.model_id,
           tier:           adapter.model_id,
@@ -73,7 +80,7 @@ module Enliterator
         )
 
         begin
-          state     = tendable.literacy_state(facet: facet)
+          state     = tendable.literacy_state(facet: facet, context: context)
           neighbors = nearest_neighbors(tendable, limit: 5)
 
           response = adapter.tend(
@@ -108,20 +115,20 @@ module Enliterator
 
       def call_with_staffing
         policy  = Enliterator.staffing
-        allowed = policy.allowed_tiers(tendable, facet)
+        allowed = policy.allowed_tiers(tendable, facet, path: @path_keys)
 
-        # v0.3 output contract for this facet (the controlled key vocabulary), or
+        # v0.3 output contract for this facet (the controlled vocabulary), or
         # nil when the facet is unconstrained (declared via #assign / not at all).
-        # nil ⇒ open keys + no suggestions ⇒ byte-identical to v0.2.
-        # v0.9: the EFFECTIVE contract — code keys + any curator-approved keys — so
-        # an approved key is emitted as a claim, not re-proposed. == terms_for when
-        # nothing is approved.
-        contract = Enliterator::Vocabulary.for(facet)
+        # nil ⇒ open terms + no suggestions ⇒ byte-identical to v0.2.
+        # v0.9: the EFFECTIVE contract — code terms + any curator-approved terms — so
+        # an approved term is emitted as a claim, not re-proposed. == terms_for when
+        # nothing is approved. v0.13: resolved within the tending context.
+        contract = Enliterator::Vocabulary.for(facet, context: context)
 
-        # v0.5: keys this facet MUST yield a non-blank claim for (subset of contract),
-        # or nil. An unmet required key forces escalation regardless of confidence and
+        # v0.5: terms this facet MUST yield a non-blank claim for (subset of contract),
+        # or nil. An unmet required term forces escalation regardless of confidence and
         # bars `verified` at the top tier. nil ⇒ byte-identical to v0.3/v0.4.
-        required = policy.required_terms(facet)
+        required = policy.required_terms(facet, path: @path_keys)
 
         # No tier may legally run this record (e.g. on-prem-only with no on-prem
         # ladder). Record a failed visit and surface the misconfiguration.
@@ -131,7 +138,7 @@ module Enliterator
                 "on facet #{facet.inspect} (allowed ladder is empty after constraints)."
         end
 
-        start_tier = clamp_start_tier(policy.tier_for(facet), allowed)
+        start_tier = clamp_start_tier(policy.tier_for(facet, path: @path_keys), allowed)
         # The remaining climb available to this record, in ladder order.
         climb      = ladder_climb(start_tier, allowed)
 
@@ -273,9 +280,21 @@ module Enliterator
         own = tendable.enliterator_embeddings.find_by(kind: "primary")
         return [] if own.nil? || own.embedding.nil?
 
+        pool = Enliterator::Embedding.where(kind: "primary")
+        # v0.13 (rule 3): within a context, neighbors are fellow MEMBERS — an EO
+        # reads against other EOs, not the undifferentiated corpus. The context
+        # IS the neighborhood. Root/nil keeps corpus-wide retrieval (v0.12 path).
+        if context
+          membership = Enliterator::ContextMembership
+                         .where(context_id: context.id)
+                         .where("enliterator_context_memberships.member_type = enliterator_embeddings.embeddable_type")
+                         .where("enliterator_context_memberships.member_id = enliterator_embeddings.embeddable_id")
+          pool = pool.where(membership.arel.exists)
+        end
+
         # Fetch one extra so we can drop self without falling short.
-        Enliterator::Embedding
-          .nearest_to(own.embedding, kind: "primary", limit: limit + 1)
+        pool.nearest_neighbors(:embedding, own.embedding, distance: "cosine")
+          .first(limit + 1)
           .reject { |e| e.id == own.id }
           .first(limit)
           .map(&:embeddable)
@@ -298,6 +317,7 @@ module Enliterator
 
         visit = tendable.enliterator_visits.create!(
           facet:           facet,
+          context:          context,
           status:           "running",
           model:            adapter.model_id,
           tier:             tier.to_s,
@@ -309,7 +329,7 @@ module Enliterator
         )
 
         begin
-          state = tendable.literacy_state(facet: facet)
+          state = tendable.literacy_state(facet: facet, context: context)
           # Senior REVIEWS junior: hand the lower tier's draft claims up so the
           # prompt presents them explicitly (Base#build_user pulls this key out).
           state = state.merge("proposed_by_lower_tier" => proposed_by_lower) if proposed_by_lower
@@ -411,7 +431,9 @@ module Enliterator
         # v0.9 convergence: a key the curator already mapped/approved/rejected must
         # NOT re-file (the queue would re-litigate forever). Suppress it and bump the
         # term's post_verdict_attempts so "the model keeps wanting this" stays visible.
-        resolved = Enliterator::Suggestion.resolved_keys
+        # v0.13 (rule 4): verdicts visible FROM this context — own + ancestors + root.
+        # A sibling context's verdict never suppresses here.
+        resolved = Enliterator::Suggestion.resolved_keys(context: context)
 
         Array(suggestions).each do |raw|
           next unless raw.respond_to?(:[])
@@ -427,6 +449,7 @@ module Enliterator
           attrs = {
             tendable:     tendable,
             facet:       facet,
+            context:      context,
             proposed_key: proposed_key,
             rationale:    raw["rationale"] || raw[:rationale],
             tier:         tier.to_s,
@@ -681,25 +704,31 @@ module Enliterator
         existing ? "UPDATE" : "ADD"
       end
 
+      # The live claim a proposed claim reconciles AGAINST — scoped to the tending
+      # context (v0.13, fork A's chokepoint). The same key in a sibling or ancestor
+      # context is a DIFFERENT claim: reconcile never crosses contexts; ancestors
+      # are read-only context in literacy_state, never supersession targets.
+      # context nil ⇒ NULL scope = root = the entire pre-v0.13 universe.
       def live_claim_for(key)
-        tendable.enliterator_claims.live.find_by(key: key)
+        tendable.enliterator_claims.live.find_by(key: key, context_id: context&.id)
       end
 
       # The prior AUTHORITATIVE visits this pass read for context (same facet, the
-      # 5 most recent applied visits preceding this one — matching literacy_state).
+      # 5 most recent applied visits preceding this one — matching literacy_state,
+      # including its v0.13 context scoping).
       def prior_visit_ids(visit)
-        tendable.enliterator_visits
+        scope = tendable.enliterator_visits
           .applied
           .where(facet: facet)
           .where.not(id: visit.id)
-          .order(created_at: :desc)
-          .limit(5)
-          .pluck(:id)
+        scope = scope.where(context_id: context.scope_ids) if context
+        scope.order(created_at: :desc).limit(5).pluck(:id)
       end
 
       def create_claim(key:, value:, confidence:, visit:, attributed_to:, tier:, status: "draft", derived_from: [])
         tendable.enliterator_claims.create!(
           key:           key,
+          context:       context,    # v0.13: write-down — claims land in the tending context
           value:         value,
           confidence:    confidence,
           status:        status,

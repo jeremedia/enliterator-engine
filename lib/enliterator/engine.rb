@@ -1,4 +1,5 @@
 require "neighbor"
+require "ancestry"
 
 module Enliterator
   class Engine < ::Rails::Engine

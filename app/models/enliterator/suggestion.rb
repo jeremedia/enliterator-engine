@@ -6,15 +6,23 @@ module Enliterator
   class Suggestion < ApplicationRecord
     belongs_to :tendable, polymorphic: true
     belongs_to :visit, class_name: "Enliterator::Visit", optional: true
+    # v0.13: the context the proposal arose in. NULL = root (root rule). Verdicts
+    # WRITE to their own context; suppression/approvals READ up the path — so a
+    # root verdict inherits down, but a sibling context's verdict never leaks over.
+    belongs_to :context, class_name: "Enliterator::Context", optional: true
 
     STATUSES = %w[pending approved mapped rejected].freeze
 
     scope :pending, -> { where(status: "pending") }
 
-    # Proposed keys with ANY verdict (mapped/approved/rejected). v0.9 tending
-    # suppresses re-proposals of these so the queue converges. Set of strings.
-    def self.resolved_keys
-      where.not(status: "pending").distinct.pluck(:proposed_key).to_set
+    # Proposed keys with ANY verdict (mapped/approved/rejected) VISIBLE from a
+    # context — its own + every ancestor's + root (read-up, rule 4). v0.9 tending
+    # suppresses re-proposals of these so the queue converges. `context: nil` ⇒
+    # the root scope (NULL rows only — exactly the pre-v0.13 universe). Set of strings.
+    def self.resolved_keys(context: nil)
+      where.not(status: "pending")
+        .where(context_id: context ? context.scope_ids : nil)
+        .distinct.pluck(:proposed_key).to_set
     end
 
     # Aggregate open proposals into a ranked gap report: which keys are being asked
@@ -39,22 +47,28 @@ module Enliterator
       }.sort_by { |g| -g[:count] }
     end
 
-    # ---- batch verdicts (v0.7) -------------------------------------------
+    # ---- batch verdicts (v0.7; context-scoped v0.13) ----------------------
     # The curatorial decision is about the VOCABULARY TERM, not each row — so
-    # verdicts apply to every PENDING suggestion for a proposed_key at once. Scoped
-    # to pending so a re-verdict never clobbers an already-decided row (idempotent).
-    # Each returns the number of rows affected.
+    # verdicts apply to every PENDING suggestion for a proposed_key at once,
+    # WITHIN ONE CONTEXT (write-down, rule 4): a verdict in crs-reports never
+    # resolves the same pending key in executive-orders. `context: nil` = root —
+    # the entire pre-v0.13 universe, so existing callers behave identically.
+    # Scoped to pending so a re-verdict never clobbers an already-decided row
+    # (idempotent). Each returns the number of rows affected.
 
-    def self.approve_key!(key, note: nil)
-      pending.where(proposed_key: key).update_all(status: "approved", review_note: note, updated_at: Time.current)
+    def self.approve_key!(key, note: nil, context: nil)
+      pending.where(proposed_key: key, context_id: context&.id)
+             .update_all(status: "approved", review_note: note, updated_at: Time.current)
     end
 
-    def self.map_key!(key, to:, note: nil)
-      pending.where(proposed_key: key).update_all(status: "mapped", mapped_to: to, review_note: note, updated_at: Time.current)
+    def self.map_key!(key, to:, note: nil, context: nil)
+      pending.where(proposed_key: key, context_id: context&.id)
+             .update_all(status: "mapped", mapped_to: to, review_note: note, updated_at: Time.current)
     end
 
-    def self.reject_key!(key, note: nil)
-      pending.where(proposed_key: key).update_all(status: "rejected", review_note: note, updated_at: Time.current)
+    def self.reject_key!(key, note: nil, context: nil)
+      pending.where(proposed_key: key, context_id: context&.id)
+             .update_all(status: "rejected", review_note: note, updated_at: Time.current)
     end
 
     # Approved keys grouped by the facet that proposed them — the exact additions a

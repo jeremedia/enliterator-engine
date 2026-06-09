@@ -4,6 +4,8 @@ module Enliterator
   # The accumulation of Visits is what makes understanding compound (rung 5).
   class Visit < ApplicationRecord
     belongs_to :tendable, polymorphic: true
+    # v0.13: the context this pass tended within. NULL = the root scope (root rule).
+    belongs_to :context, class_name: "Enliterator::Context", optional: true
     has_many :claims, class_name: "Enliterator::Claim", foreign_key: :visit_id, dependent: :nullify, inverse_of: :visit
 
     # Escalation chain (v0.2 staffing): a senior visit points back to the junior
