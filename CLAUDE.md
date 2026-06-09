@@ -86,14 +86,15 @@ claims reconciled against live claims (the chokepoint is `live_claim_for`) → o
 observations become `Suggestion`s → pressure accumulates in `ProposedTerm` → the `Considerer`
 auto-applies safe verdicts, holds approvals → approved terms go **live** in the effective
 vocabulary and re-proposals of resolved terms are **suppressed** (the loop converges).
-Surfaces: Status (finding aid) · Chat (reference interview, SSE) · Requests (authority control) ·
-About · Settings. v0.13 (in plan) adds nested **Contexts**: ancestry tree, context-scoped
-claims/visits, per-context facets, membership-scoped neighbors — rule: NULL context IS root.
+Surfaces: Status (finding aid) · Chat (reference interview, SSE; scope banner shows the active
+context) · Requests (authority control) · Contexts (the tree) · Heartbeat (trigger + watch a
+cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, released through **v0.14**; **v0.15 built
-  locally** (the heartbeat — push gated on Jeremy's word).
+- Remote: github.com/jeremedia/enliterator-engine, released through **v0.14**; **v0.15 (the
+  heartbeat) + v0.16 (the pulse monitor page + chat scope banner) built locally** — push gated
+  on Jeremy's word.
 - HSDL dev: the federation is seated as a context tree (chds-theses 1,327 / crs-reports 35,020 /
   executive-orders 1,026 / election-security 82); divergence validated (EO supersession graph,
   CRS issue_for_congress); the `keywords` term ratified live as the convergence proof. HSDL-side
@@ -110,9 +111,16 @@ claims/visits, per-context facets, membership-scoped neighbors — rule: NULL co
   also `last_tended_at(context: nil)` is UNFILTERED, not root-scoped — a named trap). Neighborhood
   is context-lanes-only, suppressed while the lane's frontier is non-empty, cooled down per record.
   Status preview is adoption-gated (no ledger rows ⇒ byte-identical page).
-- **NEXT**: HSDL supervised first cycles (PLAN=1, then small sync beats watched) → host launchd
-  adoption on Jeremy's word; vocabulary trigger is UNMEASURED (v0.14 tested neighbor-change only)
-  — watch its first real wave via trajectory.
+- **v0.16 — the pulse monitor** (SPEC.md v0.16): `/heartbeat` page — plan + Beat-now trigger
+  (budget clamped to config; `Heartbeat.open!` holds a pg advisory lock around check→plan→create
+  so two tabs can't double-spend) + a live monitor polling `/heartbeat/pulse/:id` (items-based
+  progress from distinct visit tuples, visit ticker, stall banner with force-form, resilient
+  poll loop). Execution = `execute_async!` (named thread under executor.wrap, NOT ActiveJob —
+  dead worker = silent no-op; accepted: dev reload waits while a cycle runs). Also: the chat
+  scope banner (the context cookie was invisible on /chat — Jeremy hit it as a user).
+- **NEXT**: first cycles supervised from the page → host launchd adoption on Jeremy's word;
+  vocabulary trigger is UNMEASURED (v0.14 tested neighbor-change only) — watch its first real
+  wave via trajectory.
 - Known open gaps: no claim-accuracy golden set (cheap-tier conf=1.0 unexamined); `/enliterator`
   mount is auth-less (dev only — wrap in CHDS Pulse auth before staging); considerer LLM tokens
   have no usage surface (ledger records outcomes only). Trajectory caveat: clean A/B isolation

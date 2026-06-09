@@ -1094,3 +1094,58 @@ NOT IN id-array); per-lane quotas + one redistribution pass + a tiny-budget gree
 - Supervised first cycles on HSDL (PLAN=1 read, then a small sync beat watched live) before any
   host scheduling — automation is adopted by the host only after the cycles earn trust.
 - README (heartbeat), About living-doc ("the pulse" + colophon v0.15), CLAUDE.md current-state.
+
+# v0.16 — The Pulse Monitor (trigger + watch a heartbeat in the browser)
+
+Before anything time-based is wired, the heartbeat gets a face: a page that triggers one cycle
+and shows it live. The demo surface (press the button, watch the collection learn) and the
+supervised on-ramp to host scheduling. Everything the monitor renders derives from provenance
+that already exists — the open ledger row plus the visits it stamps as they happen. **No new
+state, no migrations, no websockets** — a 2s poll.
+
+## 1. Model: the trigger seams
+- `Heartbeat.open!(mode:, budget:, force:)` extracts beat!'s synchronous half (validate →
+  **advisory lock** → overlap check → plan → row create) and returns `[row, plan]`; `beat!` is
+  recomposed on top, byte-identical. The check→plan→create sequence holds
+  `pg_advisory_xact_lock(hashtext('enliterator_heartbeat'))`: two concurrent triggers (two
+  browser tabs, a button + a rake) would otherwise both pass the unfinished-row check during the
+  seconds the plan scan takes and BOTH open cycles — doubled spend, the exact failure the
+  instrument exists to prevent. Engine is Postgres-only; the lock needs no migration.
+- `row.execute_async!(plan, skip_consider:)` runs `execute!` on a named background thread under
+  `Rails.application.executor.wrap` and **returns the Thread**. Deliberately NOT ActiveJob: a
+  dead worker would make the button a silent no-op; the thread works in every host. The outer
+  rescue covers the one path execute!'s own handling misses (finalize! itself failing): log +
+  best-effort `update_columns(finished_at:, error:)` — an open row can never stop moving
+  unexplained.
+
+## 2. The page (`/heartbeat`, nav link added)
+- **Plan + trigger mode**: reason chips, per-lane work table, est vs budget, the horizon line,
+  planner notes; budget input (server-side clamp: blank/0 → config default; anything larger
+  clamps DOWN to it); Beat now disables to "planning…" (the POST holds the plan scan).
+- **Monitor mode** (predicate = the lock's: unfinished AND < 6h — an OLDER open row is crash
+  evidence in the recent table, never a monitor trap): progress bar by **items** (distinct
+  record+facet+context tuples; escalation pairs and failed visits don't inflate; the budget is a
+  cap, not a target, so tokens are adjacent text), per-reason fill chips, a live visit ticker,
+  "running considerer…" when items complete but the cycle hasn't closed, a stall banner with an
+  inline force-form after 5 quiet minutes, a poll loop that survives server restarts. The finish
+  (or abort) renders INLINE before the reload.
+- **Global, explicitly**: the heartbeat works every context in one budget; the page says so —
+  the nav's context selector scopes Chat/Status/Settings/Requests, never this surface.
+- `GET /heartbeat/pulse/:id` — by row id, never "latest" (a forced second cycle must not switch
+  the subject under a watching monitor). Finished payload carries executed/warnings/considerer.
+
+## Accepted limitations (named)
+- **Dev code-reload waits while a cycle runs** (the thread holds the executor's running share
+  for the cycle's minutes) and the thread holds one AR pool connection. Acceptable for the
+  supervised/demo surface; production pacing belongs to the host scheduler + ENQUEUE.
+- A server restart kills the in-process cycle; the row stays open as crash evidence, the
+  monitor's stall banner says so, and force starts the next cycle. This is the designed
+  recovery story, surfaced where it happens.
+- Mid-cycle `warnings` live in memory until finalize — the pulse only carries them on finish.
+
+## Done = all of (this phase):
+- open!/execute_async! + controller + page + nav. 19 new examples (open/async 6, page 10,
+  chat-scope 3); **360 green**. (Rides with: the chat scope banner — the context cookie was
+  invisible on /chat; found by Jeremy as a user.)
+- Live on HSDL: a browser-triggered cycle watched end-to-end; second-tab overlap refusal.
+- README (surfaces), About (surfaces grid + the pulse can be pressed), CLAUDE.md current-state.
