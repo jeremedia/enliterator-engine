@@ -100,13 +100,36 @@
     <tr><th style="width:34%">setting</th><th>value</th></tr>
     <tr><td>Models tended</td><td class="mono"><%= @models.any? ? @models.join(", ") : "none yet" %></td></tr>
     <tr><td>Default tending facets</td><td class="mono"><%= Array(@config.tending_facets).join(", ") %></td></tr>
-    <tr><td>Stale after</td><td><%= @config.stale_after.inspect %> <span class="muted">— a record older than this is eligible for re-tending</span></td></tr>
+    <tr><td>Stale after</td><td><%= @config.stale_after.inspect %> <span class="muted">— the heartbeat's safety-net sweep (v0.15: change events, not age, drive re-tending)</span></td></tr>
     <tr><td>Scheduled-walk batch</td><td><%= @config.tend_batch_size %> records / run</td></tr>
     <tr><td>Job queue</td><td class="mono"><%= @config.queue_name %></td></tr>
     <tr><td>Suggestion sink</td><td><%= @config.suggestion_sink ? "configured (proposals forwarded)" : "local only" %></td></tr>
     <tr><td>Null-LLM guard</td><td>
       <% if @config.allow_null_llm %><span class="warn">permitted</span> <span class="muted">— a real tend may resolve to the inert Null adapter (tests only)</span>
       <% else %><span class="chip tier">enforced</span> <span class="muted">— a real tend resolving to Null raises instead of writing a phantom visit</span><% end %></td></tr>
+  </table>
+</div>
+
+<h2>Heartbeat <span class="muted" style="font-weight:400">— the event-driven tending cycle (v0.15)</span></h2>
+<div class="card">
+  <table>
+    <tr><th style="width:34%">setting</th><th>value</th></tr>
+    <tr><td>Per-cycle token budget</td><td><strong><%= number_with_delimiter(@config.heartbeat_budget_tokens) %></strong> <span class="muted">— enforced on ACTUAL tokens in sync mode; the cycle cannot exceed its appropriation</span></td></tr>
+    <tr><td>Change share</td><td><%= (@config.heartbeat_change_share.to_f * 100).round %>% <span class="muted">— reserved for change-triggered re-tends (source change → neighborhood → vocabulary); the rest, plus anything unused, goes to the untended frontier</span></td></tr>
+    <tr><td>Neighborhood threshold</td><td><%= @config.heartbeat_neighbor_threshold %> <span class="muted">— context-mates tended since a record's last visit before it re-reads (the v0.14 measured signal)</span></td></tr>
+    <tr><td>Source-change test</td><td>
+      <% if @config.heartbeat_source_changed %><span class="chip tier">host-supplied</span> <span class="muted">— the host decides when a record's text has really changed</span>
+      <% else %><span class="chip">default</span> <span class="muted">— record updated_at vs the last visit's start (approximate; override with <code>heartbeat_source_changed</code>)</span><% end %></td></tr>
+    <tr><td>Last cycle</td><td>
+      <% if @last_heartbeat %>
+        #<%= @last_heartbeat.id %> · <%= @last_heartbeat.mode %> · <%= @last_heartbeat.started_at.strftime("%Y-%m-%d %H:%M") %>
+        <% if @last_heartbeat.finished? %>
+          <% if @last_heartbeat.error %><span class="warn">aborted — <%= @last_heartbeat.error %></span>
+          <% else %><span class="muted">— planned <%= @last_heartbeat.planned_count %><% if @last_heartbeat.tokens_spent["total"] %>, spent <%= number_with_delimiter(@last_heartbeat.tokens_spent["total"]) %> tokens<% end %></span><% end %>
+        <% else %><span class="warn">still open<%= " — likely crashed" if @last_heartbeat.started_at < 6.hours.ago %></span><% end %>
+      <% else %>
+        <span class="muted">never run — tending is hand-cranked until the host schedules <code>enliterator:heartbeat</code></span>
+      <% end %></td></tr>
   </table>
 </div>
 

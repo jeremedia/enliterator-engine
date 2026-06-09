@@ -81,4 +81,26 @@ RSpec.describe "Enliterator status browser", type: :request do
       expect(response.body).to include('style="background:var(--accent-soft)"')   # the changed cell
     end
   end
+  describe "Heartbeat preview (v0.15 — adoption-gated)" do
+    it "is ABSENT until a cycle has ever run (byte-identical page, no planner queries)" do
+      get "/enliterator/status"
+      expect(response.body).not_to include("Heartbeat")
+    end
+
+    it "renders the next-cycle counts, horizon, and the last cycle once adopted" do
+      Enliterator::Heartbeat.create!(
+        started_at: 1.day.ago, finished_at: 1.day.ago + 10.minutes, mode: "sync",
+        budget_tokens: 30_000, executed: { "frontier" => { "succeeded" => 4, "failed" => 0, "skipped" => 0, "enqueued" => 0 } },
+        tokens_spent: { "input" => 200, "output" => 200, "total" => 400 }
+      )
+      Widget.create!(title: "untended", body: "b")   # something on the frontier
+
+      get "/enliterator/status"
+      expect(response.body).to include("Heartbeat")
+        .and include("next cycle:")
+        .and include("frontier:")          # the horizon line
+        .and include("last cycle:")
+        .and include("400 tokens")
+    end
+  end
 end

@@ -6,6 +6,12 @@ module Enliterator
       # v0.13: the portrait of the SELECTED context (root = the whole collection).
       @synopsis = Enliterator::Synopsis.build(since: params[:since].presence, context: current_context)
       @children = current_context ? current_context.children.order(:name) : Enliterator::Context.roots.order(:name)
+
+      # v0.15: the next-cycle preview — GATED behind adoption (any ledger row).
+      # The planner's count queries must not slow a host's Status page that has
+      # never run a heartbeat: absent, the page is byte-identical to v0.14.
+      @last_heartbeat = Enliterator::Heartbeat.order(:started_at).last
+      @heartbeat_plan = @last_heartbeat ? Enliterator::Heartbeat.plan : nil
     end
 
     def show
