@@ -51,4 +51,34 @@ RSpec.describe "Enliterator status browser", type: :request do
     get "/enliterator/status/String/1"
     expect(response).to have_http_status(:not_found)
   end
+
+  describe "Understanding over time (v0.14 trajectory surface)" do
+    it "is ABSENT with a single applied visit per facet" do
+      get "/enliterator/status/Widget/#{widget.id}"
+      expect(response.body).not_to include("Understanding over time")
+    end
+
+    it "renders the timeline with a highlighted changed cell once a facet has 2 applied visits" do
+      t1, t2 = 2.hours.ago, 1.hour.ago
+      v1 = widget.enliterator_visits.create!(facet: "summary", status: "succeeded", applied: true,
+                                             tier: "cheap", confidence: 0.8,
+                                             reconciliation: { "added" => [ "summary" ], "updated" => [], "deleted" => [], "noop" => [] },
+                                             created_at: t1, updated_at: t1)
+      old = widget.enliterator_claims.create!(key: "summary", value: "shallow first take",
+                                              visit: v1, status: "draft", created_at: t1, updated_at: t1)
+      v2 = widget.enliterator_visits.create!(facet: "summary", status: "succeeded", applied: true,
+                                             tier: "cheap", confidence: 0.92,
+                                             reconciliation: { "added" => [], "updated" => [ "summary" ], "deleted" => [], "noop" => [] },
+                                             created_at: t2, updated_at: t2)
+      fresh = widget.enliterator_claims.create!(key: "summary", value: "a deeper synthesis citing neighbors",
+                                                visit: v2, status: "draft", created_at: t2, updated_at: t2)
+      old.supersede!(fresh)
+
+      get "/enliterator/status/Widget/#{widget.id}"
+      expect(response.body).to include("Understanding over time")
+        .and include("shallow first take")
+        .and include("a deeper synthesis citing neighbors")
+      expect(response.body).to include('style="background:var(--accent-soft)"')   # the changed cell
+    end
+  end
 end

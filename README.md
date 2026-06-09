@@ -72,7 +72,12 @@ mount Enliterator::Engine => "/enliterator"
 
 - `/enliterator/` — status browser: per-facet health (the smoke alarm in the browser),
   claim-key vocabulary with samples, the connection graph, vocabulary-gap suggestions, and
-  per-record drill-down at `/enliterator/status/<Type>/<id>`.
+  per-record drill-down at `/enliterator/status/<Type>/<id>` — including **"Understanding over
+  time"** (v0.14): once a facet has been visited more than once, a visit-by-visit table of every
+  claim with changed cells highlighted — the compounding, visible. Programmatic access via
+  `Enliterator::Trajectory` (`state_at` any past moment, per-facet diffs with churn detection,
+  `compounding_summary` rollups) and `Enliterator::Trajectory::Judge` (blind pairwise LLM
+  comparison of a record's earlier vs later understanding).
 - `/enliterator/chat` — a reference interview with the enliteration: answers stream
   token-by-token, grounded in a collection self-portrait plus the records retrieved per
   question, with source chips linking back to the status browser.

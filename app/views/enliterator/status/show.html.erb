@@ -32,6 +32,51 @@
   <% end %>
 </div>
 
+<% if @trajectories.any? %>
+  <h2>Understanding over time <span class="muted" style="font-weight:400">— the compounding, visible</span></h2>
+  <p class="muted samples" style="max-width:64ch">
+    Each column is one tending visit; each row a claim. <span style="background:var(--accent-soft); padding:0 .3rem; border-radius:3px">Highlighted</span>
+    cells changed from the prior visit — the record's understanding deepening (or not) in place.
+  </p>
+  <% @trajectories.each do |line| %>
+    <div class="card" style="overflow-x:auto">
+      <div><strong><%= line[:facet] %></strong>
+        <span class="muted samples"><%= line[:steps].size %> visits</span></div>
+      <table style="margin-top:.5rem; font-size:.82rem">
+        <tr>
+          <th style="min-width:8rem">claim</th>
+          <% line[:steps].each do |step| %>
+            <th style="min-width:12rem">
+              <span class="muted"><%= step[:visit].created_at.strftime("%m-%d %H:%M") %></span>
+              <span class="chip tier"><%= step[:visit].tier %></span><br>
+              <span class="muted samples">
+                conf <%= step[:confidence] %> ·
+                +<%= step[:ops][:added].size %> ~<%= step[:ops][:updated].size %> =<%= step[:ops][:noop].size %><% if step[:ops][:deleted].any? %> −<%= step[:ops][:deleted].size %><% end %>
+              </span>
+            </th>
+          <% end %>
+        </tr>
+        <% all_keys = line[:steps].flat_map { |s| s[:state].keys }.uniq.sort %>
+        <% all_keys.each do |key| %>
+          <tr>
+            <td><code><%= key %></code></td>
+            <% prev_claim = nil %>
+            <% line[:steps].each do |step| %>
+              <% claim = step[:state][key] %>
+              <% changed = claim && prev_claim && claim.id != prev_claim.id %>
+              <% appeared = claim && prev_claim.nil? && step != line[:steps].first %>
+              <td class="samples" <% if changed || appeared %>style="background:var(--accent-soft)"<% end %>>
+                <%= claim ? Enliterator::Trajectory.render(claim.value) : "—" %>
+              </td>
+              <% prev_claim = claim %>
+            <% end %>
+          </tr>
+        <% end %>
+      </table>
+    </div>
+  <% end %>
+<% end %>
+
 <h2>Recent visits</h2>
 <div class="card">
   <% if @visits.any? %>
