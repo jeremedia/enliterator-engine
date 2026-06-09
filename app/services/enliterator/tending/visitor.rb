@@ -113,7 +113,10 @@ module Enliterator
         # v0.3 output contract for this stream (the controlled key vocabulary), or
         # nil when the stream is unconstrained (declared via #assign / not at all).
         # nil ⇒ open keys + no suggestions ⇒ byte-identical to v0.2.
-        contract = policy.keys_for(stream)
+        # v0.9: the EFFECTIVE contract — code keys + any curator-approved keys — so
+        # an approved key is emitted as a claim, not re-proposed. == keys_for when
+        # nothing is approved.
+        contract = Enliterator::Contract.for(stream)
 
         # v0.5: keys this stream MUST yield a non-blank claim for (subset of contract),
         # or nil. An unmet required key forces escalation regardless of confidence and
@@ -405,11 +408,21 @@ module Enliterator
         return if suggestions.blank?
 
         sink = Enliterator.configuration.suggestion_sink
+        # v0.9 convergence: a key the curator already mapped/approved/rejected must
+        # NOT re-file (the queue would re-litigate forever). Suppress it and bump the
+        # term's post_verdict_attempts so "the model keeps wanting this" stays visible.
+        resolved = Enliterator::Suggestion.resolved_keys
 
         Array(suggestions).each do |raw|
           next unless raw.respond_to?(:[])
           proposed_key = (raw["proposed_key"] || raw[:proposed_key]).to_s
           next if proposed_key.blank?
+
+          if resolved.include?(proposed_key)
+            Enliterator::ProposedTerm.where(proposed_key: proposed_key)
+              .update_all("post_verdict_attempts = post_verdict_attempts + 1, updated_at = NOW()")
+            next
+          end
 
           attrs = {
             tendable:     tendable,

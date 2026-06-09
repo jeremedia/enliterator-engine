@@ -63,9 +63,41 @@
   <p class="muted">No pending requests — the vocabulary is fully tended.</p>
 <% end %>
 
+<% if @reproposed.any? %>
+  <h2>Re-proposed after a verdict <span class="muted" style="font-weight:400">— the model is overruling you</span></h2>
+  <p class="muted">
+    These keys got a verdict, but the model keeps asking for them on later tends. Each re-ask is
+    <strong>suppressed</strong> (it doesn't re-flood the queue) and counted here. High counts mean the
+    verdict and the data disagree — worth reconsidering.
+  </p>
+  <div class="card">
+    <table>
+      <tr><th>proposed key</th><th>your verdict</th><th>times re-asked</th></tr>
+      <% @reproposed.each do |t| %>
+        <% v = @verdicts[t.proposed_key] %>
+        <tr>
+          <td><code><%= t.proposed_key %></code></td>
+          <td>
+            <% if v %>
+              <% if v[:status] == "mapped" %>
+                <span class="chip">mapped → <code><%= v[:mapped_to] %></code></span>
+              <% else %>
+                <span class="chip"><%= v[:status] %></span>
+              <% end %>
+            <% else %>
+              <span class="muted">resolved</span>
+            <% end %>
+          </td>
+          <td><span class="big" style="font-size:1.1rem"><%= t.post_verdict_attempts %></span></td>
+        </tr>
+      <% end %>
+    </table>
+  </div>
+<% end %>
+
 <% if @additions.any? %>
-  <h2>Approved — add to your contract</h2>
-  <p class="muted">Paste into the matching <code>stream</code> in your staffing policy initializer, then re-tend. (Approval is advisory — the contract stays a versioned code artifact.)</p>
+  <h2>Approved &amp; live — codify in your policy</h2>
+  <p class="muted">These keys are <strong>already live</strong> in the effective contract — the model emits them as claims now. Paste them into the matching <code>stream</code> in your staffing policy initializer to make them a permanent, versioned code artifact (after which this DB-derived addition is redundant).</p>
   <% @additions.each do |stream, keys| %>
     <div class="card">
       <div class="muted">stream <code><%= stream %></code></div>

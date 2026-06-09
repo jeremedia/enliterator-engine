@@ -17,7 +17,7 @@
           <tr><th>claim key</th><th>live</th><th>e.g.</th></tr>
           <% st[:vocabulary].each do |v| %>
             <tr>
-              <td><code><%= v[:key] %></code></td>
+              <td><code><%= v[:key] %></code><% if v[:approved] %> <span class="chip" style="background:var(--accent-soft); color:var(--accent)" title="curator-approved; live but not yet codified">live</span><% end %></td>
               <td><%= v[:live_claims] %></td>
               <td class="samples"><%= v[:samples].first %></td>
             </tr>

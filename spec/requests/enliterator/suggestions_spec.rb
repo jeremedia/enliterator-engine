@@ -28,7 +28,7 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     expect(response).to redirect_to("/enliterator/suggestions")
     expect(Enliterator::Suggestion.where(proposed_key: "keywords", status: "approved").count).to eq(1)
     follow_redirect!
-    expect(response.body).to include("add to your contract").and include("keywords")
+    expect(response.body).to include("codify in your policy").and include("keywords")
   end
 
   it "map records the canonical target" do
@@ -84,5 +84,21 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     Enliterator::Suggestion.create!(tendable: Widget.create!(title: "B", body: "y"), stream: "summary", proposed_key: "author", rationale: "again", status: "pending")
     get "/enliterator/suggestions"
     expect(response.body.index("author")).to be < response.body.index("keywords")
+  end
+
+  describe "convergence surfaces (v0.9)" do
+    it "renders the 'Re-proposed after a verdict' panel for keys the model keeps re-asking" do
+      Enliterator::Suggestion.create!(tendable: w, stream: "summary", proposed_key: "thematic_focus", rationale: "r", status: "mapped", mapped_to: "summary")
+      Enliterator::ProposedTerm.create!(proposed_key: "thematic_focus", post_verdict_attempts: 4)
+      get "/enliterator/suggestions"
+      expect(response.body).to include("Re-proposed after a verdict").and include("thematic_focus")
+      expect(response.body).to match(/mapped\s*(→|&rarr;)/) # shows the verdict it's overruling
+    end
+
+    it "labels an approved key as already live, not merely advised" do
+      post "/enliterator/suggestions/verdict", params: { proposed_key: "keywords", decision: "approve" }
+      follow_redirect!
+      expect(response.body).to include("Approved &amp; live").and include("already live")
+    end
   end
 end

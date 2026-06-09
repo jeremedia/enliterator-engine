@@ -743,3 +743,49 @@ suggestions/consider`). Rake `enliterator:consider` (refresh + consider!) — wi
 - `suggestions/consider` route + controller action + pressure/resurged/recommendation UI + Consider button; `enliterator:consider` rake.
 - Specs green at 235 (was 219), ADDING: `models/enliterator/proposed_term_spec.rb`, `services/enliterator/considerer_spec.rb`, `services/enliterator/adapters/llm/decide_spec.rb`, + considerer/pressure cases in `requests/enliterator/suggestions_spec.rb`.
 - README: considerer note (`enliterator:consider` after `enliterator:tend`).
+
+# v0.9 — Convergence (close the vocabulary loop)
+
+v0.8 collapsed the field but didn't make it *settle*: map/reject didn't change what the model sees, so
+the next tend re-proposed the same synonyms and they resurged. v0.9 wires the two pieces that make the
+loop reach a fixed point — the genuinely contested terms — instead of re-presenting the whole field
+every cycle. **Decisions:** approvals go LIVE (effective contract = code keys + approved keys, *derived
+from verdicts* — no new table, auditable; the code-diff stays so you can codify); resolved re-proposals
+are SUPPRESSED + tracked (`post_verdict_attempts`). Additive; the no-approvals / no-resolved path is
+byte-identical, so the v0.8 specs hold unchanged.
+
+## 1. `Enliterator::Contract` (the effective contract)
+`Contract.for(stream)` → the code contract (`staffing.keys_for(stream)`) merged with APPROVED-key
+extensions: keys of `Suggestion.where(status:"approved", stream:)`, described from the term's
+`ProposedTerm.recommended_rationale` (else a default). **Code keys win** on conflict. Returns the code
+contract unchanged (nil-preserving) when nothing's approved or `apply_approved_keys=false` — so
+`Contract.for == keys_for` when idle. Every contract consumer now reads `Contract.for`: `Visitor`
+(schema/system/filter all see approved keys), `Synopsis`, `Considerer#canonical_keys` (approved keys
+become valid map targets), `SuggestionsController#canonical_keys`. Config: `apply_approved_keys` (default true).
+
+## 2. Suppress + track resolved re-proposals (`Visitor#persist_suggestions!`)
+Migration adds `enliterator_proposed_terms.post_verdict_attempts` (default 0; excluded from
+`ProposedTerm::PRESSURE_COLS` so `refresh!` preserves it). `Suggestion.resolved_keys` = set of
+proposed_keys with any non-pending verdict. On a tend, a model suggestion whose key ∈ `resolved_keys`
+is NOT re-filed; instead `ProposedTerm.where(proposed_key:).update_all("post_verdict_attempts += 1")`.
+Unresolved keys persist as before. (Approved keys are now in the effective contract, so the model
+emits them as CLAIMS, not suggestions; a stray approved suggestion is resolved → suppressed.)
+
+## 3. UI surfaces the convergence
+Status browser marks approved-but-not-codified vocabulary with a `live` chip (curation, not code).
+Suggestions review adds a "Re-proposed after a verdict" panel (`post_verdict_attempts > 0` + the verdict
+each got) — the "model overruling the curator" signal, the place to reconsider. The approved diff is
+retitled "Approved & live — codify in your policy" (the key is already live; the diff lets you make it
+permanent in code, after which the DB derivation is redundant).
+
+## 4. The cycle now converges end-to-end
+No new rake: `enliterator:tend` (re-proposes) + `enliterator:consider` (verdicts) already compose, but
+v0.9 makes the composition settle — tend → consider (auto-map/reject) → next tend suppresses the
+resolved keys + emits approved keys as claims → the open field shrinks toward the contested core.
+
+## Done = all of (this phase):
+- `Enliterator::Contract.for` (code + approved extensions, code-keys-win, nil-preserving, gated); all consumers wired to it.
+- `post_verdict_attempts` migration + preserved across `refresh!`; `Suggestion.resolved_keys`; `Visitor#persist_suggestions!` suppress+track.
+- `live` chip in status; "Re-proposed after a verdict" panel + retitled approved section in suggestions.
+- Specs green at 247 (was 235), ADDING: `services/enliterator/contract_spec.rb`, `services/enliterator/tending/suppression_spec.rb`, + `post_verdict_attempts`/convergence cases in `proposed_term_spec.rb` and `requests/enliterator/suggestions_spec.rb`.
+- README: the converging cycle (tend → consider → tend shrinks the field).

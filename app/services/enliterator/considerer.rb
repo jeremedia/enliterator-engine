@@ -67,10 +67,11 @@ module Enliterator
       Enliterator.llm(tier: tier)
     end
 
-    # Every claim key that already exists in any stream's contract — valid map targets.
+    # Every claim key in any stream's EFFECTIVE contract (code + approved) — valid
+    # map targets, so the considerer can map a synonym onto a newly-approved key.
     def canonical_keys
-      policy = Enliterator.staffing
-      policy.assignments.keys.flat_map { |s| (policy.keys_for(s) || {}).keys }.uniq.sort
+      Enliterator.staffing.assignments.keys
+        .flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }.uniq.sort
     end
 
     def apply!(recs, canonical, terms)

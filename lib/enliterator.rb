@@ -83,6 +83,14 @@ module Enliterator
     # Min confidence for the considerer to AUTO-APPLY a map/reject (else held).
     attr_accessor :considerer_min_confidence
 
+    # ---- v0.9 Convergence -------------------------------------------------
+
+    # When true (default), an APPROVED proposed key joins the effective contract
+    # (Enliterator::Contract.for) the model sees — so it's emitted as a claim and
+    # stops being re-proposed. Set false to keep the contract code-only (approvals
+    # stay advisory, surfaced as a diff to codify by hand).
+    attr_accessor :apply_approved_keys
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -113,6 +121,7 @@ module Enliterator
       @considerer_tier = nil
       @considerer_autonomy = :auto_safe
       @considerer_min_confidence = 0.75
+      @apply_approved_keys = true
     end
 
     def logger

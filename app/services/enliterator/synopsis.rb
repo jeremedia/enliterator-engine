@@ -77,12 +77,17 @@ module Enliterator
     end
 
     def stream_portrait(policy, stream, sample_cap:, value_chars:)
-      contract = policy.keys_for(stream) || {}
+      contract  = Enliterator::Contract.for(stream) || {} # effective: code + approved keys
+      code_keys = (policy.keys_for(stream) || {}).keys.to_set
       {
         stream:       stream,
         tier:         policy.tier_for(stream),
         tended_count: tended_count(stream),
-        vocabulary:   contract.map { |key, desc| key_summary(key, description: desc, sample_cap: sample_cap, value_chars: value_chars) }
+        vocabulary:   contract.map do |key, desc|
+          # `approved: true` ⇒ a curator-adopted key that's live but not yet codified.
+          key_summary(key, description: desc, sample_cap: sample_cap, value_chars: value_chars)
+            .merge(approved: !code_keys.include?(key))
+        end
       }
     end
 
@@ -109,9 +114,9 @@ module Enliterator
     # else any contract key that LOOKS like a cross-record link. Empty ⇒ no panel.
     def connection_portrait(policy, names, sample_cap:, value_chars:)
       keys = names.select { |s| s.match?(CONNECTION_STREAM_RX) }
-                  .flat_map { |s| (policy.keys_for(s) || {}).keys }
+                  .flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }
       if keys.empty?
-        keys = names.flat_map { |s| (policy.keys_for(s) || {}).keys }.select { |k| k.to_s.match?(CONNECTION_KEY_RX) }
+        keys = names.flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }.select { |k| k.to_s.match?(CONNECTION_KEY_RX) }
       end
       keys.uniq.map { |k| key_summary(k, sample_cap: sample_cap, value_chars: value_chars) }
     end

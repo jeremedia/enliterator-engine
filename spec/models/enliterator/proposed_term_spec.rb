@@ -56,6 +56,17 @@ RSpec.describe Enliterator::ProposedTerm do
       expect(described_class.resurged).to include(t)
     end
 
+    it "preserves post_verdict_attempts across a refresh (a tend-time signal, not recomputed)" do
+      suggest!(record: a, key: "x")
+      described_class.refresh!
+      described_class.find_by(proposed_key: "x").update!(post_verdict_attempts: 5)
+      suggest!(record: b, key: "x") # new pressure
+      described_class.refresh!
+      t = described_class.find_by(proposed_key: "x")
+      expect(t.pressure).to eq(2)               # recomputed
+      expect(t.post_verdict_attempts).to eq(5)  # preserved
+    end
+
     it "scopes: open (has pending), by_pressure (ranked)" do
       suggest!(record: a, key: "high");  suggest!(record: b, key: "high")
       suggest!(record: a, key: "low")
