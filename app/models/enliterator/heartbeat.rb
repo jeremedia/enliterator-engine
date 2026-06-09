@@ -14,6 +14,12 @@ module Enliterator
     # cycle — beat! refuses to start another without force.
     scope :unfinished, -> { where(finished_at: nil) }
 
+    # Compute the next cycle's work queue — PURE READ, no writes, no network.
+    # The standing preview (Status) and the dry-run (PLAN=1) both read this.
+    def self.plan(budget: nil)
+      Planner.new(budget: budget).plan
+    end
+
     def finished? = finished_at.present?
   end
 end
