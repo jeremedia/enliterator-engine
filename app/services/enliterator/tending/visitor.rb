@@ -30,7 +30,8 @@ module Enliterator
 
       attr_reader :tendable, :facet, :context, :embedder
 
-      def initialize(tendable, facet:, context: nil, llm: nil, embedder: Enliterator.embedder)
+      def initialize(tendable, facet:, context: nil, llm: nil, embedder: Enliterator.embedder,
+                     heartbeat: nil, reason: nil)
         @tendable     = tendable
         @facet       = facet.to_s
         # v0.13: the collection context this pass tends WITHIN (an
@@ -39,6 +40,11 @@ module Enliterator
         # are memoized — this is the per-tend hot path.
         @context      = context
         @path_keys    = context&.path_keys
+        # v0.15: cycle provenance. When a heartbeat scheduled this tend, every
+        # Visit row it creates (junior + senior) is stamped with the cycle and
+        # the scheduling reason. nil/nil for every direct tend — byte-identical.
+        @heartbeat    = heartbeat
+        @reason       = reason
         @injected_llm = llm           # non-nil => v0.1 back-compat path
         @embedder     = embedder
       end
@@ -71,6 +77,8 @@ module Enliterator
         visit = tendable.enliterator_visits.create!(
           facet:         facet,
           context:        context,
+          heartbeat:      @heartbeat,
+          reason:         @reason,
           status:         "running",
           model:          adapter.model_id,
           tier:           adapter.model_id,
@@ -318,6 +326,8 @@ module Enliterator
         visit = tendable.enliterator_visits.create!(
           facet:           facet,
           context:          context,
+          heartbeat:        @heartbeat,
+          reason:           @reason,
           status:           "running",
           model:            adapter.model_id,
           tier:             tier.to_s,
