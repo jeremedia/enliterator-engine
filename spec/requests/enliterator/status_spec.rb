@@ -84,7 +84,7 @@ RSpec.describe "Enliterator status browser", type: :request do
   describe "Heartbeat preview (v0.15 — adoption-gated)" do
     it "is ABSENT until a cycle has ever run (byte-identical page, no planner queries)" do
       get "/enliterator/status"
-      expect(response.body).not_to include("Heartbeat")
+      expect(response.body).not_to include("next cycle:")   # the nav link exists (v0.16); the preview section must not
     end
 
     it "renders the next-cycle counts, horizon, and the last cycle once adopted" do

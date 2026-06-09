@@ -22,6 +22,14 @@ Enliterator::Engine.routes.draw do
   get  "chat",        to: "conversation#index",  as: :conversation
   post "chat/stream", to: "conversation#stream", as: :conversation_stream
 
+  # The pulse monitor (v0.16): trigger a heartbeat cycle and watch it live.
+  # `beat` opens + runs a cycle in a background thread; `pulse` is the JSON
+  # the monitor polls — BY ROW ID, never "latest" (a forced second cycle must
+  # not silently switch the subject under a watching monitor).
+  get  "heartbeat",           to: "heartbeat#index", as: :heartbeat
+  post "heartbeat/beat",      to: "heartbeat#beat",  as: :heartbeat_beat
+  get  "heartbeat/pulse/:id", to: "heartbeat#pulse", as: :heartbeat_pulse
+
   # Suggestion review (v0.7): the governed-vocabulary queue. Verdicts
   # (approve / map / reject) act per proposed_key.
   get  "suggestions",          to: "suggestions#index",    as: :suggestions
