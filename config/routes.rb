@@ -6,6 +6,10 @@ Enliterator::Engine.routes.draw do
   # compounding attention changes it now and over time. A living document.
   get "about", to: "about#index", as: :about
 
+  # The configuration surface (v0.11): the org chart + the accumulating vocabulary —
+  # what literacy this particular enliteration has been given. Read-only.
+  get "settings", to: "settings#index", as: :settings
+
   get "status", to: "status#index", as: :status
   # Per-record drill-down. :type/:id are separate segments so polymorphic, possibly
   # non-integer (uuid) host PKs survive routing; the id constraint allows dots/uuids.

@@ -61,9 +61,9 @@ bin/rails db:migrate
 
 ### Mounting the UI (v0.6)
 
-Mount the engine in the host's routes to get four read-only web surfaces — a **status
-browser**, a **conversation UI**, a **governed-vocabulary review queue**, and an **About
-explainer** — for free:
+Mount the engine in the host's routes to get five read-only web surfaces — a **status
+browser**, a **conversation UI**, a **governed-vocabulary review queue**, an **About
+explainer**, and a **Settings** surface — for free:
 
 ```ruby
 # config/routes.rb
@@ -89,6 +89,10 @@ mount Enliterator::Engine => "/enliterator"
 - `/enliterator/about` — the explainer (v0.10): what enliteracy is, why the collection is tended, and
   how compounding attention changes it now and over time. The demo surface and a living north-star doc
   (hand-revised each version); a live strip shows real counts from the collection it's mounted on.
+- `/enliterator/settings` — the configuration surface (v0.11): a read-only window onto the org chart
+  (streams → tiers, the climb, required keys), the effective vocabulary per stream (code + accrued
+  `live` keys), routing/capability, the considerer's autonomy, and tending behavior. Reflects the
+  code config; the approved vocabulary that accrues at runtime is governed on `/enliterator/suggestions`.
 
 The UI is self-contained (inline CSS/JS, no asset-build step) and renders under any host
 pipeline. The conversation tier defaults to the staffing ladder's top tier; pin it with

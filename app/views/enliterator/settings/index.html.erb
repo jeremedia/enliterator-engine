@@ -1,0 +1,117 @@
+<% content_for :head do %><title>Settings — Enliterator</title><% end %>
+
+<h1>Settings</h1>
+<p class="muted" style="max-width:64ch">
+  The configuration this enliteration runs under — the org chart that decides how much mind to bring to
+  each record, and the vocabulary it's been given. Configuration lives in code (the host initializer);
+  this is a read-only window onto it. The one thing that <em>accumulates</em> at runtime — the approved
+  vocabulary — is governed on <%= link_to "Requests", suggestions_path %>.
+</p>
+
+<h2>Streams <span class="muted" style="font-weight:400">— roles, and the capability assigned to each</span></h2>
+<div class="card">
+  <% if @policy.assignments.any? %>
+    <table>
+      <tr><th>stream (role)</th><th>tier</th><th>escalation climb</th><th>contract</th><th>required</th></tr>
+      <% @contracts.each do |c| %>
+        <% approved_n = c[:keys].count { |k| k[:approved] } %>
+        <tr>
+          <td><strong><%= c[:stream] %></strong></td>
+          <td><span class="chip tier"><%= c[:tier] %></span></td>
+          <td class="mono"><%= c[:climb].join(" → ") %></td>
+          <td>
+            <% if c[:keys].any? %>
+              <%= c[:keys].size %> key<%= "s" if c[:keys].size != 1 %><% if approved_n.positive? %> <span class="muted">(<%= approved_n %> approved)</span><% end %>
+            <% else %>
+              <span class="muted">open (no contract)</span>
+            <% end %>
+          </td>
+          <td class="samples"><%= c[:required].any? ? c[:required].join(", ") : "—" %></td>
+        </tr>
+      <% end %>
+    </table>
+  <% else %>
+    <p class="muted">No staffing policy configured — the default routes every stream to
+      <code><%= @policy.ladder.first || "cheap" %></code>. Declare streams with
+      <code>Enliterator::Staffing::Policy</code> in your initializer.</p>
+  <% end %>
+</div>
+
+<h2>Vocabulary <span class="muted" style="font-weight:400">— the contract per stream, code + what's accrued</span></h2>
+<% if @approved_live.positive? %>
+  <p class="muted samples"><strong><%= @approved_live %></strong> curator-approved key<%= "s" if @approved_live != 1 %> are <span class="chip" style="background:var(--accent-soft); color:var(--accent)">live</span> across these streams — in force in the contract the model sees, but not yet codified in the policy. Codify them from <%= link_to "Requests", suggestions_path %>.</p>
+<% end %>
+<div class="row">
+  <% @contracts.each do |c| %>
+    <% next if c[:keys].empty? %>
+    <div class="card">
+      <div><strong><%= c[:stream] %></strong> <span class="chip tier"><%= c[:tier] %></span></div>
+      <table style="margin-top:.5rem">
+        <% c[:keys].each do |k| %>
+          <tr>
+            <td style="width:40%"><code><%= k[:key] %></code><% if k[:approved] %> <span class="chip" style="background:var(--accent-soft); color:var(--accent)" title="curator-approved; live but not codified">live</span><% end %></td>
+            <td class="samples"><%= k[:description] %></td>
+          </tr>
+        <% end %>
+      </table>
+    </div>
+  <% end %>
+  <% if @contracts.all? { |c| c[:keys].empty? } %>
+    <div class="card"><span class="muted">No stream is under a contract — all keys are open. Bind a controlled vocabulary with <code>stream(name, tier:, keys:)</code>.</span></div>
+  <% end %>
+</div>
+
+<h2>Routing &amp; capability</h2>
+<div class="card">
+  <table>
+    <tr><th style="width:34%">setting</th><th>value</th></tr>
+    <tr><td>LLM gateway</td><td class="mono"><%= @config.gateway_base_url %>
+      <% if @gateway_ready %><span class="chip tier">key configured</span>
+      <% else %><span class="warn">no key — falls back to the injected adapter</span><% end %></td></tr>
+    <tr><td>Escalation ladder</td><td class="mono"><%= @policy.ladder.any? ? @policy.ladder.join(" → ") : "—" %></td></tr>
+    <tr><td>Escalation threshold</td><td>confidence &lt; <strong><%= @policy.escalation_threshold %></strong> escalates</td></tr>
+    <tr><td>Max promotions / tend</td><td><%= @policy.max_promotions %></td></tr>
+    <tr><td>Verify floor</td><td>only <code><%= @policy.verify_floor || "—" %></code> and above may mint <code>verified</code> claims</td></tr>
+    <tr><td>Embedding tier</td><td><code><%= @policy.embedding_alias || "—" %></code> · <%= @config.default_embedding_dimensions %> dims</td></tr>
+    <tr><td>Conversation tier</td><td><code><%= @conversation_tier_effective %></code><%= " (resolved)" unless @config.conversation_tier %></td></tr>
+    <tr><td>On-prem-only tiers</td><td class="mono"><%= @policy.on_prem_tier_list.any? ? @policy.on_prem_tier_list.join(", ") : "none" %></td></tr>
+    <tr><td>Context caps</td><td class="mono"><%= @policy.context_caps.any? ? @policy.context_caps.map { |t, n| "#{t}=#{n}" }.join("  ") : "none" %></td></tr>
+  </table>
+</div>
+
+<h2>Vocabulary governance <span class="muted" style="font-weight:400">— how the considerer decides</span></h2>
+<div class="card">
+  <table>
+    <tr><th style="width:34%">setting</th><th>value</th></tr>
+    <tr><td>Considerer tier</td><td><code><%= @considerer_tier_effective %></code><%= " (resolved)" unless @config.considerer_tier %></td></tr>
+    <tr><td>Autonomy</td><td>
+      <code><%= @config.considerer_autonomy %></code>
+      <span class="muted">— <%= @config.considerer_autonomy == :auto_safe ? "auto-applies synonym maps + confident rejects; holds approvals for you" : "holds every verdict as a recommendation" %></span></td></tr>
+    <tr><td>Auto-apply confidence floor</td><td>≥ <strong><%= (@config.considerer_min_confidence.to_f * 100).round %>%</strong> to auto-map / auto-reject</td></tr>
+    <tr><td>Approved keys go live</td><td>
+      <% if @config.apply_approved_keys %><span class="chip tier">on</span> <span class="muted">— an approved key joins the effective contract immediately</span>
+      <% else %><span class="chip">off</span> <span class="muted">— approvals stay advisory (codify by hand)</span><% end %></td></tr>
+  </table>
+</div>
+
+<h2>Tending behavior</h2>
+<div class="card">
+  <table>
+    <tr><th style="width:34%">setting</th><th>value</th></tr>
+    <tr><td>Models tended</td><td class="mono"><%= @models.any? ? @models.join(", ") : "none yet" %></td></tr>
+    <tr><td>Default tending streams</td><td class="mono"><%= Array(@config.tending_streams).join(", ") %></td></tr>
+    <tr><td>Stale after</td><td><%= @config.stale_after.inspect %> <span class="muted">— a record older than this is eligible for re-tending</span></td></tr>
+    <tr><td>Scheduled-walk batch</td><td><%= @config.tend_batch_size %> records / run</td></tr>
+    <tr><td>Job queue</td><td class="mono"><%= @config.queue_name %></td></tr>
+    <tr><td>Suggestion sink</td><td><%= @config.suggestion_sink ? "configured (proposals forwarded)" : "local only" %></td></tr>
+    <tr><td>Null-LLM guard</td><td>
+      <% if @config.allow_null_llm %><span class="warn">permitted</span> <span class="muted">— a real tend may resolve to the inert Null adapter (tests only)</span>
+      <% else %><span class="chip tier">enforced</span> <span class="muted">— a real tend resolving to Null raises instead of writing a phantom visit</span><% end %></td></tr>
+  </table>
+</div>
+
+<p class="muted samples" style="margin-top:1.5rem; border-top:1px solid var(--line); padding-top:.75rem; max-width:64ch">
+  Read-only. Streams, tiers, and the ladder are code (the host initializer); the approved vocabulary
+  accrues through <%= link_to "Requests", suggestions_path %>. This is the configuration of the whole
+  collection.
+</p>
