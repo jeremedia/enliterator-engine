@@ -61,9 +61,9 @@ bin/rails db:migrate
 
 ### Mounting the UI (v0.6)
 
-Mount the engine in the host's routes to get five read-only web surfaces — a **status
-browser**, a **conversation UI**, a **governed-vocabulary review queue**, an **About
-explainer**, and a **Settings** surface — for free:
+Mount the engine in the host's routes to get six read-only web surfaces — a **status
+browser**, a **conversation UI**, a **governed-vocabulary review queue**, a **context
+tree**, an **About explainer**, and a **Settings** surface — for free:
 
 ```ruby
 # config/routes.rb
@@ -86,6 +86,17 @@ mount Enliterator::Engine => "/enliterator"
   contract immediately (the diff lets you codify it permanently), and a re-proposal of an
   already-resolved key is **suppressed** — counted under "Re-proposed after a verdict" rather than
   re-flooding the queue. Wire `enliterator:consider` after `enliterator:tend` in your scheduler.
+- `/enliterator/about` — the explainer (v0.10): what enliteracy is, why the collection is tended, and
+  how compounding attention changes it now and over time. The demo surface and a living north-star doc
+  (hand-revised each version); a live strip shows real counts from the collection it's mounted on.
+- `/enliterator/contexts` — the context tree (v0.13): **nested enliterated collections**. A context
+  is a lens — an item belongs to the whole collection and to any number of labeled sub-collections;
+  each context declares its own facets (inheriting its ancestors'), claims live per context and read
+  cumulatively, neighbors/retrieval are scoped to the context's members, and vocabulary governance is
+  per context. A nav switcher views EVERY surface through the selected context (hidden until a tree
+  is seeded — flat installs are unchanged). Declare per-context facets with the policy's
+  `context "key" do … end` blocks; seed `Enliterator::Context` (ancestry) + memberships
+  (`record.place_in_context!`); tend with `enliterator:tend_context CONTEXT=key`.
 - `/enliterator/about` — the explainer (v0.10): what enliteracy is, why the collection is tended, and
   how compounding attention changes it now and over time. The demo surface and a living north-star doc
   (hand-revised each version); a live strip shows real counts from the collection it's mounted on.

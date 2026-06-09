@@ -860,3 +860,77 @@ this and use the OLD names; the mapping below translates them.
 - HSDL initializer migrated (`facet`/`terms:`/`Measures.register`); HSDL dev migrated.
 - 254 specs green throughout (no behavior change). README + this section updated.
 - Deferred (aware-not-now): LRM/WEMI (Work/Expression/Manifestation/Item) on the record; SKOS/BIBFRAME emission; syndetic structure (BT/NT/RT) unifying vocabulary + the context tree.
+
+# v0.13 — Contexts (nested enliterated collections)
+
+A collection is rarely one thing — HSDL is a federation (theses, 35K CRS Reports, 1K Executive
+Orders, ~100 cross-cutting topical Lists). v0.13 makes **context** a first-class, nestable dimension:
+a context is a faceted LENS (Ranganathan; the finding-aid principle — an item understood through its
+place in the hierarchy plus its own description). An item belongs to the root implicitly and to any
+number of labeled sub-contexts (M2M); each context declares its own facets, inheriting its ancestors';
+claims/visits/suggestions are context-scoped and read cumulatively up the ancestry.
+
+## Design rules (the four that make it coherent)
+1. **NULL is the root scope.** A root Context row anchors the tree for UI/membership only; tending at
+   root writes `context_id NULL` — exactly where all pre-v0.13 data already lives (no backfill needed
+   for back-compat). Cumulative reads use `[nil, *path_ids]`; the root UI view = the unfiltered union.
+2. **Declaration location = tending scope.** A facet tends in the context whose policy block declares
+   it (the A′ mechanism: intrinsic/root facets tend once at root; interpretive facets per context).
+   `tend_context` runs exactly a context's own facets.
+3. **Neighbors are context-scoped.** Within a context, retrieval (tending neighbors AND chat) is
+   restricted to the context's MEMBERS — the context IS the neighborhood; an EO reads against other
+   EOs, not the undifferentiated corpus. Root keeps corpus-wide.
+4. **Governance writes down, reads up.** Verdicts/claims write to their own context; resolved keys,
+   approved vocabulary, and claim reads resolve `[nil, *path_ids]` — root/legacy verdicts inherit
+   down; a sibling's never leak over. ONE rule for claims and governance alike.
+
+## 1. Schema + models
+`Enliterator::Context` (ancestry; unique `key` slug joins the policy; `path_keys`/`scope_ids`),
+`ContextMembership` (polymorphic M2M, string member_id for uuid hosts), nullable `context_id` FKs on
+claims/visits/suggestions with composite reconcile/health indexes. `ancestry` becomes a gem dependency.
+
+## 2. Per-context facet policy + context-scoped tending
+Policy `context "key" do … end` blocks scope `facet`/`assign` (root registries untouched outside
+blocks — a contextless policy is byte-identical to v0.12); lookups take `path:` (descendant wins):
+`tier_for/terms_for/allowed_terms/required_terms/allowed_tiers`, plus `facets_for(path)` and
+`facets_declared_in(key)`. (NOT `context_cap` — the LLM window cap; unrelated word.) `Vocabulary.for
+(facet, context:)` reads approvals up the path. Visitor threads context end-to-end: Visit/Claim/
+Suggestion stamping, `live_claim_for(key)` scoped to the tending context (the reconcile chokepoint —
+the same key in a sibling is a DIFFERENT claim), member-scoped `nearest_neighbors`, path-scoped
+suppression, `literacy_state` labeling inherited claims by context. `Suggestion.resolved_keys
+(context:)` + batch verdicts take `context:`. Tendable: `tend!(facet:, context:)`,
+`place_in_context!`, `assert_claim!(context:)`.
+
+## 3. The switcher + the sixth surface
+ApplicationController resolves `?context=` (one-shot → cookie; unknown keys log + fall back to root);
+inline nav switcher hidden when no tree is seeded. `Synopsis.build(context:)` — effective facets,
+path-scoped counts, per-context gaps. Chat converses through the lens (scoped retrieval + claims).
+Requests shows the context's OWN pending queue (a WRITE surface shows what a verdict resolves);
+considerer takes `context:`. Settings shows the merged effective policy with declaring-context chips.
+NEW `/enliterator/contexts`: the tree — own facets, members, per-scope claim/visit counts.
+
+## 4. Host seating (HSDL) + rake
+HSDL initializer: root facets (summary, connections) + `context` blocks — chds-theses (significance,
+authorship), crs-reports (policy_analysis: issue_for_congress/policy_options/affected_agencies/
+legislation_referenced), executive-orders (directive: eo_number REQUIRED/issuing_president/
+agencies_directed/legal_authority; legal_relations: supersedes/implements), election-security
+(inherits only — a topical lens). `enliterator:seed_contexts` (HSDL, idempotent): tree + bulk
+memberships (1,327 theses / 35,020 CRS / 1,026 EOs / 82 election-security) + facet-following backfill
+(488 visits, 1,322 claims, 203 suggestions → chds-theses). Engine rake `enliterator:tend_context
+CONTEXT=key [LIMIT=n] [FACET=f]` (rule 2; staged/non-overlapping); `enliterator:consider CONTEXT=key`.
+
+## Validated on the real collection
+Divergence: EOs tended in-context produced `eo_number=13268`, `issuing_president=George W. Bush`,
+`legal_authority=IEEPA/NEA`, and **supersedes=["13129"]** — the EO→EO legal supersession graph, live
+(claims a thesis lens cannot produce); CRS produced `issue_for_congress`/`legislation_referenced`
+(PATRIOT Act §1016(e), PDD-63)/`policy_options`. Cross-cutting: EO 13848 (foreign-election-
+interference sanctions) lives in BOTH executive-orders and election-security; sibling isolation
+verified live (an EO-context claim is invisible from election-security's scope).
+
+## Done = all of (this phase):
+- Substrate (models/migrations/policy/visitor/governance) + switcher across all surfaces + /contexts.
+- Specs green at 281 (was 254; +27): context model/policy/tending/vocabulary/verdict-isolation/requests.
+- No-context paths byte-identical throughout; flat installs see no UI change.
+- HSDL seated + divergence/cross-cutting validated on real data (HSDL-side changes gated, uncommitted).
+- Deferred: per-scope tended-count semantics on inherited facets (currently path-scope counts);
+  promoting genre-intrinsic claims to root; the cross-record flywheel; SKOS/BT/NT unification.

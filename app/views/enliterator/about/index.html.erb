@@ -341,7 +341,7 @@
         <li class="toc-h2"><a href="#how-it-works">How it works</a></li>
         <li class="toc-h2"><a href="#the-conscience-is-human">The conscience is human</a></li>
         <li class="toc-h2"><a href="#for-a-collection-like-this-one">For a collection like this one</a></li>
-        <li class="toc-h2"><a href="#the-four-surfaces">The four surfaces</a></li>
+        <li class="toc-h2"><a href="#the-four-surfaces">The surfaces</a></li>
       </ol>
     </nav>
   </aside>
@@ -492,6 +492,10 @@
           <td>The model can't invent terms — it proposes them. Proposals accumulate <em>pressure</em> across records; an agent reads the whole field and renders verdicts (fold synonyms, reject noise, hold genuine new concepts for a human). Approved terms go <strong>live</strong>, and the loop converges on the genuinely contested ones.</td>
         </tr>
         <tr>
+          <td class="mech-key"><strong>Collections within collections</strong></td>
+          <td>A <em>context</em> is a lens: an item belongs to the whole collection and to any number of labeled sub-collections, each with its own facets and vocabulary, inheriting its ancestors' — the finding-aid principle. An Executive Order is read for its <em>supersession graph</em>; a CRS report for its <em>issue for Congress</em>; neither lens contaminates the other, and within a context a record reads against its fellow members, not the undifferentiated whole.</td>
+        </tr>
+        <tr>
           <td class="mech-key"><strong>Provenance throughout</strong></td>
           <td>Every claim knows how it came to be known — which model, which visit, what it was attributed to. Nothing is asserted without a trail.</td>
         </tr>
@@ -528,7 +532,7 @@
       grows sharper every time the loop runs. Dormant becomes legible; an archive becomes a colleague.
     </p>
 
-    <h2 id="the-four-surfaces">The four surfaces</h2>
+    <h2 id="the-four-surfaces">The surfaces</h2>
     <div class="surfaces-grid">
       <div class="card">
         <span class="surface-title"><%= link_to "Status", root_path %></span>
@@ -543,15 +547,23 @@
         <span class="surface-desc">Govern the vocabulary — review the terms the model wants, approve / map / reject, and watch the loop converge.</span>
       </div>
       <div class="card">
+        <span class="surface-title"><%= link_to "Contexts", contexts_path %></span>
+        <span class="surface-desc">Collections within collections — the context tree, each lens's facets and members; the nav switcher views every surface through any of them.</span>
+      </div>
+      <div class="card">
+        <span class="surface-title"><%= link_to "Settings", settings_path %></span>
+        <span class="surface-desc">The configuration — the org chart of facets and tiers, the effective vocabulary, and how the considerer decides.</span>
+      </div>
+      <div class="card">
         <span class="surface-title">About</span>
         <span class="surface-desc">This page. What we're building and why — kept current as the engine grows.</span>
       </div>
     </div>
 
     <p class="about-colophon">
-      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.10 — the explainer;
-      v0.9 closed the vocabulary convergence loop). Not searchability conferred once —
-      <strong>attention that compounds</strong>.
+      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.13 — contexts:
+      nested enliterated collections; v0.12 spoke the library's language; v0.9 closed the vocabulary
+      convergence loop). Not searchability conferred once — <strong>attention that compounds</strong>.
     </p>
 
   </div><%# /about-content %>

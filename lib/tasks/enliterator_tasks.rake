@@ -109,12 +109,53 @@ namespace :enliterator do
   # the host scheduler so the vocabulary converges each cycle.
   #
   #   bin/rails enliterator:consider
-  desc "Consider open vocabulary requests (auto-apply safe verdicts; hold approves)."
+  #   CONTEXT=crs-reports bin/rails enliterator:consider   # one context's open field (v0.13)
+  desc "Consider open vocabulary requests (auto-apply safe verdicts; hold approves). CONTEXT=key"
   task consider: :environment do
     logger = Enliterator.logger
     log = ->(msg) { logger ? logger.info("[enliterator:consider] #{msg}") : puts(msg) }
-    s = Enliterator::Considerer.new.consider!
-    log.call("considered #{s[:considered]} — auto-mapped #{s[:auto_mapped]}, " \
+    ctx = ENV["CONTEXT"].present? ? Enliterator::Context.find_by_key!(ENV["CONTEXT"]) : nil
+    s = Enliterator::Considerer.new(context: ctx).consider!
+    log.call("considered #{s[:considered]}#{ctx ? " in #{ctx.key}" : ''} — auto-mapped #{s[:auto_mapped]}, " \
              "auto-rejected #{s[:auto_rejected]}, #{s[:approves_recommended]} approval(s) recommended, #{s[:held]} held")
+  end
+
+  # Tend a context's members along the context's OWN declared facets (v0.13,
+  # rule 2: declaration location = tending scope — root facets tend at root via
+  # enliterator:tend, not per child). Synchronous and staged like tend_theses:
+  # skips members already tended on a facet in this context, so runs never overlap.
+  #
+  #   CONTEXT=executive-orders bin/rails enliterator:tend_context
+  #   CONTEXT=crs-reports LIMIT=5 FACET=policy_analysis bin/rails enliterator:tend_context
+  desc "Tend a context's members along its own facets. CONTEXT=key LIMIT=n FACET=name"
+  task tend_context: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:tend_context] #{msg}") : puts(msg) }
+
+    ctx    = Enliterator::Context.find_by_key!(ENV.fetch("CONTEXT"))
+    facets = ENV["FACET"].present? ? [ ENV["FACET"] ] : Enliterator.staffing.facets_declared_in(ctx.key)
+    abort "context #{ctx.key} declares no facets of its own (inherits only) — pass FACET= to force one" if facets.empty?
+    limit  = ENV["LIMIT"].presence&.to_i
+
+    facets.each do |facet|
+      # Members not yet tended on this facet IN this context (non-overlapping stages).
+      done = Enliterator::Visit
+               .where(context_id: ctx.id, facet: facet, status: "succeeded", applied: true)
+               .distinct.pluck(:tendable_type, :tendable_id).to_set
+      members = ctx.memberships.order(:created_at)
+                  .reject { |m| done.include?([ m.member_type, m.member_id ]) }
+      members = members.first(limit) if limit
+
+      log.call("#{ctx.key} / #{facet}: tending #{members.size} member(s) (#{done.size} already done)")
+      members.each_with_index do |m, i|
+        record = m.member
+        next log.call("  [#{i + 1}] #{m.member_type}/#{m.member_id} MISSING — skipped") if record.nil?
+
+        v = record.tend!(facet: facet, context: ctx)
+        log.call("  [#{i + 1}/#{members.size}] #{m.member_type}/#{m.member_id} tier=#{v.tier} conf=#{v.confidence} status=#{v.status}")
+      rescue => e
+        log.call("  [#{i + 1}/#{members.size}] #{m.member_type}/#{m.member_id} FAILED #{e.class}: #{e.message}")
+      end
+    end
   end
 end
