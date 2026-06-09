@@ -92,28 +92,34 @@ claims/visits, per-context facets, membership-scoped neighbors — rule: NULL co
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, released through **v0.14**.
+- Remote: github.com/jeremedia/enliterator-engine, released through **v0.14**; **v0.15 built
+  locally** (the heartbeat — push gated on Jeremy's word).
 - HSDL dev: the federation is seated as a context tree (chds-theses 1,327 / crs-reports 35,020 /
   executive-orders 1,026 / election-security 82); divergence validated (EO supersession graph,
   CRS issue_for_congress); the `keywords` term ratified live as the convergence proof. HSDL-side
   work is committed locally on `enliterator-integration` (UNPUSHED — gated).
 - **Deadline shaping the build**: FEDLINK talk (Library of Congress) **2026-07-14** — the audience
   is federal librarians; speak their language (authority control, finding aids, literary warrant).
-- **v0.14 ran the compounding experiment** (SPEC.md "v0.14 findings"): zero churn (re-visits safe);
-  no free compounding from re-reading (unchanged surroundings ⇒ NOOP); deepening tracks
-  surroundings-change; first attention dwarfs re-attention (158 claims pass 1 vs 13 after).
-- **NEXT: v0.15 — the EVENT-DRIVEN heartbeat** (the experiment's gate verdict). Not wall-clock:
-  (1) frontier-first — work the untended members of each context (35K CRS waiting);
-  (2) re-tend ON CHANGE — a record's context-mates got tended / a vocabulary approval landed on
-  its facet / the record's text changed; (3) `stale_after` demoted to a slow safety-net sweep;
-  (4) a per-cycle SPEND CAP and the trajectory surface as the standing watch instrument.
-  All trigger signals are already derivable from existing tables (Visits per context since t,
-  Suggestion status transitions, record updated_at vs last_tended_at).
-- Known open gaps: no claim-accuracy golden set; `/enliterator` mount is auth-less (dev only —
-  wrap in CHDS Pulse auth before staging). Trajectory caveat: clean A/B isolation needs
-  context-facet-only comparison (root facets use corpus-wide neighbors).
+- **v0.15 — the EVENT-DRIVEN heartbeat** (built from v0.14's gate verdict; SPEC.md v0.15):
+  `Heartbeat.plan` (pure read: change envelope source_change→neighborhood→vocabulary at 20% share,
+  frontier gets the rest + spillover, stale_after demoted to a leftover sweep, horizon math) and
+  `Heartbeat.beat!` (the row IS the overlap lock; sync mode enforces the budget on ACTUAL tokens;
+  considerer pass closes each cycle; visits stamped heartbeat_id+reason). Rake
+  `enliterator:heartbeat` (PLAN=1/BUDGET=/ENQUEUE=1/FORCE=1/SKIP_CONSIDER=1, sync default).
+  Triggers anchored to lane MAX(started_at) — NOT finished_at/last_tended_at (mid-visit race;
+  also `last_tended_at(context: nil)` is UNFILTERED, not root-scoped — a named trap). Neighborhood
+  is context-lanes-only, suppressed while the lane's frontier is non-empty, cooled down per record.
+  Status preview is adoption-gated (no ledger rows ⇒ byte-identical page).
+- **NEXT**: HSDL supervised first cycles (PLAN=1, then small sync beats watched) → host launchd
+  adoption on Jeremy's word; vocabulary trigger is UNMEASURED (v0.14 tested neighbor-change only)
+  — watch its first real wave via trajectory.
+- Known open gaps: no claim-accuracy golden set (cheap-tier conf=1.0 unexamined); `/enliterator`
+  mount is auth-less (dev only — wrap in CHDS Pulse auth before staging); considerer LLM tokens
+  have no usage surface (ledger records outcomes only). Trajectory caveat: clean A/B isolation
+  needs context-facet-only comparison (root facets use corpus-wide neighbors).
 - Deferred by design: SKOS/BT/NT syndetic structure, LRM/WEMI, the cross-record flywheel,
-  per-scope tended-counts on inherited facets, genre-intrinsic→root claim promotion.
+  per-scope tended-counts on inherited facets, genre-intrinsic→root claim promotion, per-visit
+  source digests (the exact source-change signal).
 
 ## Jeremy's standing directives for this project
 

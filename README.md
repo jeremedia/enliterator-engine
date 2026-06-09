@@ -35,7 +35,7 @@ the lower rungs are the load-bearing structure that makes rung 5 honest.
 | 1 | **searchable** | the text can be found by similarity | `Embedding` rows + HNSW cosine index; `Embedding.nearest_to` |
 | 2 | **structured** | understanding is discrete fields, not a blob | `Claim` rows keyed by `key` with typed `value` |
 | 3 | **provenanced** | every claim knows where it came from | `visit_id` (wasGeneratedBy), `derived_from` (wasDerivedFrom), `attributed_to` (wasAttributedTo) |
-| 4 | **tended** | understanding is maintained, not abandoned | scheduled `enliterator:tend` walk + `TendingVisitJob` re-visit stale records |
+| 4 | **tended** | understanding is maintained, not abandoned | the event-driven heartbeat (`enliterator:heartbeat`): frontier first, re-tend on change, budget-capped, on a ledger |
 | 5 | **compounding** | each visit improves on the last | the Visitor hands prior claims + recent visits into the next visit's context; claims are reconciled (ADD/UPDATE/DELETE/NOOP), not overwritten |
 
 The compounding rung is proven in the test suite: `spec/services/enliterator/tending/visitor_spec.rb` asserts that the second LLM call receives the first visit's claim in its `state`, and that an UPDATE supersedes the prior claim while preserving the provenance chain.
@@ -256,17 +256,30 @@ end
 `Enliterator::Measures.recompute!(record)` runs every registered measure and upserts
 one `Measure` row per `[record, name]`.
 
-### The scheduled walk
+### The heartbeat (v0.15 — event-driven, not wall-clock)
 
-`rake enliterator:tend` iterates every registered tendable model and every
-configured facet, finds up to `tend_batch_size` records whose newest succeeded
-visit is older than `stale_after` (or that have never succeeded), and enqueues a
-`TendingVisitJob` for each. It logs how many were enqueued per model/facet and
-flags any batch-cap hit (no silent truncation). Hosts wire this to their
-scheduler — HSDL uses sidekiq-cron; a Solid Queue host would use a recurring
-task. The job is `retry_on StandardError` (polynomial backoff, 3 attempts) and
-`discard_on ActiveJob::DeserializationError` (the record was deleted between
-enqueue and run).
+`rake enliterator:heartbeat` runs one full metabolic cycle: **plan → tend →
+consider → ledger**. The planner (a pure read) computes a budget-bounded queue
+from signals already in the tables — a change envelope (20% by default:
+source-change, then neighborhood — context-mates tended since a record's last
+visit, the trigger v0.14 *measured* — then vocabulary approvals), the untended
+**frontier** (where first attention earns ~10× the claims per token), and a
+demoted `stale_after` sweep that gets only leftovers. Sync mode (the default)
+enforces the budget on **actual** tokens; every cycle is a `Heartbeat` row and
+every visit it causes carries `heartbeat_id` + `reason` — the schedule is
+auditable provenance, not a cron log. `PLAN=1` dry-runs the queue and prints the
+frontier horizon ("N records remaining ≈ M cycles at this budget").
+
+```
+PLAN=1 bin/rails enliterator:heartbeat        # read the plan first
+BUDGET=30000 bin/rails enliterator:heartbeat  # a small supervised cycle
+ENQUEUE=1 bin/rails enliterator:heartbeat     # production: TendingVisitJobs
+```
+
+The pre-v0.15 `rake enliterator:tend` walk (stale_after batches) still works
+unchanged for hosts that prefer it. The job is `retry_on StandardError`
+(polynomial backoff, 3 attempts) and `discard_on
+ActiveJob::DeserializationError` (the record was deleted between enqueue and run).
 
 ## Staffing & Routing
 

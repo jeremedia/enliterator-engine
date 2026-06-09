@@ -1012,3 +1012,85 @@ safe but mostly NOOP spend. Automation should (1) prioritize the UNTENDED FRONTI
 (2) trigger re-tends on CHANGE — new context-mates tended, vocabulary approvals, record text
 change — with `stale_after` kept only as a slow safety-net sweep, (3) carry a per-cycle spend cap
 + the trajectory surface as the standing watch instrument.
+
+# v0.15 — The Heartbeat (event-driven tending; the end of the hand-cranked era)
+
+Every version through v0.14 was hand-cranked deliberately — supervision while the loops were
+built up. v0.14 was the supervised exam, and its verdict SPECIFIES the automation rather than
+merely permitting it: re-visits are safe (zero churn) but re-reading unchanged surroundings is
+pure NOOP spend; deepening tracks SURROUNDINGS-CHANGE; first attention dwarfs re-attention.
+So v0.15 is event-driven, not wall-clock — and supervision is replaced by two instruments:
+a hard spend cap (enforced on actuals) and an auditable cycle ledger.
+One heartbeat = one full metabolic cycle: **plan → tend → consider → ledger**.
+
+## 1. `Enliterator::Heartbeat` (the model IS the scheduler — the cycle is a record)
+
+- `Heartbeat.plan(budget:)` (→ `Heartbeat::Planner`, PURE read): a prioritized, budget-bounded
+  work queue. **Budget envelopes, not strict priority**: a change envelope
+  (`budget × heartbeat_change_share`, default 20%) ordered **source_change → neighborhood →
+  vocabulary** (correctness before deepening); unused change budget spills to the **frontier**
+  (first attention — ~10× claims/dollar per v0.14); the `stale_after` **sweep** is demoted to
+  leftovers only. Plus the **horizon math** ("frontier: N remaining ≈ M cycles at this budget")
+  so the budget is an owned decision, not an accidental schedule.
+- `Heartbeat.beat!(execute: :sync|:enqueue, budget:, skip_consider:, force:)`: opens the ledger
+  row FIRST (an unfinished row < 6h **is the overlap lock** — `Heartbeat::Overlap` raised;
+  FORCE recorded), executes, runs the considerer per scope with open requests, finalizes.
+  Sync (default; the supervised mode) enforces the budget on **ACTUAL** tokens summed from the
+  cycle's own visits — the cap is a guarantee, not a guess. Item failures continue; a cycle
+  whose first 5 items all fail aborts as a misconfiguration. Enqueue mode carries a
+  **drain-deficit check** (previous cycle's enqueued count vs visits that landed) so a dead job
+  queue can't become a silent no-op factory.
+
+## 2. The three change triggers — all anchored to lane `MAX(started_at)`
+
+NOT `finished_at`: text + vocabulary are read at visit START; a visit finishing after a change
+must not mark its record caught-up (the mid-visit race, closed). Root lanes use explicit
+`context_id IS NULL` — `last_tended_at(context: nil)` is UNFILTERED, a named trap, avoided.
+
+1. **source_change** — host `updated_at` > lane last start (set-based join), or the host's
+   `heartbeat_source_changed` callable (for touch-chain/backfill-noisy hosts).
+2. **neighborhood** — ≥ `heartbeat_neighbor_threshold` (3) lane visits after the record's last
+   (one window scan: `total − my_row_number`; visits, not distinct mates — a documented proxy).
+   Context lanes ONLY (at root the corpus-wide neighborhood would re-trigger everything forever);
+   **suppressed while the lane's frontier is non-empty** (finish the shelf first); per-record
+   cooldown `max(stale_after/10, 1.day)`; quiet-lane pre-gate once a finished beat exists.
+3. **vocabulary** — per-lane vocabulary version `V = MAX(updated_at)` over approved suggestions
+   visible up the path (exactly `Vocabulary.for`'s scope); candidates whose lane start < V,
+   oldest first — a resumable cursor with ZERO new state (one re-tend catches a record up to all
+   approvals at once); wave drain arithmetic logged.
+
+Frontier/sweep enumeration is SQL anti-joins with LIMIT (never the in-memory done-set or the
+NOT IN id-array); per-lane quotas + one redistribution pass + a tiny-budget greedy fallback;
+24h failure backoff everywhere. Estimation: trailing-window succeeded tokens ÷ applied visits
+(escalation chains price themselves in), fallbacks logged.
+
+## 3. Provenance + surfaces
+
+- Visits carry `heartbeat_id` + `reason` (NULL on every manual tend — byte-identical when
+  unused). PROV: the Heartbeat is the Activity that informed the Visit; enqueue-mode actuals
+  stay derivable via `Visit.where(heartbeat_id:)`.
+- `rake enliterator:heartbeat` — BUDGET= PLAN=1 ENQUEUE=1 FORCE=1 SKIP_CONSIDER=1; sync default.
+- Settings: the Heartbeat panel (knobs + last cycle; "never run" until adoption). Status: the
+  next-cycle preview + horizon, **gated behind adoption** (no ledger rows ⇒ byte-identical page,
+  zero planner queries).
+- Migrations (reversible): `enliterator_heartbeats`; visits `heartbeat_id`+`reason`; the lane-scan
+  index `[context_id, facet, created_at]`.
+
+## Honesty notes
+- The **vocabulary trigger is the one unmeasured trigger** (v0.14 tested neighbor-change only) —
+  watch its first real wave through the trajectory surface.
+- `updated_at` is an approximate source-change signal (override point provided; per-visit source
+  digests deferred).
+- The token budget is tier-blind (a free on-prem token = a paid token); dollars stay derivable
+  from per-visit tiers + `Spend`'s price_map.
+- The considerer's own LLM tokens have no usage surface (`decide` returns none) — recorded as
+  outcomes only, not invented numbers. Enqueue mode's considerer lags one cycle (recorded on the row).
+- Job-signature rollback caveat: 5-arg TendingVisitJobs in a queue won't deserialize under a
+  pre-v0.15 engine.
+
+## Done = all of (this phase):
+- Heartbeat model + Planner + Plan; provenance plumbing; rake; surfaces. 43 new examples
+  (provenance 3, job 3, plan 22, beat 11, surfaces 4); **341 green**.
+- Supervised first cycles on HSDL (PLAN=1 read, then a small sync beat watched live) before any
+  host scheduling — automation is adopted by the host only after the cycles earn trust.
+- README (heartbeat), About living-doc ("the pulse" + colophon v0.15), CLAUDE.md current-state.
