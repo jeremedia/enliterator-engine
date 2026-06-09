@@ -27,10 +27,13 @@ module Enliterator
 
     # Aggregate open proposals into a ranked gap report: which keys are being asked
     # for most often, across how many distinct records, with a sample for context.
-    # Scoped to pending; optionally narrowed to one facet. Ranked by demand desc.
-    def self.gaps(facet: nil)
+    # Scoped to pending; optionally narrowed to one facet and/or one collection
+    # context (v0.13: a context's queue shows the proposals that arose IN it —
+    # pending rows don't inherit; only VERDICTS read up the path). Ranked by demand.
+    def self.gaps(facet: nil, context: :__all__)
       rel = pending
       rel = rel.where(facet: facet) if facet
+      rel = rel.where(context_id: context&.id) unless context == :__all__
 
       rel.group(:proposed_key).pluck(
         Arel.sql("proposed_key"),

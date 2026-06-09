@@ -6,7 +6,7 @@ module Enliterator
     include ActionController::Live
 
     def index
-      @synopsis = Enliterator::Synopsis.build
+      @synopsis = Enliterator::Synopsis.build(context: current_context)
     end
 
     def stream
@@ -14,7 +14,7 @@ module Enliterator
       response.headers["Cache-Control"]     = "no-cache"
       response.headers["X-Accel-Buffering"] = "no" # disable proxy buffering (nginx/Caddy)
 
-      provenance = Enliterator::Conversation.new.reply(
+      provenance = Enliterator::Conversation.new(context: current_context).reply(
         question: params[:question].to_s,
         history:  parse_history,
         stream:   true

@@ -8,8 +8,14 @@ module Enliterator
   # status browser overview and the conversation UI's top-level grounding — the
   # chapter's "the collection looked back," rendered as data the collection can speak.
   #
-  #   Enliterator::Synopsis.build                       # full self-portrait
+  #   Enliterator::Synopsis.build                       # full self-portrait (root)
+  #   Enliterator::Synopsis.build(context: ctx)         # one context's portrait
   #   Enliterator::Synopsis.to_prompt(Synopsis.build)   # compact text for an LLM
+  #
+  # v0.13: context-aware. Within a context the portrait shows the context's
+  # EFFECTIVE facets (inherited + own), claim/visit counts scoped up its path
+  # (root rule: [nil, *path_ids]), and its own vocabulary gaps. With no context:
+  # the root view — the unfiltered union, byte-identical to v0.12.
   #
   # NOTE on the claim→facet mapping: Claim carries no `facet` column (the facet
   # lives on the Visit). So tended_count is derived from Visit rows, and the
@@ -24,16 +30,18 @@ module Enliterator
 
     # Build the self-portrait. `sample_cap` / `value_chars` bound the prompt size so
     # to_prompt stays small regardless of corpus size.
-    def build(host: nil, since: nil, sample_cap: 3, value_chars: 80)
+    def build(host: nil, since: nil, context: nil, sample_cap: 3, value_chars: 80)
       policy = Enliterator.staffing
-      names  = facet_names(policy)
+      names  = facet_names(policy, context)
 
       {
         generated_at: Time.current,
-        facets: names.map { |s| facet_portrait(policy, s, sample_cap: sample_cap, value_chars: value_chars) },
-        connections: connection_portrait(policy, names, sample_cap: sample_cap, value_chars: value_chars),
+        context:      context&.key,
+        facets: names.map { |s| facet_portrait(policy, s, context: context, sample_cap: sample_cap, value_chars: value_chars) },
+        connections: connection_portrait(policy, names, context: context, sample_cap: sample_cap, value_chars: value_chars),
         health: Enliterator::Report.summary(host: host, since: since),
-        gaps:   Enliterator::Suggestion.gaps.first(5),
+        # Root = the unfiltered union (rule 1); a context = its own proposals.
+        gaps:   (context ? Enliterator::Suggestion.gaps(context: context) : Enliterator::Suggestion.gaps).first(5),
         models: Enliterator.tendable_models.map(&:name)
       }
     end
@@ -42,6 +50,7 @@ module Enliterator
     # a JSON dump). Samples are already truncated by build, so this is bounded.
     def to_prompt(synopsis)
       lines = [ "COLLECTION SELF-PORTRAIT" ]
+      lines << "Viewed through context: #{synopsis[:context]}" if synopsis[:context]
       models = Array(synopsis[:models])
       lines << "Tended models: #{models.join(', ')}" if models.any?
 
@@ -70,37 +79,42 @@ module Enliterator
 
     # ---- internals -------------------------------------------------------
 
-    def facet_names(policy)
-      names = policy.assignments.keys
+    # The facets in view: a context's EFFECTIVE set (inherited + own, from the
+    # policy path merge); at root, the root declarations (v0.12 behavior).
+    def facet_names(policy, context = nil)
+      names = policy.facets_for(context&.path_keys).keys
       names = Array(Enliterator.configuration.tending_facets).map(&:to_s) if names.empty?
       names
     end
 
-    def facet_portrait(policy, facet, sample_cap:, value_chars:)
-      contract  = Enliterator::Vocabulary.for(facet) || {} # effective: code + approved keys
-      code_keys = (policy.terms_for(facet) || {}).keys.to_set
+    def facet_portrait(policy, facet, context: nil, sample_cap:, value_chars:)
+      path      = context&.path_keys
+      contract  = Enliterator::Vocabulary.for(facet, context: context) || {} # effective: code + approved
+      code_keys = (policy.terms_for(facet, path: path) || {}).keys.to_set
       {
         facet:       facet,
-        tier:         policy.tier_for(facet),
-        tended_count: tended_count(facet),
+        tier:         policy.tier_for(facet, path: path),
+        tended_count: tended_count(facet, context),
         vocabulary:   contract.map do |key, desc|
           # `approved: true` ⇒ a curator-adopted key that's live but not yet codified.
-          key_summary(key, description: desc, sample_cap: sample_cap, value_chars: value_chars)
+          key_summary(key, context: context, description: desc, sample_cap: sample_cap, value_chars: value_chars)
             .merge(approved: !code_keys.include?(key))
         end
       }
     end
 
     # Distinct records that have an applied+succeeded visit on this facet — the only
-    # reliable facet→record mapping (Claim has no facet column).
-    def tended_count(facet)
-      Enliterator::Visit
-        .where(facet: facet, status: "succeeded", applied: true)
-        .distinct.pluck(:tendable_type, :tendable_id).size
+    # reliable facet→record mapping (Claim has no facet column). Scoped up the
+    # context's path; unfiltered at root (the union view).
+    def tended_count(facet, context = nil)
+      scope = Enliterator::Visit.where(facet: facet, status: "succeeded", applied: true)
+      scope = scope.where(context_id: context.scope_ids) if context
+      scope.distinct.pluck(:tendable_type, :tendable_id).size
     end
 
-    def key_summary(key, description: nil, sample_cap:, value_chars:)
+    def key_summary(key, context: nil, description: nil, sample_cap:, value_chars:)
       live = Enliterator::Claim.live.where(key: key)
+      live = live.where(context_id: context.scope_ids) if context
       summary = {
         key:         key,
         live_claims: live.count,
@@ -112,13 +126,14 @@ module Enliterator
 
     # Connection keys: prefer those owned by a facet NAMED like a connection facet;
     # else any contract key that LOOKS like a cross-record link. Empty ⇒ no panel.
-    def connection_portrait(policy, names, sample_cap:, value_chars:)
+    def connection_portrait(policy, names, context: nil, sample_cap:, value_chars:)
       keys = names.select { |s| s.match?(CONNECTION_FACET_RX) }
-                  .flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }
+                  .flat_map { |s| (Enliterator::Vocabulary.for(s, context: context) || {}).keys }
       if keys.empty?
-        keys = names.flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }.select { |k| k.to_s.match?(CONNECTION_KEY_RX) }
+        keys = names.flat_map { |s| (Enliterator::Vocabulary.for(s, context: context) || {}).keys }
+                    .select { |k| k.to_s.match?(CONNECTION_KEY_RX) }
       end
-      keys.uniq.map { |k| key_summary(k, sample_cap: sample_cap, value_chars: value_chars) }
+      keys.uniq.map { |k| key_summary(k, context: context, sample_cap: sample_cap, value_chars: value_chars) }
     end
 
     def truncate_value(value, chars)

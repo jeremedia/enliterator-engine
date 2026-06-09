@@ -2,14 +2,24 @@
 <h1><%= @record.try(:title) || @record.try(:name) || "#{@type}/#{@record.id}" %></h1>
 <p class="muted mono"><%= @type %>/<%= @record.id %></p>
 
+<% if @contexts.any? %>
+  <p class="muted samples">
+    In contexts:
+    <% @contexts.each do |c| %>
+      <%= link_to c.name, root_path(context: c.key), class: "chip", style: "text-decoration:none" %>
+    <% end %>
+  </p>
+<% end %>
+
 <h2>Live claims <span class="muted" style="font-weight:400">(<%= @claims.size %>)</span></h2>
 <div class="card">
   <% if @claims.any? %>
     <table>
-      <tr><th>key</th><th>value</th><th>conf</th><th>status</th><th></th></tr>
+      <tr><th>key</th><th>context</th><th>value</th><th>conf</th><th>status</th><th></th></tr>
       <% @claims.each do |c| %>
         <tr>
           <td><code><%= c.key %></code></td>
+          <td class="samples"><%= c.context&.key || "root" %></td>
           <td><%= truncate(c.value.is_a?(String) ? c.value : c.value.to_json, length: 240) %></td>
           <td><%= c.confidence %></td>
           <td><span class="chip"><%= c.status %></span></td>
@@ -26,10 +36,11 @@
 <div class="card">
   <% if @visits.any? %>
     <table>
-      <tr><th>facet</th><th>tier</th><th>step</th><th>conf</th><th>status</th><th>applied</th><th>at</th></tr>
+      <tr><th>facet</th><th>context</th><th>tier</th><th>step</th><th>conf</th><th>status</th><th>applied</th><th>at</th></tr>
       <% @visits.each do |v| %>
         <tr class="<%= "warn-row" if v.model == "null" %>">
           <td><%= v.facet %></td>
+          <td class="samples"><%= v.context&.key || "root" %></td>
           <td><%= v.tier %><% if v.model == "null" %> <span class="warn">null</span><% end %></td>
           <td><%= v.escalation_step %></td>
           <td><%= v.confidence %></td>

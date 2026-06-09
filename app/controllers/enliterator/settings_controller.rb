@@ -11,6 +11,9 @@ module Enliterator
       @config = Enliterator.configuration
       @policy = Enliterator.staffing
 
+      # v0.13: the selected context's EFFECTIVE facet set (inherited + own);
+      # root = the root declarations (v0.12 view).
+      @facet_origins = Enliterator.staffing.facets_for(current_context&.path_keys)
       @facets       = facet_names
       @contracts     = @facets.map { |s| facet_config(s) }
       @gateway_ready = @config.gateway_api_key.present? && @config.gateway_base_url.present?
@@ -30,22 +33,25 @@ module Enliterator
     private
 
     def facet_names
-      names = @policy.assignments.keys
+      names = @facet_origins.keys
       names = Array(@config.tending_facets).map(&:to_s) if names.empty?
       names
     end
 
-    # The effective per-facet config: assigned tier, the climb from there, required
-    # terms, and the effective vocabulary (code + approved), each term flagged code/approved.
+    # The effective per-facet config along the current context's path: assigned
+    # tier, the climb from there, required terms, and the effective vocabulary
+    # (code + approved), each term flagged code/approved.
     def facet_config(facet)
-      tier = @policy.tier_for(facet)
-      code = @policy.terms_for(facet) || {}
-      eff  = Enliterator::Vocabulary.for(facet) || {}
+      path = current_context&.path_keys
+      tier = @policy.tier_for(facet, path: path)
+      code = @policy.terms_for(facet, path: path) || {}
+      eff  = Enliterator::Vocabulary.for(facet, context: current_context) || {}
       {
         facet:    facet,
+        origin:   @facet_origins[facet],   # which context declared it ("root" or a key)
         tier:     tier,
         climb:    @policy.ladder_from(tier),
-        required: Array(@policy.required_terms(facet)),
+        required: Array(@policy.required_terms(facet, path: path)),
         terms:    eff.map { |term, desc| { term: term, description: desc, approved: !code.key?(term) } }
       }
     end

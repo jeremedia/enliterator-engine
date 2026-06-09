@@ -10,13 +10,13 @@
 
 <h2>Facets <span class="muted" style="font-weight:400">— roles, and the capability assigned to each</span></h2>
 <div class="card">
-  <% if @policy.assignments.any? %>
+  <% if @facets.any? %>
     <table>
       <tr><th>facet (role)</th><th>tier</th><th>escalation climb</th><th>vocabulary</th><th>required</th></tr>
       <% @contracts.each do |c| %>
         <% approved_n = c[:terms].count { |k| k[:approved] } %>
         <tr>
-          <td><strong><%= c[:facet] %></strong></td>
+          <td><strong><%= c[:facet] %></strong><% if c[:origin] && c[:origin] != "root" %> <span class="chip" title="declared in this context"><%= c[:origin] %></span><% end %></td>
           <td><span class="chip tier"><%= c[:tier] %></span></td>
           <td class="mono"><%= c[:climb].join(" → ") %></td>
           <td>
