@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_09_170002) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_09_210002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -441,6 +441,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_170002) do
     t.index ["embedding"], name: "idx_enliterator_embeddings_on_embedding_hnsw", opclass: :vector_cosine_ops, using: :hnsw
   end
 
+  create_table "enliterator_heartbeats", force: :cascade do |t|
+    t.bigint "budget_tokens"
+    t.jsonb "config_snapshot", default: {}
+    t.jsonb "considerer", default: {}
+    t.datetime "created_at", null: false
+    t.text "error"
+    t.jsonb "executed", default: {}
+    t.datetime "finished_at"
+    t.string "mode", default: "sync", null: false
+    t.jsonb "planned", default: {}
+    t.datetime "started_at", null: false
+    t.jsonb "tokens_spent", default: {}
+    t.datetime "updated_at", null: false
+    t.jsonb "warnings", default: []
+    t.index ["started_at"], name: "index_enliterator_heartbeats_on_started_at"
+  end
+
   create_table "enliterator_measures", force: :cascade do |t|
     t.datetime "computed_at"
     t.datetime "created_at", null: false
@@ -508,10 +525,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_170002) do
     t.integer "escalation_step", default: 0, null: false
     t.string "facet", null: false
     t.datetime "finished_at"
+    t.bigint "heartbeat_id"
     t.jsonb "input_refs", default: {}
     t.string "model"
     t.string "prompt_version"
     t.jsonb "raw_response", default: {}
+    t.string "reason"
     t.jsonb "reconciliation", default: {}
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
@@ -520,7 +539,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_170002) do
     t.string "tier"
     t.jsonb "tokens", default: {}
     t.datetime "updated_at", null: false
+    t.index ["context_id", "facet", "created_at"], name: "idx_enliterator_visits_on_context_facet_created"
     t.index ["context_id"], name: "index_enliterator_visits_on_context_id"
+    t.index ["heartbeat_id"], name: "index_enliterator_visits_on_heartbeat_id"
     t.index ["tendable_type", "tendable_id", "context_id", "facet"], name: "idx_enliterator_visits_on_tendable_context_facet"
     t.index ["tendable_type", "tendable_id", "created_at"], name: "idx_enliterator_visits_on_tendable_and_created_at"
     t.index ["tendable_type", "tendable_id", "facet"], name: "idx_enliterator_visits_on_tendable_and_facet"
@@ -1734,6 +1755,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_170002) do
   add_foreign_key "enliterator_context_memberships", "enliterator_contexts", column: "context_id"
   add_foreign_key "enliterator_suggestions", "enliterator_contexts", column: "context_id"
   add_foreign_key "enliterator_visits", "enliterator_contexts", column: "context_id"
+  add_foreign_key "enliterator_visits", "enliterator_heartbeats", column: "heartbeat_id"
   add_foreign_key "enliterator_visits", "enliterator_visits", column: "escalated_from_id", on_delete: :nullify
   add_foreign_key "evidence_experiences", "evidences"
   add_foreign_key "evidence_experiences", "experiences"

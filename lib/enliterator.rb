@@ -91,6 +91,30 @@ module Enliterator
     # stay advisory, surfaced as a diff to codify by hand).
     attr_accessor :apply_approved_keys
 
+    # ---- v0.15 Heartbeat (event-driven tending) ---------------------------
+
+    # The per-cycle token budget (Visit.tokens.total summed). Sync mode enforces
+    # this on ACTUALS — the cycle cannot exceed its appropriation. Tier-blind:
+    # a free on-prem token counts the same as a paid one (dollars stay derivable
+    # from the ledger's by_tier + Spend's price_map).
+    attr_accessor :heartbeat_budget_tokens
+
+    # The fraction of the budget reserved for CHANGE-TRIGGERED re-tends
+    # (source-change → neighborhood → vocabulary, in that order). Unused change
+    # budget spills to the frontier; the stale sweep gets only what's left.
+    attr_accessor :heartbeat_change_share
+
+    # How many context-mates must have been tended since a record's last visit
+    # in a lane before the neighborhood trigger fires (v0.14's measured signal).
+    attr_accessor :heartbeat_neighbor_threshold
+
+    # Optional host override for the source-change test: a callable
+    # `(record, last_started_at) -> bool`. nil ⇒ the default comparison
+    # `record.updated_at > last_started_at` — approximate (touch chains, host
+    # backfills also move updated_at); hosts with a real content timestamp or
+    # digest should point this at it.
+    attr_accessor :heartbeat_source_changed
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -122,6 +146,10 @@ module Enliterator
       @considerer_autonomy = :auto_safe
       @considerer_min_confidence = 0.75
       @apply_approved_keys = true
+      @heartbeat_budget_tokens = 200_000
+      @heartbeat_change_share = 0.2
+      @heartbeat_neighbor_threshold = 3
+      @heartbeat_source_changed = nil
     end
 
     def logger
