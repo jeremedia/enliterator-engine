@@ -17,7 +17,7 @@ RSpec.describe Enliterator::Tendable, "#assert_claim!" do
       "model-cheap"
     end
 
-    def tend(text:, stream:, state:, neighbors:, tags: [], contract: nil)
+    def tend(text:, facet:, state:, neighbors:, tags: [], contract: nil)
       parsed = {
         "claims" => [
           { "key" => "author", "op" => "UPDATE", "value" => "LLM-derived (should not apply)", "confidence" => 0.99 }
@@ -84,7 +84,7 @@ RSpec.describe Enliterator::Tendable, "#assert_claim!" do
     it "leaves the locked claim live and unchanged after a tend that proposes UPDATE" do
       locked = widget.assert_claim!(key: "author", value: "Ada Lovelace")
 
-      visit = Enliterator::Tending::Visitor.new(widget, stream: "metadata", embedder: embedder).call
+      visit = Enliterator::Tending::Visitor.new(widget, facet: "metadata", embedder: embedder).call
 
       locked.reload
       expect(locked.value).to eq("Ada Lovelace")

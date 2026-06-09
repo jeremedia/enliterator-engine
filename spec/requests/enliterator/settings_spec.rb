@@ -8,15 +8,15 @@ RSpec.describe "Enliterator settings", type: :request do
   before do
     Enliterator.configure do |c|
       c.staffing = Enliterator::Staffing::Policy.new do
-        stream :summary,      tier: "cheap",   keys: { summary: "An abstract." }
-        stream :significance, tier: "quality", keys: { contribution: "What it adds." }, required: [ :contribution ]
+        facet :summary,      tier: "cheap",   terms: { summary: "An abstract." }
+        facet :significance, tier: "quality", terms: { contribution: "What it adds." }, required: [ :contribution ]
         ladder [ "cheap", "quality" ]
         verify_floor "quality"
       end
     end
   end
 
-  it "renders the org chart: streams, tiers, ladder, verify floor" do
+  it "renders the org chart: facets, tiers, ladder, verify floor" do
     get "/enliterator/settings"
     expect(response).to have_http_status(:ok)
     expect(response.body)
@@ -33,7 +33,7 @@ RSpec.describe "Enliterator settings", type: :request do
 
   it "marks an approved key as live in the effective contract" do
     w = Widget.create!(title: "T", body: "b")
-    Enliterator::Suggestion.create!(tendable: w, stream: "significance", proposed_key: "keywords",
+    Enliterator::Suggestion.create!(tendable: w, facet: "significance", proposed_key: "keywords",
                                     rationale: "r", status: "approved")
     get "/enliterator/settings"
     expect(response.body).to include("keywords").and include("live")

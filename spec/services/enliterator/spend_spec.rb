@@ -3,13 +3,13 @@
 require "rails_helper"
 
 # The engine's local token ledger. Pure ActiveRecord read over the immutable
-# Visit history — groups Visit.tokens by stream and tier. No gateway, no network.
+# Visit history — groups Visit.tokens by facet and tier. No gateway, no network.
 RSpec.describe Enliterator::Spend do
   let(:widget) { Widget.create!(title: "Acme", body: "ledger fodder") }
 
-  def visit!(stream:, tier:, input:, output:)
+  def visit!(facet:, tier:, input:, output:)
     widget.enliterator_visits.create!(
-      stream:  stream,
+      facet:  facet,
       tier:    tier,
       status:  "succeeded",
       applied: true,
@@ -17,15 +17,15 @@ RSpec.describe Enliterator::Spend do
     )
   end
 
-  describe ".by_stream" do
+  describe ".by_facet" do
     before do
-      visit!(stream: "summary", tier: "cheap",   input: 1000, output: 200)
-      visit!(stream: "summary", tier: "quality", input: 200,  output: 100)
-      visit!(stream: "critique", tier: "quality", input: 500, output: 50)
+      visit!(facet: "summary", tier: "cheap",   input: 1000, output: 200)
+      visit!(facet: "summary", tier: "quality", input: 200,  output: 100)
+      visit!(facet: "critique", tier: "quality", input: 500, output: 50)
     end
 
-    it "groups token usage by stream" do
-      result = described_class.by_stream
+    it "groups token usage by facet" do
+      result = described_class.by_facet
 
       expect(result.keys).to match_array(%w[summary critique])
       expect(result["summary"][:tokens]).to eq(
@@ -36,8 +36,8 @@ RSpec.describe Enliterator::Spend do
       )
     end
 
-    it "breaks each stream down by tier" do
-      result = described_class.by_stream
+    it "breaks each facet down by tier" do
+      result = described_class.by_facet
 
       by_tier = result["summary"][:by_tier]
       expect(by_tier.keys).to match_array(%w[cheap quality])
@@ -45,14 +45,14 @@ RSpec.describe Enliterator::Spend do
       expect(by_tier["quality"]).to eq("input" => 200, "output" => 100, "total" => 300)
     end
 
-    it "filters to a single stream when asked" do
-      result = described_class.by_stream(stream: "critique")
+    it "filters to a single facet when asked" do
+      result = described_class.by_facet(facet: "critique")
       expect(result.keys).to eq(%w[critique])
     end
 
     it "buckets tier-less visits under 'unknown' (no silent drop)" do
-      visit!(stream: "summary", tier: nil, input: 10, output: 5)
-      result = described_class.by_stream(stream: "summary")
+      visit!(facet: "summary", tier: nil, input: 10, output: 5)
+      result = described_class.by_facet(facet: "summary")
       expect(result["summary"][:by_tier]).to have_key("unknown")
       expect(result["summary"][:by_tier]["unknown"]).to eq(
         "input" => 10, "output" => 5, "total" => 15
@@ -60,8 +60,8 @@ RSpec.describe Enliterator::Spend do
     end
 
     it "adds a cost_usd estimate when a price map is supplied" do
-      result = described_class.by_stream(
-        stream:    "summary",
+      result = described_class.by_facet(
+        facet:    "summary",
         price_map: {
           "cheap"   => { input: 0.0,     output: 0.0 },
           "quality" => { input: 0.00125, output: 0.01 }

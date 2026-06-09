@@ -1,13 +1,13 @@
 module Enliterator
-  # Registry of named quality facets. Each facet is a block that takes a tendable
+  # Registry of named quality measures. Each measure is a block that takes a tendable
   # and returns {score: Float, signals: Hash}. recompute! runs all registered
-  # facets and upserts a Facet row per [tendable, name]. Host apps register their
+  # measures and upserts a Measure row per [tendable, name]. Host apps register their
   # own (HSDL maps its 12-signal health here); the engine ships :completeness.
-  module Facets
+  module Measures
     @registry = {}
 
     class << self
-      # Register (or replace) a facet by name. The block receives the tendable and
+      # Register (or replace) a measure by name. The block receives the tendable and
       # must return {score: Float (0..1), signals: Hash}.
       def register(name, &block)
         @registry[name.to_sym] = block
@@ -18,8 +18,8 @@ module Enliterator
         @registry
       end
 
-      # Run every registered facet against the tendable and upsert its Facet row.
-      # Returns the array of persisted Facet records.
+      # Run every registered measure against the tendable and upsert its Measure row.
+      # Returns the array of persisted Measure records.
       def recompute!(tendable)
         load_default!
         now = Time.current
@@ -28,16 +28,16 @@ module Enliterator
           score   = result[:score]
           signals = result[:signals] || {}
 
-          facet = tendable.enliterator_facets.find_or_initialize_by(name: name.to_s)
-          facet.score       = score
-          facet.signals     = signals
-          facet.computed_at = now
-          facet.save!
-          facet
+          measure = tendable.enliterator_measures.find_or_initialize_by(name: name.to_s)
+          measure.score       = score
+          measure.signals     = signals
+          measure.computed_at = now
+          measure.save!
+          measure
         end
       end
 
-      # Idempotently register the built-in :completeness facet.
+      # Idempotently register the built-in :completeness measure.
       def load_default!
         return if registry.key?(:completeness)
 

@@ -22,7 +22,7 @@ RSpec.describe "Enliterator about page", type: :request do
 
   it "shows the live stats strip once the collection has been tended" do
     w = Widget.create!(title: "T", body: "b")
-    Enliterator::Visit.create!(tendable: w, stream: "summary", tier: "cheap",
+    Enliterator::Visit.create!(tendable: w, facet: "summary", tier: "cheap",
                                status: "succeeded", applied: true, confidence: 1.0, escalation_step: 0)
     Enliterator::Claim.create!(tendable: w, key: "summary", value: "x", status: "draft")
 

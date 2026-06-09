@@ -3,7 +3,7 @@
 require "rails_helper"
 
 # v0.3 §3 — the governed suggestion: a model's sanctioned proposal to add a claim
-# key to a stream's controlled vocabulary. The model records bio (provenance +
+# key to a facet's controlled vocabulary. The model records bio (provenance +
 # rationale); a human renders a verdict (approve/map/reject); and #gaps aggregates
 # open proposals into a demand-ranked report so the vocabulary can be tended.
 RSpec.describe Enliterator::Suggestion do
@@ -14,7 +14,7 @@ RSpec.describe Enliterator::Suggestion do
   def suggest!(record:, key:, rationale: "needed", example: nil, status: "pending")
     attrs = {
       tendable:     record,
-      stream:       "metadata",
+      facet:       "metadata",
       proposed_key: key,
       rationale:    rationale,
       status:       status
@@ -56,12 +56,12 @@ RSpec.describe Enliterator::Suggestion do
       expect(inst[:sample_example]).to eq("name" => "NPS")
     end
 
-    it "can be narrowed to a single stream" do
-      # A proposal on a different stream must not appear when scoped.
+    it "can be narrowed to a single facet" do
+      # A proposal on a different facet must not appear when scoped.
       described_class.create!(
-        tendable: widget_a, stream: "other", proposed_key: "tag", rationale: "x", status: "pending"
+        tendable: widget_a, facet: "other", proposed_key: "tag", rationale: "x", status: "pending"
       )
-      keys = described_class.gaps(stream: "metadata").map { |g| g[:proposed_key] }
+      keys = described_class.gaps(facet: "metadata").map { |g| g[:proposed_key] }
       expect(keys).to contain_exactly("institution", "doi")
       expect(keys).not_to include("tag")
     end
@@ -136,7 +136,7 @@ RSpec.describe Enliterator::Suggestion do
       expect(described_class.reject_key!("keywords")).to eq(2)
     end
 
-    it ".contract_additions groups approved keys by stream" do
+    it ".contract_additions groups approved keys by facet" do
       described_class.approve_key!("keywords")
       described_class.approve_key!("author")
       expect(described_class.contract_additions).to eq("metadata" => %w[author keywords])
@@ -145,7 +145,7 @@ RSpec.describe Enliterator::Suggestion do
     it ".synonyms lists proposed -> mapped_to" do
       described_class.map_key!("author", to: "authored_by")
       expect(described_class.synonyms).to contain_exactly(
-        { stream: "metadata", proposed_key: "author", mapped_to: "authored_by" }
+        { facet: "metadata", proposed_key: "author", mapped_to: "authored_by" }
       )
     end
 

@@ -9,11 +9,11 @@ RSpec.describe "Enliterator status browser", type: :request do
   before do
     Enliterator.configure do |c|
       c.staffing = Enliterator::Staffing::Policy.new do
-        stream :summary, tier: "cheap", keys: { summary: "An abstract." }
+        facet :summary, tier: "cheap", terms: { summary: "An abstract." }
         ladder [ "cheap", "quality" ]
       end
     end
-    widget.enliterator_visits.create!(stream: "summary", status: "succeeded", applied: true, model: "cheap", tier: "cheap")
+    widget.enliterator_visits.create!(facet: "summary", status: "succeeded", applied: true, model: "cheap", tier: "cheap")
     widget.enliterator_claims.create!(key: "summary", value: "An account of Acme.", status: "draft")
   end
 
@@ -23,14 +23,14 @@ RSpec.describe "Enliterator status browser", type: :request do
     expect(response.body).to include("Status").and include("summary")
   end
 
-  it "GET /enliterator/status renders stream cards + the health table" do
+  it "GET /enliterator/status renders facet cards + the health table" do
     get "/enliterator/status"
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include("Streams").and include("Tending health")
+    expect(response.body).to include("Facets").and include("Tending health")
   end
 
   it "highlights a null adapter in the health table (the smoke alarm)" do
-    widget.enliterator_visits.create!(stream: "summary", status: "succeeded", applied: true, model: "null", tier: "cheap")
+    widget.enliterator_visits.create!(facet: "summary", status: "succeeded", applied: true, model: "null", tier: "cheap")
     get "/enliterator/status"
     expect(response.body).to include("null adapter ran")
   end

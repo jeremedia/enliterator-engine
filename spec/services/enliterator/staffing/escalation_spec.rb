@@ -35,7 +35,7 @@ RSpec.describe "Enliterator::Tending::Visitor escalation (staffing path)" do
       "model-#{@tier}"
     end
 
-    def tend(text:, stream:, state:, neighbors:, tags: [])
+    def tend(text:, facet:, state:, neighbors:, tags: [])
       @calls += 1
       @captured_states << state
       @captured_tags   << tags
@@ -152,7 +152,7 @@ RSpec.describe "Enliterator::Tending::Visitor escalation (staffing path)" do
       cheap_tags  = cheap.captured_tags.first
       senior_tags = quality.captured_tags.first
 
-      expect(cheap_tags).to include("tier:cheap", "esc:0", "stream:summary")
+      expect(cheap_tags).to include("tier:cheap", "esc:0", "facet:summary")
       expect(senior_tags).to include("tier:quality", "esc:1")
     end
   end
@@ -221,6 +221,6 @@ RSpec.describe "Enliterator::Tending::Visitor escalation (staffing path)" do
 
   # Helper: run the Visitor's staffing path (no llm: injected).
   def described_class_call!
-    Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
   end
 end

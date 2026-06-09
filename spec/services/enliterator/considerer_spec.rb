@@ -20,12 +20,12 @@ RSpec.describe Enliterator::Considerer do
   before do
     Enliterator.configure do |c|
       c.staffing = Enliterator::Staffing::Policy.new do
-        stream :summary, tier: "cheap", keys: { summary: "An abstract.", authored_by: "The author(s)." }
+        facet :summary, tier: "cheap", terms: { summary: "An abstract.", authored_by: "The author(s)." }
         ladder [ "cheap", "quality" ]
       end
     end
     %w[author noise keywords].each do |k|
-      Enliterator::Suggestion.create!(tendable: w, stream: "summary", proposed_key: k, rationale: "r-#{k}", status: "pending")
+      Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: k, rationale: "r-#{k}", status: "pending")
     end
   end
 

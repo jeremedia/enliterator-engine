@@ -1,20 +1,20 @@
 require "rails_helper"
 
-# The :completeness facet is the engine's built-in quality scorer. It checks a
+# The :completeness measure is the engine's built-in quality scorer. It checks a
 # small expected set — a live claim, a primary embedding, a succeeded visit — and
 # scores the fraction present in [0, 1]. This spec proves the score climbs as a
-# record accrues each signal, which is the whole point of a quality facet: it
+# record accrues each signal, which is the whole point of a quality measure: it
 # tells a host how literate a record has become.
-RSpec.describe Enliterator::Facets do
+RSpec.describe Enliterator::Measures do
   let(:widget) { Widget.create!(title: "Acme", body: "A useful thing.") }
 
-  # Ensure the built-in facet is registered for every example, independent of
+  # Ensure the built-in measure is registered for every example, independent of
   # whatever order other specs ran in (the registry is process-global).
   before { described_class.load_default! }
 
-  # Fetch the persisted :completeness Facet row for a tendable.
+  # Fetch the persisted :completeness Measure row for a tendable.
   def completeness_for(tendable)
-    tendable.enliterator_facets.find_by(name: "completeness")
+    tendable.enliterator_measures.find_by(name: "completeness")
   end
 
   # --- signal builders (each adds exactly one of the three expected signals) ---
@@ -42,13 +42,13 @@ RSpec.describe Enliterator::Facets do
   def add_succeeded_visit(tendable)
     Enliterator::Visit.create!(
       tendable:    tendable,
-      stream:      "summary",
+      facet:      "summary",
       status:      "succeeded",
       finished_at: Time.current
     )
   end
 
-  describe ":completeness facet" do
+  describe ":completeness measure" do
     it "is registered idempotently as a default" do
       expect(described_class.registry).to have_key(:completeness)
       # Calling load_default! again must not duplicate or replace it.
@@ -60,11 +60,11 @@ RSpec.describe Enliterator::Facets do
     it "scores 0.0 for a bare record with none of the expected signals" do
       described_class.recompute!(widget)
 
-      facet = completeness_for(widget)
-      expect(facet).to be_present
-      expect(facet.name).to eq("completeness")
-      expect(facet.score).to eq(0.0)
-      expect(facet.computed_at).to be_present
+      measure = completeness_for(widget)
+      expect(measure).to be_present
+      expect(measure.name).to eq("completeness")
+      expect(measure.score).to eq(0.0)
+      expect(measure.computed_at).to be_present
     end
 
     it "documents each expected signal in the signals hash" do
@@ -114,12 +114,12 @@ RSpec.describe Enliterator::Facets do
       expect(signals["has_succeeded_visit"]["value"]).to eq(true)
     end
 
-    it "upserts a single facet row across recomputations (no duplicates)" do
+    it "upserts a single measure row across recomputations (no duplicates)" do
       described_class.recompute!(widget)
       add_live_claim(widget)
       described_class.recompute!(widget)
 
-      rows = widget.enliterator_facets.where(name: "completeness")
+      rows = widget.enliterator_measures.where(name: "completeness")
       expect(rows.count).to eq(1)
       expect(rows.first.score).to be_within(1e-9).of(1.0 / 3)
     end
@@ -149,7 +149,7 @@ RSpec.describe Enliterator::Facets do
     end
 
     it "does not count a non-succeeded visit as the visit signal" do
-      Enliterator::Visit.create!(tendable: widget, stream: "summary", status: "running")
+      Enliterator::Visit.create!(tendable: widget, facet: "summary", status: "running")
 
       described_class.recompute!(widget)
       expect(completeness_for(widget).signals["has_succeeded_visit"]["value"]).to eq(false)
@@ -157,10 +157,10 @@ RSpec.describe Enliterator::Facets do
   end
 
   describe ".recompute!" do
-    it "returns the persisted Facet records it computed" do
+    it "returns the persisted Measure records it computed" do
       result = described_class.recompute!(widget)
 
-      expect(result).to all(be_a(Enliterator::Facet))
+      expect(result).to all(be_a(Enliterator::Measure))
       expect(result.map(&:name)).to include("completeness")
       expect(result).to all(be_persisted)
     end

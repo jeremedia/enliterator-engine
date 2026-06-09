@@ -23,7 +23,7 @@ RSpec.describe "Enliterator::Tending::Visitor structured logging (v0.5)" do
   describe "resolve event names the resolved adapter (the smoke-alarm line)" do
     it "emits adapter class + model_id when the Null adapter resolves" do
       # allow_null_llm is true suite-wide, so Null resolves and runs.
-      Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+      Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
       resolve = logger.lines.find { |l| l.include?("event=resolve") }
       expect(resolve).to be_present
       expect(resolve).to include("adapter=Enliterator::Adapters::LLM::Null", "model_id=null")
@@ -34,7 +34,7 @@ RSpec.describe "Enliterator::Tending::Visitor structured logging (v0.5)" do
     class LogStubLLM
       Result = Struct.new(:parsed, :raw, :tokens, keyword_init: true)
       def model_id = "stub"
-      def tend(text:, stream:, state:, neighbors:)
+      def tend(text:, facet:, state:, neighbors:)
         Result.new(parsed: { "claims" => [ { "key" => "summary", "op" => "ADD", "value" => "v" } ],
                              "confidence" => 0.9 },
                    raw: {}, tokens: { "total" => 7 })
@@ -42,7 +42,7 @@ RSpec.describe "Enliterator::Tending::Visitor structured logging (v0.5)" do
     end
 
     it "emits a succeeded visit line" do
-      Enliterator::Tending::Visitor.new(widget, stream: "summary", llm: LogStubLLM.new, embedder: embedder).call
+      Enliterator::Tending::Visitor.new(widget, facet: "summary", llm: LogStubLLM.new, embedder: embedder).call
       visit = logger.lines.find { |l| l.include?("event=visit") }
       expect(visit).to be_present
       expect(visit).to include("status=succeeded", "back_compat=true")
@@ -56,7 +56,7 @@ RSpec.describe "Enliterator::Tending::Visitor structured logging (v0.5)" do
     end
 
     it "logs a fail line and re-raises" do
-      visitor = Enliterator::Tending::Visitor.new(widget, stream: "summary", llm: BoomLLM.new, embedder: embedder)
+      visitor = Enliterator::Tending::Visitor.new(widget, facet: "summary", llm: BoomLLM.new, embedder: embedder)
       expect { visitor.call }.to raise_error(/kaboom/)
       fail_line = logger.lines.find { |l| l.include?("event=fail") }
       expect(fail_line).to be_present

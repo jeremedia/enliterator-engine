@@ -9,24 +9,24 @@ RSpec.describe Enliterator::ProposedTerm do
   let(:a) { Widget.create!(title: "A", body: "x") }
   let(:b) { Widget.create!(title: "B", body: "y") }
 
-  def suggest!(record:, key:, stream: "summary", status: "pending", created_at: nil, updated_at: nil)
-    attrs = { tendable: record, stream: stream, proposed_key: key, rationale: "r", status: status }
+  def suggest!(record:, key:, facet: "summary", status: "pending", created_at: nil, updated_at: nil)
+    attrs = { tendable: record, facet: facet, proposed_key: key, rationale: "r", status: status }
     attrs[:created_at] = created_at if created_at
     attrs[:updated_at] = updated_at if updated_at
     Enliterator::Suggestion.create!(**attrs)
   end
 
   describe ".refresh!" do
-    it "aggregates pressure (total proposals), distinct records, and by_stream" do
+    it "aggregates pressure (total proposals), distinct records, and by_facet" do
       suggest!(record: a, key: "keywords")
       suggest!(record: b, key: "keywords")
-      suggest!(record: a, key: "keywords", stream: "significance") # same record, 2nd stream
+      suggest!(record: a, key: "keywords", facet: "significance") # same record, 2nd facet
       described_class.refresh!
 
       t = described_class.find_by(proposed_key: "keywords")
       expect(t.pressure).to eq(3)            # three proposal rows
       expect(t.distinct_records).to eq(2)    # two distinct records
-      expect(t.by_stream).to eq("summary" => 2, "significance" => 1)
+      expect(t.by_facet).to eq("summary" => 2, "significance" => 1)
     end
 
     it "is idempotent and preserves a stored recommendation across refreshes" do

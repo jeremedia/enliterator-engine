@@ -4,7 +4,7 @@ module Enliterator
     included do
       has_many :enliterator_visits,     class_name: "Enliterator::Visit",     as: :tendable,   dependent: :destroy
       has_many :enliterator_claims,     class_name: "Enliterator::Claim",     as: :tendable,   dependent: :destroy
-      has_many :enliterator_facets,     class_name: "Enliterator::Facet",     as: :tendable,   dependent: :destroy
+      has_many :enliterator_measures,     class_name: "Enliterator::Measure",     as: :tendable,   dependent: :destroy
       has_many :enliterator_embeddings,  class_name: "Enliterator::Embedding",  as: :embeddable, dependent: :destroy
       has_many :enliterator_suggestions, class_name: "Enliterator::Suggestion", as: :tendable,   dependent: :destroy
       Enliterator.register_tendable(self)
@@ -13,15 +13,15 @@ module Enliterator
     # Host SHOULD override to provide the text representation used for embedding + tending.
     # Default tries common fields.
     #
-    # v0.4: stream-aware. Different streams may need different source text (e.g. an
-    # authorship stream wants the title page, not the abstract). If the host's
-    # `to_enliterator_text` accepts a `stream:` keyword, it's passed through; otherwise
-    # the zero-arg override is called (back-compat). `stream:` defaults to nil so
+    # v0.4: facet-aware. Different facets may need different source text (e.g. an
+    # authorship facet wants the title page, not the abstract). If the host's
+    # `to_enliterator_text` accepts a `facet:` keyword, it's passed through; otherwise
+    # the zero-arg override is called (back-compat). `facet:` defaults to nil so
     # `enliterator_text` with no args keeps working everywhere.
-    def enliterator_text(stream: nil)
+    def enliterator_text(facet: nil)
       if respond_to?(:to_enliterator_text)
-        if method(:to_enliterator_text).parameters.any? { |type, name| name == :stream && %i[key keyreq].include?(type) }
-          return to_enliterator_text(stream: stream)
+        if method(:to_enliterator_text).parameters.any? { |type, name| name == :facet && %i[key keyreq].include?(type) }
+          return to_enliterator_text(facet: facet)
         end
         return to_enliterator_text
       end
@@ -35,21 +35,21 @@ module Enliterator
     # applied: false (provenance only) and must NOT condition the next tending —
     # otherwise a superseded draft would leak into future prompts. v0.1 visits are
     # all applied: true, so this filter is a no-op for the existing contract.
-    def literacy_state(stream: nil)
+    def literacy_state(facet: nil)
       {
         claims:        enliterator_claims.live.map(&:to_state),
-        recent_visits: enliterator_visits.applied.where(stream: stream).order(created_at: :desc).limit(5).map(&:to_state),
-        facets:        enliterator_facets.each_with_object({}) { |f, h| h[f.name] = f.score }
+        recent_visits: enliterator_visits.applied.where(facet: facet).order(created_at: :desc).limit(5).map(&:to_state),
+        measures:        enliterator_measures.each_with_object({}) { |f, h| h[f.name] = f.score }
       }
     end
 
-    def tend!(stream:, **opts)
-      Enliterator::Tending::Visitor.new(self, stream: stream, **opts).call
+    def tend!(facet:, **opts)
+      Enliterator::Tending::Visitor.new(self, facet: facet, **opts).call
     end
 
-    def last_tended_at(stream: nil)
+    def last_tended_at(facet: nil)
       scope = enliterator_visits.where(status: "succeeded")
-      scope = scope.where(stream: stream) if stream
+      scope = scope.where(facet: facet) if facet
       scope.maximum(:finished_at)
     end
 

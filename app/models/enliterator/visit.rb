@@ -1,5 +1,5 @@
 module Enliterator
-  # PROV Activity. One tending pass over a record along a stream. Immutable
+  # PROV Activity. One tending pass over a record along a facet. Immutable
   # history: each visit reads prior visits + claims + neighbors and reconciles.
   # The accumulation of Visits is what makes understanding compound (rung 5).
   class Visit < ApplicationRecord
@@ -20,7 +20,7 @@ module Enliterator
     # Compact projection for prompt context handed to the next visit.
     def to_state
       {
-        stream:     stream,
+        facet:     facet,
         tier:       tier,
         confidence: confidence,
         summary:    reconciliation,

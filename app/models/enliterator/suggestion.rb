@@ -1,5 +1,5 @@
 module Enliterator
-  # Governed suggestion (SPEC.md > v0.3 > §3). When a stream has an output contract,
+  # Governed suggestion (SPEC.md > v0.3 > §3). When a facet has an output contract,
   # the model may not invent claim keys; instead it proposes additions here. The
   # ontology becomes a tended, governed thing — gaps surface where the vocabulary
   # is too narrow, and a human approves/maps/rejects each proposal.
@@ -19,10 +19,10 @@ module Enliterator
 
     # Aggregate open proposals into a ranked gap report: which keys are being asked
     # for most often, across how many distinct records, with a sample for context.
-    # Scoped to pending; optionally narrowed to one stream. Ranked by demand desc.
-    def self.gaps(stream: nil)
+    # Scoped to pending; optionally narrowed to one facet. Ranked by demand desc.
+    def self.gaps(facet: nil)
       rel = pending
-      rel = rel.where(stream: stream) if stream
+      rel = rel.where(facet: facet) if facet
 
       rel.group(:proposed_key).pluck(
         Arel.sql("proposed_key"),
@@ -57,17 +57,17 @@ module Enliterator
       pending.where(proposed_key: key).update_all(status: "rejected", review_note: note, updated_at: Time.current)
     end
 
-    # Approved keys grouped by the stream that proposed them — the exact additions a
-    # curator pastes into that stream's contract. `{stream => [proposed_key, ...]}`.
+    # Approved keys grouped by the facet that proposed them — the exact additions a
+    # curator pastes into that facet's contract. `{facet => [proposed_key, ...]}`.
     def self.contract_additions
-      where(status: "approved").distinct.pluck(:stream, :proposed_key)
+      where(status: "approved").distinct.pluck(:facet, :proposed_key)
         .group_by(&:first).transform_values { |pairs| pairs.map(&:last).uniq.sort }
     end
 
     # Recorded synonyms — proposed_key folded onto an existing canonical key.
     def self.synonyms
-      where(status: "mapped").distinct.pluck(:stream, :proposed_key, :mapped_to)
-        .map { |s, k, t| { stream: s, proposed_key: k, mapped_to: t } }
+      where(status: "mapped").distinct.pluck(:facet, :proposed_key, :mapped_to)
+        .map { |s, k, t| { facet: s, proposed_key: k, mapped_to: t } }
     end
 
     # ---- per-row status setters — a human's governance verdict on one proposal ---

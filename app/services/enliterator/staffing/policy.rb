@@ -4,7 +4,7 @@ module Enliterator
     #
     # Enliteration is the allocation of cognitive capacity to records — deciding
     # how much mind to bring to a record in a given state IS the curatorial act.
-    # A tending **stream is a ROLE**; a LiteLLM **alias is a capability TIER**;
+    # A tending **facet is a ROLE**; a LiteLLM **alias is a capability TIER**;
     # this policy is the **org chart** that maps roles to tiers, defines the
     # escalation ladder, and enforces the constraints (on-prem, context window,
     # verification floor) that keep a cheap pass from poisoning the well.
@@ -23,18 +23,18 @@ module Enliterator
     #   end
     #
     # API consumed by the Visitor:
-    #   tier_for(stream)              -> the alias for a role
+    #   tier_for(facet)              -> the alias for a role
     #   ladder_from(tier)            -> tiers at/after `tier` in ladder order
     #   escalate?(visit)             -> low confidence OR model flagged escalate
     #   may_verify?(tier)            -> tier at/above verify_floor
-    #   allowed_tiers(tendable, stream) -> ladder clamped by constraints
+    #   allowed_tiers(tendable, facet) -> ladder clamped by constraints
     #   validate!(available_aliases) -> raise on unknown alias (fail fast at boot)
     class Policy
       DEFAULT_ESCALATION_THRESHOLD = 0.6
       DEFAULT_MAX_PROMOTIONS = 1
 
       attr_reader :assignments, :ladder_tiers, :embedding_alias, :on_prem_tier_list,
-                  :context_caps, :key_contracts, :required_key_map
+                  :context_caps, :term_lists, :required_term_map
 
       def initialize(&block)
         @assignments       = {}
@@ -46,37 +46,37 @@ module Enliterator
         @verify_floor      = nil
         @on_prem_tier_list = []
         @context_caps      = {}
-        @key_contracts     = {}
-        @required_key_map  = {}
+        @term_lists     = {}
+        @required_term_map  = {}
 
         instance_eval(&block) if block
       end
 
       # ---- DSL -------------------------------------------------------------
 
-      # Map a stream (role) to a capability tier (alias).
-      def assign(stream, tier:)
-        @assignments[stream.to_s] = tier.to_s
+      # Map a facet (role) to a capability tier (alias).
+      def assign(facet, tier:)
+        @assignments[facet.to_s] = tier.to_s
         self
       end
 
-      # Map a stream (role) to a tier AND bind its output contract: the controlled
-      # vocabulary of claim keys the model may assert on this stream. `keys` is a
+      # Map a facet (role) to a tier AND bind its output contract: the controlled
+      # vocabulary of claim keys the model may assert on this facet. `keys` is a
       # `{ key_sym => "description" }` hash. Sets the tier exactly as #assign does,
       # then records the contract so the Visitor can constrain the prompt/schema and
-      # route off-list observations into `suggestions`. Streams declared with #assign
+      # route off-list observations into `suggestions`. Facets declared with #assign
       # (no contract) remain unconstrained — open keys, back-compat.
       # +required+ (v0.5, optional): a subset of `keys` the model MUST assert a
       # non-blank claim for. When a required key comes back absent or empty, the
       # Visitor forces escalation regardless of confidence, and the top tier refuses
       # to mint `verified` while a required key is unmet. nil/omitted ⇒ no required
       # keys ⇒ byte-identical to v0.3/v0.4.
-      def stream(name, tier:, keys:, required: nil)
+      def facet(name, tier:, terms:, required: nil)
         assign(name, tier: tier)
-        @key_contracts[name.to_s] =
-          keys.each_with_object({}) { |(k, v), h| h[k.to_s] = v.to_s }
+        @term_lists[name.to_s] =
+          terms.each_with_object({}) { |(k, v), h| h[k.to_s] = v.to_s }
         req = Array(required).map(&:to_s).reject(&:empty?)
-        @required_key_map[name.to_s] = req unless req.empty?
+        @required_term_map[name.to_s] = req unless req.empty?
         self
       end
 
@@ -140,33 +140,33 @@ module Enliterator
 
       # ---- Query API -------------------------------------------------------
 
-      # The capability tier assigned to a stream. Falls back to the ladder head
-      # (or the embedding alias as a last resort) so an unmapped stream still runs.
-      def tier_for(stream)
-        @assignments.fetch(stream.to_s) { @ladder_tiers.first || @embedding_alias }
+      # The capability tier assigned to a facet. Falls back to the ladder head
+      # (or the embedding alias as a last resort) so an unmapped facet still runs.
+      def tier_for(facet)
+        @assignments.fetch(facet.to_s) { @ladder_tiers.first || @embedding_alias }
       end
 
-      # The output contract for a stream: a `{ key => description }` hash of the
-      # claim keys the model may assert, or nil when the stream is unconstrained
+      # The output contract for a facet: a `{ key => description }` hash of the
+      # claim keys the model may assert, or nil when the facet is unconstrained
       # (declared via #assign or not at all). nil ⇒ open keys (v0.2 behavior).
-      def keys_for(stream)
-        @key_contracts[stream.to_s]
+      def terms_for(facet)
+        @term_lists[facet.to_s]
       end
 
-      # The allowed claim keys for a stream as a `[String]`, or nil when the stream
+      # The allowed claim keys for a facet as a `[String]`, or nil when the facet
       # is unconstrained. nil (not []) signals "no contract" so callers can branch
       # on presence without confusing it with an empty allow-list.
-      def allowed_keys(stream)
-        contract = @key_contracts[stream.to_s]
+      def allowed_terms(facet)
+        contract = @term_lists[facet.to_s]
         return nil if contract.nil?
         contract.keys
       end
 
-      # The required claim keys for a stream as a `[String]`, or nil when the stream
+      # The required claim keys for a facet as a `[String]`, or nil when the facet
       # declares none. nil (not []) signals "no required keys" so callers branch on
-      # presence. Always a subset of allowed_keys(stream).
-      def required_keys(stream)
-        @required_key_map[stream.to_s]
+      # presence. Always a subset of allowed_terms(facet).
+      def required_terms(facet)
+        @required_term_map[facet.to_s]
       end
 
       # Tiers at/after `tier` in ladder order (the remaining climb). If `tier`
@@ -204,11 +204,11 @@ module Enliterator
         tier_idx >= floor_idx
       end
 
-      # The escalation ladder a record/stream may actually traverse, after applying
+      # The escalation ladder a record/facet may actually traverse, after applying
       # constraints: on-prem-only records are clamped to the on-prem tiers (order
       # preserved). Always returns at least the assigned tier when allowed.
-      def allowed_tiers(tendable, stream)
-        base = ladder_for_stream(stream)
+      def allowed_tiers(tendable, facet)
+        base = ladder_for_stream(facet)
 
         if on_prem_only?(tendable)
           allowed = base & @on_prem_tier_list
@@ -255,7 +255,7 @@ module Enliterator
         tiers.compact.uniq
       end
 
-      # A safe default policy: all streams route to the single available alias,
+      # A safe default policy: all facets route to the single available alias,
       # the ladder is just that tier, and that tier may verify. Lets the engine
       # run when the host configures no staffing at all.
       def self.default(default_tier = "cheap")
@@ -269,11 +269,11 @@ module Enliterator
 
       private
 
-      # The ladder for a stream: starts at the stream's assigned tier and includes
+      # The ladder for a facet: starts at the facet's assigned tier and includes
       # everything at/after it. If the assigned tier is off-ladder, the visitor
       # still gets a usable single-element climb.
-      def ladder_for_stream(stream)
-        ladder_from(tier_for(stream))
+      def ladder_for_stream(facet)
+        ladder_from(tier_for(facet))
       end
 
       # Defaults to the top configured tier (last on the ladder) when unset, so a

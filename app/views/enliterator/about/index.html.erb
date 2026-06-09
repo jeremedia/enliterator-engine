@@ -157,20 +157,20 @@
     line-height: 1.3;
     font-weight: 500;
   }
-  /* Stream chips sit below the 4-column grid */
-  .stats-streams {
+  /* Facet chips sit below the 4-column grid */
+  .stats-facets {
     margin-top: .75rem;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: .3rem;
   }
-  .stats-streams .streams-label {
+  .stats-facets .facets-label {
     font-size: .72rem;
     color: var(--muted);
     margin-right: .1rem;
   }
-  .stats-streams .stream-chip {
+  .stats-facets .facet-chip {
     display: inline-block;
     background: rgba(45,106,79,.1);
     color: var(--accent);
@@ -376,15 +376,15 @@
             <span class="stat-label">things it knows</span>
           </div>
           <div class="stat-cell">
-            <span class="stat-num"><%= @stats[:streams].size %></span>
-            <span class="stat-label">streams of inquiry</span>
+            <span class="stat-num"><%= @stats[:facets].size %></span>
+            <span class="stat-label">facets of inquiry</span>
           </div>
         </div>
-        <% if @stats[:streams].any? %>
-          <div class="stats-streams">
-            <span class="streams-label">Active streams:</span>
-            <% @stats[:streams].each do |s| %>
-              <span class="stream-chip"><%= s %></span>
+        <% if @stats[:facets].any? %>
+          <div class="stats-facets">
+            <span class="facets-label">Active facets:</span>
+            <% @stats[:facets].each do |s| %>
+              <span class="facet-chip"><%= s %></span>
             <% end %>
           </div>
         <% end %>
@@ -476,8 +476,8 @@
     <div class="card">
       <table class="mech-table">
         <tr>
-          <td class="mech-key"><strong>Streams are roles</strong></td>
-          <td>Each facet of understanding is its own job<%= @stats && @stats[:streams].any? ? " — here: #{@stats[:streams].join(', ')}".html_safe : "" %>. A record is tended once per stream, so "what it argues" and "who wrote it" don't compete in one pass.</td>
+          <td class="mech-key"><strong>Facets are roles</strong></td>
+          <td>Each facet of understanding is its own job<%= @stats && @stats[:facets].any? ? " — here: #{@stats[:facets].join(', ')}".html_safe : "" %>. A record is tended once per facet, so "what it argues" and "who wrote it" don't compete in one pass.</td>
         </tr>
         <tr>
           <td class="mech-key"><strong>Tiers are capability</strong></td>
@@ -497,7 +497,7 @@
         </tr>
         <tr>
           <td class="mech-key"><strong>A smoke alarm</strong></td>
-          <td>Tending health and spend are visible per stream, so a silent failure can't masquerade as success.</td>
+          <td>Tending health and spend are visible per facet, so a silent failure can't masquerade as success.</td>
         </tr>
       </table>
     </div>
@@ -532,7 +532,7 @@
     <div class="surfaces-grid">
       <div class="card">
         <span class="surface-title"><%= link_to "Status", root_path %></span>
-        <span class="surface-desc">The self-portrait — per-stream health, the vocabulary it uses, the connection graph, and drill-down into any single tended record.</span>
+        <span class="surface-desc">The self-portrait — per-facet health, the vocabulary it uses, the connection graph, and drill-down into any single tended record.</span>
       </div>
       <div class="card">
         <span class="surface-title"><%= link_to "Chat", conversation_path %></span>

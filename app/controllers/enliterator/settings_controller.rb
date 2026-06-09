@@ -1,7 +1,7 @@
 module Enliterator
   # The Settings surface — a read-only window onto the accumulating configuration of
-  # THIS enliteration: the staffing org chart (streams → tiers, the escalation ladder,
-  # the verify floor), the effective vocabulary per stream (code keys + the approved
+  # THIS enliteration: the staffing org chart (facets → tiers, the escalation ladder,
+  # the verify floor), the effective vocabulary per facet (code keys + the approved
   # keys that have accrued through curation), routing/capability, the considerer's
   # autonomy, and the tending behavior. Configuration lives in code (the host
   # initializer); this page reflects it, it does not edit it — the one thing that
@@ -11,8 +11,8 @@ module Enliterator
       @config = Enliterator.configuration
       @policy = Enliterator.staffing
 
-      @streams       = stream_names
-      @contracts     = @streams.map { |s| stream_config(s) }
+      @facets       = facet_names
+      @contracts     = @facets.map { |s| facet_config(s) }
       @gateway_ready = @config.gateway_api_key.present? && @config.gateway_base_url.present?
       @conversation_tier_effective = @config.conversation_tier || @policy.ladder.last || "quality"
       @considerer_tier_effective   = @config.considerer_tier   || @policy.ladder.last || "quality"
@@ -23,30 +23,30 @@ module Enliterator
       tended_types = Enliterator::Visit.distinct.pluck(:tendable_type).compact
       @models = tended_types.presence || Enliterator.tendable_models.map(&:name)
 
-      # Live tally of what's accrued: approved keys now in force across all streams.
-      @approved_live = @contracts.sum { |c| c[:keys].count { |k| k[:approved] } }
+      # Live tally of what's accrued: approved terms now in force across all facets.
+      @approved_live = @contracts.sum { |c| c[:terms].count { |t| t[:approved] } }
     end
 
     private
 
-    def stream_names
+    def facet_names
       names = @policy.assignments.keys
-      names = Array(@config.tending_streams).map(&:to_s) if names.empty?
+      names = Array(@config.tending_facets).map(&:to_s) if names.empty?
       names
     end
 
-    # The effective per-stream config: assigned tier, the climb from there, required
-    # keys, and the effective contract (code + approved), each key flagged code/approved.
-    def stream_config(stream)
-      tier = @policy.tier_for(stream)
-      code = @policy.keys_for(stream) || {}
-      eff  = Enliterator::Vocabulary.for(stream) || {}
+    # The effective per-facet config: assigned tier, the climb from there, required
+    # terms, and the effective vocabulary (code + approved), each term flagged code/approved.
+    def facet_config(facet)
+      tier = @policy.tier_for(facet)
+      code = @policy.terms_for(facet) || {}
+      eff  = Enliterator::Vocabulary.for(facet) || {}
       {
-        stream:   stream,
+        facet:    facet,
         tier:     tier,
         climb:    @policy.ladder_from(tier),
-        required: Array(@policy.required_keys(stream)),
-        keys:     eff.map { |k, desc| { key: k, description: desc, approved: !code.key?(k) } }
+        required: Array(@policy.required_terms(facet)),
+        terms:    eff.map { |term, desc| { term: term, description: desc, approved: !code.key?(term) } }
       }
     end
   end

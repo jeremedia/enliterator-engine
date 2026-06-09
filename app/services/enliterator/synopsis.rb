@@ -2,7 +2,7 @@ module Enliterator
   # The collection SELF-PORTRAIT — what an enliteration knows about itself.
   #
   # A pure-read aggregation (no network) that answers "what is in here and what has
-  # it learned": per-stream tended-record counts, the claim-key VOCABULARY with live
+  # it learned": per-facet tended-record counts, the claim-key VOCABULARY with live
   # counts + sample values, the CONNECTION graph (cross-record claims), tending
   # health (Report), and the open vocabulary GAPS (Suggestion). It powers both the
   # status browser overview and the conversation UI's top-level grounding — the
@@ -11,26 +11,26 @@ module Enliterator
   #   Enliterator::Synopsis.build                       # full self-portrait
   #   Enliterator::Synopsis.to_prompt(Synopsis.build)   # compact text for an LLM
   #
-  # NOTE on the claim→stream mapping: Claim carries no `stream` column (the stream
+  # NOTE on the claim→facet mapping: Claim carries no `facet` column (the facet
   # lives on the Visit). So tended_count is derived from Visit rows, and the
-  # vocabulary per stream comes from the staffing CONTRACT (keys_for), not the claims.
+  # vocabulary per facet comes from the staffing CONTRACT (terms_for), not the claims.
   module Synopsis
     module_function
 
-    # A stream whose NAME signals it holds cross-record connections.
-    CONNECTION_STREAM_RX = /connection|relation|link/i
-    # A claim KEY that names a cross-record link (fallback when no connection stream).
+    # A facet whose NAME signals it holds cross-record connections.
+    CONNECTION_FACET_RX = /connection|relation|link/i
+    # A claim KEY that names a cross-record link (fallback when no connection facet).
     CONNECTION_KEY_RX    = /\A(related_|connected_|cites|references)|(_cluster|_network|thematic)/i
 
     # Build the self-portrait. `sample_cap` / `value_chars` bound the prompt size so
     # to_prompt stays small regardless of corpus size.
     def build(host: nil, since: nil, sample_cap: 3, value_chars: 80)
       policy = Enliterator.staffing
-      names  = stream_names(policy)
+      names  = facet_names(policy)
 
       {
         generated_at: Time.current,
-        streams: names.map { |s| stream_portrait(policy, s, sample_cap: sample_cap, value_chars: value_chars) },
+        facets: names.map { |s| facet_portrait(policy, s, sample_cap: sample_cap, value_chars: value_chars) },
         connections: connection_portrait(policy, names, sample_cap: sample_cap, value_chars: value_chars),
         health: Enliterator::Report.summary(host: host, since: since),
         gaps:   Enliterator::Suggestion.gaps.first(5),
@@ -45,8 +45,8 @@ module Enliterator
       models = Array(synopsis[:models])
       lines << "Tended models: #{models.join(', ')}" if models.any?
 
-      Array(synopsis[:streams]).each do |st|
-        lines << "Stream \"#{st[:stream]}\" (tier #{st[:tier]}): #{st[:tended_count]} records tended."
+      Array(synopsis[:facets]).each do |st|
+        lines << "Facet \"#{st[:facet]}\" (tier #{st[:tier]}): #{st[:tended_count]} records tended."
         Array(st[:vocabulary]).each do |v|
           eg = v[:samples].to_a.first
           lines << "  - #{v[:key]}: #{v[:live_claims]} live claim(s)#{eg ? " — e.g. #{eg}" : ''}"
@@ -70,19 +70,19 @@ module Enliterator
 
     # ---- internals -------------------------------------------------------
 
-    def stream_names(policy)
+    def facet_names(policy)
       names = policy.assignments.keys
-      names = Array(Enliterator.configuration.tending_streams).map(&:to_s) if names.empty?
+      names = Array(Enliterator.configuration.tending_facets).map(&:to_s) if names.empty?
       names
     end
 
-    def stream_portrait(policy, stream, sample_cap:, value_chars:)
-      contract  = Enliterator::Vocabulary.for(stream) || {} # effective: code + approved keys
-      code_keys = (policy.keys_for(stream) || {}).keys.to_set
+    def facet_portrait(policy, facet, sample_cap:, value_chars:)
+      contract  = Enliterator::Vocabulary.for(facet) || {} # effective: code + approved keys
+      code_keys = (policy.terms_for(facet) || {}).keys.to_set
       {
-        stream:       stream,
-        tier:         policy.tier_for(stream),
-        tended_count: tended_count(stream),
+        facet:       facet,
+        tier:         policy.tier_for(facet),
+        tended_count: tended_count(facet),
         vocabulary:   contract.map do |key, desc|
           # `approved: true` ⇒ a curator-adopted key that's live but not yet codified.
           key_summary(key, description: desc, sample_cap: sample_cap, value_chars: value_chars)
@@ -91,11 +91,11 @@ module Enliterator
       }
     end
 
-    # Distinct records that have an applied+succeeded visit on this stream — the only
-    # reliable stream→record mapping (Claim has no stream column).
-    def tended_count(stream)
+    # Distinct records that have an applied+succeeded visit on this facet — the only
+    # reliable facet→record mapping (Claim has no facet column).
+    def tended_count(facet)
       Enliterator::Visit
-        .where(stream: stream, status: "succeeded", applied: true)
+        .where(facet: facet, status: "succeeded", applied: true)
         .distinct.pluck(:tendable_type, :tendable_id).size
     end
 
@@ -110,10 +110,10 @@ module Enliterator
       summary
     end
 
-    # Connection keys: prefer those owned by a stream NAMED like a connection stream;
+    # Connection keys: prefer those owned by a facet NAMED like a connection facet;
     # else any contract key that LOOKS like a cross-record link. Empty ⇒ no panel.
     def connection_portrait(policy, names, sample_cap:, value_chars:)
-      keys = names.select { |s| s.match?(CONNECTION_STREAM_RX) }
+      keys = names.select { |s| s.match?(CONNECTION_FACET_RX) }
                   .flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }
       if keys.empty?
         keys = names.flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }.select { |k| k.to_s.match?(CONNECTION_KEY_RX) }

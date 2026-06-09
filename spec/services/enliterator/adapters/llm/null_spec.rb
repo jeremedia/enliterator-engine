@@ -21,8 +21,8 @@ RSpec.describe Enliterator::Adapters::LLM::Null do
     let(:result) do
       adapter.tend(
         text:      "anything",
-        stream:    "summary",
-        state:     { claims: [], recent_visits: [], facets: {} },
+        facet:    "summary",
+        state:     { claims: [], recent_visits: [], measures: {} },
         neighbors: []
       )
     end
@@ -49,7 +49,7 @@ RSpec.describe Enliterator::Adapters::LLM::Null do
       # it with rich context still yields the same inert result.
       rich = adapter.tend(
         text:      "a long body of text",
-        stream:    "deep",
+        facet:    "deep",
         state:     { claims: [ { key: "summary", value: "x" } ] },
         neighbors: [ "neighbor-1", "neighbor-2" ]
       )

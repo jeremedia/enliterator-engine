@@ -20,7 +20,7 @@ module Enliterator
     # automatically (listing it here would double-assign the column). The
     # recommended_* columns are intentionally EXCLUDED so a stored recommendation
     # survives a refresh.
-    PRESSURE_COLS = %i[pressure distinct_records by_stream resurged_count
+    PRESSURE_COLS = %i[pressure distinct_records by_facet resurged_count
                        first_seen_at last_seen_at sample_rationale sample_example].freeze
 
     # Recompute every term's pressure from the Suggestion log. Idempotent; preserves
@@ -36,7 +36,7 @@ module Enliterator
       firsts      = sugg.group(:proposed_key).minimum(:created_at)
       lasts       = sugg.group(:proposed_key).maximum(:created_at)
       resolved_at = sugg.where.not(status: "pending").group(:proposed_key).maximum(:updated_at)
-      by_stream   = sugg.group(:proposed_key, :stream).count.each_with_object({}) do |((k, s), n), h|
+      by_facet   = sugg.group(:proposed_key, :facet).count.each_with_object({}) do |((k, s), n), h|
         (h[k] ||= {})[s.to_s] = n
       end
       samples = sugg.select("DISTINCT ON (proposed_key) proposed_key, rationale, example_value")
@@ -52,7 +52,7 @@ module Enliterator
           proposed_key:     key,
           pressure:         pressures[key].to_i,
           distinct_records: distincts[key].to_i,
-          by_stream:        (by_stream[key] || {}),
+          by_facet:        (by_facet[key] || {}),
           resurged_count:   resurged,
           first_seen_at:    firsts[key],
           last_seen_at:     lasts[key],

@@ -70,14 +70,14 @@ explainer**, and a **Settings** surface — for free:
 mount Enliterator::Engine => "/enliterator"
 ```
 
-- `/enliterator/` — status browser: per-stream health (the smoke alarm in the browser),
+- `/enliterator/` — status browser: per-facet health (the smoke alarm in the browser),
   claim-key vocabulary with samples, the connection graph, vocabulary-gap suggestions, and
   per-record drill-down at `/enliterator/status/<Type>/<id>`.
-- `/enliterator/chat` — converse with the enliteration's top-level potential: answers stream
+- `/enliterator/chat` — a reference interview with the enliteration: answers stream
   token-by-token, grounded in a collection self-portrait plus the records retrieved per
   question, with source chips linking back to the status browser.
 - `/enliterator/suggestions` — the governed-vocabulary review queue: when the model proposes a
-  claim key a stream's contract doesn't cover, a curator approves it, maps it onto an existing key
+  term a facet's contract doesn't cover, a curator approves it, maps it onto an existing key
   (a synonym), or rejects it. The ontology tends itself. The queue ranks by accumulated **pressure**
   and flags **resurged** keys (re-proposed after a verdict). The **"Consider all requests"** button
   (or `bin/rails enliterator:consider`) runs the considerer agent — it reads the whole field,
@@ -90,7 +90,7 @@ mount Enliterator::Engine => "/enliterator"
   how compounding attention changes it now and over time. The demo surface and a living north-star doc
   (hand-revised each version); a live strip shows real counts from the collection it's mounted on.
 - `/enliterator/settings` — the configuration surface (v0.11): a read-only window onto the org chart
-  (streams → tiers, the climb, required keys), the effective vocabulary per stream (code + accrued
+  (facets → tiers, the climb, required keys), the effective vocabulary per facet (code + accrued
   `live` keys), routing/capability, the considerer's autonomy, and tending behavior. Reflects the
   code config; the approved vocabulary that accrues at runtime is governed on `/enliterator/suggestions`.
 
@@ -115,18 +115,18 @@ Tend a record:
 
 ```ruby
 doc = Document.find(id)
-doc.tend!(stream: "summary")          # runs one Visitor pass synchronously
+doc.tend!(facet: "summary")          # runs one Visitor pass synchronously
 Enliterator::TendingVisitJob.perform_later(doc, "summary")  # …or in the background
 ```
 
 Inspect the accumulated literacy:
 
 ```ruby
-doc.literacy_state(stream: "summary")
-# => { claims: [...], recent_visits: [...], facets: {"completeness" => 0.66} }
+doc.literacy_state(facet: "summary")
+# => { claims: [...], recent_visits: [...], measures: {"completeness" => 0.66} }
 
 doc.enliterator_claims.live           # current, non-superseded understanding
-doc.last_tended_at(stream: "summary") # newest succeeded visit's finished_at
+doc.last_tended_at(facet: "summary") # newest succeeded visit's finished_at
 ```
 
 With no adapters configured the engine falls back to **Null** adapters — inert
@@ -152,8 +152,8 @@ Enliterator.configure do |c|
   c.embedder_adapter = Enliterator::Adapters::Embedder::OpenAI.new
 
   c.default_embedding_dimensions = 1536      # vector width for the embeddings table
-  c.tending_streams = [:summary]             # named lanes; each its own prompt/cadence
-  c.tend_batch_size = 50                      # max records the scheduled walk enqueues per model/stream/run
+  c.tending_facets = [:summary]             # named lanes; each its own prompt/cadence
+  c.tend_batch_size = 50                      # max records the scheduled walk enqueues per model/facet/run
   c.stale_after     = 90.days                 # re-tend records whose newest visit is older than this
   c.queue_name      = :enliterator            # ActiveJob queue for TendingVisitJob
   c.logger          = Rails.logger            # optional; defaults to Rails.logger
@@ -165,8 +165,8 @@ end
 | `llm_adapter` | `nil` → `LLM::Null` | the language model that interprets and reconciles |
 | `embedder_adapter` | `nil` → `Embedder::Null` | turns text into vectors for neighbor search |
 | `default_embedding_dimensions` | `1536` | width of the `vector` column / HNSW index |
-| `tending_streams` | `[:summary]` | named tending lanes the scheduled walk iterates |
-| `tend_batch_size` | `50` | per model/stream cap on records enqueued per run (no silent truncation — a cap hit is logged) |
+| `tending_facets` | `[:summary]` | named tending lanes the scheduled walk iterates |
+| `tend_batch_size` | `50` | per model/facet cap on records enqueued per run (no silent truncation — a cap hit is logged) |
 | `stale_after` | `90.days` | staleness threshold for the scheduled walk |
 | `queue_name` | `:enliterator` | queue `TendingVisitJob` enqueues onto |
 
@@ -178,20 +178,20 @@ actionable message rather than failing at boot.
 ## How the tending loop works
 
 `Enliterator::Tending::Visitor#call` is the compounding contract. One Visitor
-instance performs one pass over one record along one stream:
+instance performs one pass over one record along one facet:
 
 1. **Open a Visit** (`status: "running"`, `model:`, `prompt_version:`,
    `started_at:`). The `enliterator_visits` table is immutable history — the PROV
    Activity spine. Nothing is ever overwritten; a failed pass is recorded as a
    `failed` visit and re-raised.
-2. **Read prior understanding** via `literacy_state(stream:)`: the record's live
-   claims, its five most recent visits on this stream, and its current facet
+2. **Read prior understanding** via `literacy_state(facet:)`: the record's live
+   claims, its five most recent visits on this facet, and its current measure
    scores. *This is the step that makes it compound* — the next interpretation is
    conditioned on the last.
 3. **Gather corpus neighbors** from the record's `"primary"` embedding (the five
    nearest by cosine distance, excluding self). If the record isn't embedded yet,
    neighbors are gracefully empty and `input_refs[:neighbor_ids]` records that.
-4. **Ask the model** (`llm.tend(text:, stream:, state:, neighbors:)`) for
+4. **Ask the model** (`llm.tend(text:, facet:, state:, neighbors:)`) for
    structured claims, each with an `op` (ADD/UPDATE/DELETE/NOOP) and a confidence.
    The adapter forces structured output (Bedrock binds a single `emit_claims`
    tool to the response schema).
@@ -200,7 +200,7 @@ instance performs one pass over one record along one stream:
 6. **Finalize the Visit** (`status: "succeeded"`, `raw_response`,
    `reconciliation`, `confidence`, `input_refs` — `{prior_visit_ids, neighbor_ids,
    claim_keys}` — `tokens`, `duration_ms`, `finished_at`).
-7. **Recompute facets** for the record.
+7. **Recompute measures** for the record.
 
 ### Reconciliation (the mem0-style ADD/UPDATE/DELETE/NOOP contract)
 
@@ -220,32 +220,32 @@ Each proposed claim is matched to the current live claim for its `key`:
 
 When `op` is absent it defaults to UPDATE if a live claim exists for the key,
 otherwise ADD. Reconciliation returns `{added:[], updated:[], deleted:[],
-noop:[]}` (claim keys), stored on the Visit.
+noop:[]}` (terms), stored on the Visit.
 
-### Facets
+### Measures
 
-`Enliterator::Facets` is a registry of weighted-signal quality scorers (the HSDL
+`Enliterator::Measures` is a registry of weighted-signal quality scorers (the HSDL
 RecordQuality pattern). The engine ships one default, `:completeness`, scoring
 the fraction of an expected set that's present: has a live claim, has a primary
-embedding, has a succeeded visit. Hosts register richer facets (HSDL maps its
+embedding, has a succeeded visit. Hosts register richer measures (HSDL maps its
 12-signal health score here):
 
 ```ruby
-Enliterator::Facets.register(:health) do |tendable|
+Enliterator::Measures.register(:health) do |tendable|
   signals = { recency: { value: ..., weight: 0.3 }, ... }
   { score: weighted_sum(signals), signals: signals }
 end
 ```
 
-`Enliterator::Facets.recompute!(record)` runs every registered facet and upserts
-one `Facet` row per `[record, name]`.
+`Enliterator::Measures.recompute!(record)` runs every registered measure and upserts
+one `Measure` row per `[record, name]`.
 
 ### The scheduled walk
 
 `rake enliterator:tend` iterates every registered tendable model and every
-configured stream, finds up to `tend_batch_size` records whose newest succeeded
+configured facet, finds up to `tend_batch_size` records whose newest succeeded
 visit is older than `stale_after` (or that have never succeeded), and enqueues a
-`TendingVisitJob` for each. It logs how many were enqueued per model/stream and
+`TendingVisitJob` for each. It logs how many were enqueued per model/facet and
 flags any batch-cap hit (no silent truncation). Hosts wire this to their
 scheduler — HSDL uses sidekiq-cron; a Solid Queue host would use a recurring
 task. The job is `retry_on StandardError` (polynomial backoff, 3 attempts) and
@@ -255,7 +255,7 @@ enqueue and run).
 ## Staffing & Routing
 
 Routing is not a config knob — it is a first-class **org chart**. A tending
-**stream is a ROLE**; a LiteLLM **alias is a capability TIER**;
+**facet is a ROLE**; a LiteLLM **alias is a capability TIER**;
 `Enliterator::Staffing::Policy` is the policy that maps roles to tiers, defines
 the escalation ladder, and enforces constraints. Deciding *how much mind to bring
 to a record* in a given state IS the curatorial act.
@@ -270,7 +270,7 @@ Enliterator.configure do |c|
   c.gateway_base_url = "https://llm.example.com/v1"   # default
   c.gateway_api_key  = ENV["LITELLM_KEY"]          # project key, from ENV — never committed
   c.staffing = Enliterator::Staffing::Policy.new do
-    assign :summary, tier: "cheap"                 # stream → tier (role → capability)
+    assign :summary, tier: "cheap"                 # facet → tier (role → capability)
     embedding_tier "embed"
     ladder ["cheap", "quality"]                    # escalation order, junior → senior
     escalation_threshold 0.6                        # escalate below this confidence
@@ -281,8 +281,8 @@ Enliterator.configure do |c|
 end
 ```
 
-**The loop, with escalation.** `tier_for(stream)` picks the starting tier;
-`allowed_tiers(tendable, stream)` clamps the ladder by constraints. The Visitor
+**The loop, with escalation.** `tier_for(facet)` picks the starting tier;
+`allowed_tiers(tendable, facet)` clamps the ladder by constraints. The Visitor
 runs a visit at the tier, and while the result is low-confidence (or the model
 self-flags `escalate`), a higher allowed tier exists, and `escalation_step <
 max_promotions`, it **escalates** — handing the junior tier's proposed claims to
@@ -300,7 +300,7 @@ confidence.
 ladder clamped to `on_prem_tiers` and never routes off-prem, even on escalation.
 `validate!(available_aliases)` (against `GET /v1/models`) fails fast at boot if
 the policy names an unknown alias. When the host configures no staffing,
-`Policy.default` routes every stream to a single tier so the engine still runs.
+`Policy.default` routes every facet to a single tier so the engine still runs.
 
 **Back-compat.** Injecting `llm:` into the Visitor (the v0.1 path) bypasses
 staffing entirely: one visit, direct write, claims `draft`. When `staffing` is
@@ -308,37 +308,37 @@ unset and no gateway key is present, `Enliterator.llm(tier:)` falls back to the
 v0.1 single adapter.
 
 **Spend.** Every gateway request carries `metadata: {tags: [...]}`
-(`["enliterator", "host:<host>", "stream:<stream>", "tier:<tier>", "esc:<step>",
+(`["enliterator", "host:<host>", "facet:<facet>", "tier:<tier>", "esc:<step>",
 "record:<Class>/<id>"]`) — the join key to LiteLLM's authoritative dollars.
-`Enliterator::Spend.by_stream(host:, since:)` is the engine's own local ledger,
-grouping `Visit.tokens` by stream and tier (with an optional price map → $).
+`Enliterator::Spend.by_facet(host:, since:)` is the engine's own local ledger,
+grouping `Visit.tokens` by facet and tier (with an optional price map → $).
 
-## Stream Contracts & Suggestions
+## Facet Contracts & Suggestions
 
-A stream with no output contract lets the model freelance claim keys — `author`
+A facet with no output contract lets the model freelance terms — `author`
 vs `authored_by`, redundant `institution`/`date`. Key drift breaks reconciliation
 (a re-tend ADDs a duplicate instead of UPDATEing) and so corrupts compounding at
 scale. The fix is **both** a controlled vocabulary **and** a sanctioned channel to
 propose additions: the ontology itself becomes a tended, governed thing.
 
-**Controlled keys.** Declare a stream with `stream(name, tier:, keys:)` — the
+**Controlled terms.** Declare a facet with `facet(name, tier:, terms:)` — the
 contract-bearing sibling of `assign`. It sets the tier exactly as `assign` does,
-**and** binds the allowed claim-key vocabulary:
+**and** binds the allowed-term vocabulary:
 
 ```ruby
 Enliterator.configure do |c|
   c.staffing = Enliterator::Staffing::Policy.new do
-    stream :metadata, tier: "quality", keys: {
+    facet :metadata, tier: "quality", terms: {
       author: "Who authored the work.",
       date:   "When the work was created."
     }
-    assign :summary, tier: "cheap"   # NO keys => unconstrained (open keys, v0.2)
+    assign :summary, tier: "cheap"   # NO terms => unconstrained (open vocabulary, v0.2)
     ladder ["cheap", "quality"]
   end
 end
 ```
 
-When a stream has a contract, the Visitor threads it into the adapter's `#tend`:
+When a facet has a contract, the Visitor threads it into the adapter's `#tend`:
 the structured-output schema enums each claim `key` to the allowed set and the
 system prompt gains a CONTROLLED VOCABULARY block. After parse, the Visitor
 reconciles **only** claims whose key is in the vocabulary (off-list keys are
@@ -348,12 +348,12 @@ dropped — the enum should already prevent them; this is the safety net).
 `suggestions` array. When the model observes something no allowed key covers, it
 does **not** invent a key — it proposes one: `{proposed_key, rationale,
 example_value}`. The Visitor persists each as an `Enliterator::Suggestion` with
-full provenance (tendable, stream, final tier/model, final visit) and fires
+full provenance (tendable, facet, final tier/model, final visit) and fires
 `config.suggestion_sink` per row (a callable for forwarding to a shared vocabulary
 tracker — KN, a review queue — default `nil`, local-only).
 
 A human renders the verdict — `approve!(note:)`, `map!(note:)` (a synonym of an
-existing key), `reject!(note:)` — and `Enliterator::Suggestion.gaps(stream: nil)`
+existing key), `reject!(note:)` — and `Enliterator::Suggestion.gaps(facet: nil)`
 aggregates open proposals into a **demand-ranked** report (which keys are asked for
 most often, across how many distinct records, with a sample rationale/example) so
 the vocabulary can be tended where it is actually too narrow.
@@ -367,7 +367,7 @@ first-class, **locked**, verified Claim — idempotent, and it creates no Visit
 host-asserted claim survives all subsequent tending untouched.
 
 **Back-compat.** Every contract behavior is gated on a contract being present.
-A stream declared with `assign` (or never declared) is unconstrained: open keys,
+A facet declared with `assign` (or never declared) is unconstrained: open keys,
 no suggestions emphasis, default `RESPONSE_SCHEMA` — byte-identical to v0.2. The
 injected-`llm:` (v0.1) path threads no contract at all.
 
@@ -378,7 +378,7 @@ v0.9 makes the loop reach a fixed point:
 1. **`enliterator:tend`** walks records; the model proposes keys the contract misses.
 2. **`enliterator:consider`** reads the whole field and renders verdicts — auto-mapping
    synonyms and rejecting noise, holding genuine new concepts for your approval.
-3. The **next `enliterator:tend`** sees the *effective* contract — `Enliterator::Contract.for(stream)`
+3. The **next `enliterator:tend`** sees the *effective* contract — `Enliterator::Contract.for(facet)`
    = code keys **+ approved keys** — so an approved key is emitted as a **claim**, not re-proposed;
    and a re-proposal of an already-mapped/rejected key is **suppressed** (counted under "Re-proposed
    after a verdict", not re-filed).
@@ -417,11 +417,11 @@ Out of scope (deliberately not built):
 - **Bedrock tier** — the Bedrock adapter exists, but the v0.2 routing path targets
   the LiteLLM gateway; wiring Bedrock in as a staffing tier is deferred.
 - **Dynamic per-host scheduler UI** — scheduling is a flat rake walk; per-host
-  cadence/stream/tier configuration UI is deferred.
+  cadence/facet/tier configuration UI is deferred.
 - **Input chunking for small-context tiers** — over-window inputs escalate to a
   larger-context tier rather than being chunked.
 
-Implemented in v0.2 (was deferred in v0.1): **routing / staffing** — stream→tier
+Implemented in v0.2 (was deferred in v0.1): **routing / staffing** — facet→tier
 assignment, the escalation ladder, `verify_floor`, on-prem constraints, the
 LiteLLM gateway adapter, and per-loop spend attribution (see *Staffing & Routing*
 above).

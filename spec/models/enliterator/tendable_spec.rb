@@ -21,7 +21,7 @@ RSpec.describe Enliterator::Tendable do
 
   describe "associations" do
     it "has_many enliterator_visits as a polymorphic tendable" do
-      visit = Enliterator::Visit.create!(tendable: widget, stream: "summary", status: "pending")
+      visit = Enliterator::Visit.create!(tendable: widget, facet: "summary", status: "pending")
       expect(widget.enliterator_visits).to include(visit)
       expect(visit.tendable).to eq(widget)
     end
@@ -32,10 +32,10 @@ RSpec.describe Enliterator::Tendable do
       expect(claim.tendable).to eq(widget)
     end
 
-    it "has_many enliterator_facets as a polymorphic tendable" do
-      facet = Enliterator::Facet.create!(tendable: widget, name: "completeness", score: 0.0)
-      expect(widget.enliterator_facets).to include(facet)
-      expect(facet.tendable).to eq(widget)
+    it "has_many enliterator_measures as a polymorphic tendable" do
+      measure = Enliterator::Measure.create!(tendable: widget, name: "completeness", score: 0.0)
+      expect(widget.enliterator_measures).to include(measure)
+      expect(measure.tendable).to eq(widget)
     end
 
     it "has_many enliterator_embeddings as a polymorphic embeddable" do
@@ -51,9 +51,9 @@ RSpec.describe Enliterator::Tendable do
     end
 
     it "destroys dependent enliterator records when the host is destroyed" do
-      Enliterator::Visit.create!(tendable: widget, stream: "summary", status: "pending")
+      Enliterator::Visit.create!(tendable: widget, facet: "summary", status: "pending")
       Enliterator::Claim.create!(tendable: widget, key: "summary", value: "v")
-      Enliterator::Facet.create!(tendable: widget, name: "completeness", score: 0.0)
+      Enliterator::Measure.create!(tendable: widget, name: "completeness", score: 0.0)
       Enliterator::Embedding.create!(
         embeddable: widget,
         kind:       "primary",
@@ -63,7 +63,7 @@ RSpec.describe Enliterator::Tendable do
       expect { widget.destroy }
         .to change(Enliterator::Visit, :count).by(-1)
         .and change(Enliterator::Claim, :count).by(-1)
-        .and change(Enliterator::Facet, :count).by(-1)
+        .and change(Enliterator::Measure, :count).by(-1)
         .and change(Enliterator::Embedding, :count).by(-1)
     end
   end
@@ -75,21 +75,21 @@ RSpec.describe Enliterator::Tendable do
   end
 
   describe "#literacy_state" do
-    it "returns the compounding-context shape: claims, recent_visits, facets" do
-      state = widget.literacy_state(stream: "summary")
+    it "returns the compounding-context shape: claims, recent_visits, measures" do
+      state = widget.literacy_state(facet: "summary")
 
       expect(state).to be_a(Hash)
-      expect(state.keys).to contain_exactly(:claims, :recent_visits, :facets)
+      expect(state.keys).to contain_exactly(:claims, :recent_visits, :measures)
       expect(state[:claims]).to eq([])
       expect(state[:recent_visits]).to eq([])
-      expect(state[:facets]).to eq({})
+      expect(state[:measures]).to eq({})
     end
 
     it "includes only LIVE claims, projected via to_state" do
       live       = Enliterator::Claim.create!(tendable: widget, key: "summary", value: "kept", status: "draft")
       superseded = Enliterator::Claim.create!(tendable: widget, key: "old", value: "gone", status: "superseded")
 
-      state = widget.literacy_state(stream: "summary")
+      state = widget.literacy_state(facet: "summary")
 
       keys = state[:claims].map { |c| c[:key] }
       expect(keys).to include(live.key)
@@ -98,30 +98,30 @@ RSpec.describe Enliterator::Tendable do
       expect(state[:claims].first).to include(:key, :value, :confidence, :status, :locked)
     end
 
-    it "includes recent visits for the given stream, projected via to_state" do
+    it "includes recent visits for the given facet, projected via to_state" do
       visit = Enliterator::Visit.create!(
         tendable:       widget,
-        stream:         "summary",
+        facet:         "summary",
         status:         "succeeded",
         confidence:     0.7,
         reconciliation: { "added" => [ "summary" ] }
       )
-      Enliterator::Visit.create!(tendable: widget, stream: "other", status: "succeeded")
+      Enliterator::Visit.create!(tendable: widget, facet: "other", status: "succeeded")
 
-      state = widget.literacy_state(stream: "summary")
+      state = widget.literacy_state(facet: "summary")
 
       expect(state[:recent_visits].size).to eq(1)
       projected = state[:recent_visits].first
-      expect(projected[:stream]).to eq(visit.stream)
-      expect(projected).to include(:stream, :confidence, :summary, :at)
+      expect(projected[:facet]).to eq(visit.facet)
+      expect(projected).to include(:facet, :confidence, :summary, :at)
     end
 
-    it "maps facets by name to score" do
-      Enliterator::Facet.create!(tendable: widget, name: "completeness", score: 0.5)
+    it "maps measures by name to score" do
+      Enliterator::Measure.create!(tendable: widget, name: "completeness", score: 0.5)
 
-      state = widget.literacy_state(stream: "summary")
+      state = widget.literacy_state(facet: "summary")
 
-      expect(state[:facets]).to eq("completeness" => 0.5)
+      expect(state[:measures]).to eq("completeness" => 0.5)
     end
   end
 
@@ -130,12 +130,12 @@ RSpec.describe Enliterator::Tendable do
       expect(widget.last_tended_at).to be_nil
     end
 
-    it "returns the newest succeeded visit's finished_at, scoped by stream" do
-      older = Enliterator::Visit.create!(tendable: widget, stream: "summary", status: "succeeded", finished_at: 2.days.ago)
-      newer = Enliterator::Visit.create!(tendable: widget, stream: "summary", status: "succeeded", finished_at: 1.hour.ago)
-      Enliterator::Visit.create!(tendable: widget, stream: "summary", status: "failed", finished_at: Time.current)
+    it "returns the newest succeeded visit's finished_at, scoped by facet" do
+      older = Enliterator::Visit.create!(tendable: widget, facet: "summary", status: "succeeded", finished_at: 2.days.ago)
+      newer = Enliterator::Visit.create!(tendable: widget, facet: "summary", status: "succeeded", finished_at: 1.hour.ago)
+      Enliterator::Visit.create!(tendable: widget, facet: "summary", status: "failed", finished_at: Time.current)
 
-      expect(widget.last_tended_at(stream: "summary")).to be_within(1.second).of(newer.finished_at)
+      expect(widget.last_tended_at(facet: "summary")).to be_within(1.second).of(newer.finished_at)
       expect(older.finished_at).to be < newer.finished_at
     end
   end

@@ -4,7 +4,7 @@ require "enliterator/engine"
 # Enliterator — confer literacy on data.
 #
 # Mount the engine, `include Enliterator::Tendable` on any host model, and that
-# record gains embeddings, a provenance-tracked claim store, quality facets, and
+# record gains embeddings, a provenance-tracked claim store, quality measures, and
 # a tending loop where each visit reads the record's accumulated history plus its
 # corpus neighbors and reconciles its understanding. Understanding compounds.
 #
@@ -32,7 +32,7 @@ module Enliterator
     attr_accessor :tend_batch_size
 
     # Named tending lanes a record is visited along (each its own prompt/cadence).
-    attr_accessor :tending_streams
+    attr_accessor :tending_facets
 
     # Re-tend a record whose newest visit is older than this (confidence/staleness decay).
     attr_accessor :stale_after
@@ -51,7 +51,7 @@ module Enliterator
     attr_accessor :gateway_api_key
 
     # An Enliterator::Staffing::Policy (the org chart). nil → a safe default
-    # policy (all streams → first available tier) is used at call time.
+    # policy (all facets → first available tier) is used at call time.
     attr_accessor :staffing
 
     # Confidence below which a visit escalates. Mirrors the Policy default; exposed
@@ -61,7 +61,7 @@ module Enliterator
     # ---- v0.3 Governed Suggestion Loop -----------------------------------
 
     # A callable (default nil) invoked with each newly-created Enliterator::Suggestion
-    # when the model proposes a claim key outside a stream's contract. The hook lets a
+    # when the model proposes a claim key outside a facet's contract. The hook lets a
     # host forward proposals to a shared vocabulary tracker (KN, a review queue, etc.).
     # nil ⇒ suggestions are persisted locally only (no forwarding) — the default path.
     attr_accessor :suggestion_sink
@@ -108,7 +108,7 @@ module Enliterator
       @embedder_adapter = nil
       @default_embedding_dimensions = 1536
       @tend_batch_size = 50
-      @tending_streams = [ :summary ]
+      @tending_facets = [ :summary ]
       @stale_after = 90.days
       @queue_name = :enliterator
       @gateway_base_url = "https://llm.example.com/v1"
@@ -170,7 +170,7 @@ module Enliterator
     end
 
     # The active staffing policy (the org chart). The host's configured policy, or
-    # a safe default that routes every stream to a single tier so the engine runs
+    # a safe default that routes every facet to a single tier so the engine runs
     # even when no staffing is configured.
     def staffing(default_tier: nil)
       configuration.staffing || default_staffing_policy(default_tier)
@@ -209,7 +209,7 @@ module Enliterator
     end
 
     # The default org chart used when the host configures no staffing. Routes every
-    # stream to a single tier (the caller-supplied one, else the on-prem/free
+    # facet to a single tier (the caller-supplied one, else the on-prem/free
     # "cheap" alias) so the engine still runs.
     def default_staffing_policy(default_tier)
       Staffing::Policy.default(default_tier || "cheap")

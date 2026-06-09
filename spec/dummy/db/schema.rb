@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_08_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -416,7 +416,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_140000) do
     t.index ["embedding"], name: "idx_enliterator_embeddings_on_embedding_hnsw", opclass: :vector_cosine_ops, using: :hnsw
   end
 
-  create_table "enliterator_facets", force: :cascade do |t|
+  create_table "enliterator_measures", force: :cascade do |t|
     t.datetime "computed_at"
     t.datetime "created_at", null: false
     t.string "name", null: false
@@ -429,7 +429,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_140000) do
   end
 
   create_table "enliterator_proposed_terms", force: :cascade do |t|
-    t.jsonb "by_stream", default: {}, null: false
+    t.jsonb "by_facet", default: {}, null: false
     t.datetime "considered_at"
     t.datetime "created_at", null: false
     t.integer "distinct_records", default: 0, null: false
@@ -453,20 +453,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_140000) do
   create_table "enliterator_suggestions", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.jsonb "example_value", default: {}
+    t.string "facet"
     t.string "mapped_to"
     t.string "model"
     t.string "proposed_key"
     t.text "rationale"
     t.text "review_note"
     t.string "status", default: "pending", null: false
-    t.string "stream"
     t.string "tendable_id"
     t.string "tendable_type"
     t.string "tier"
     t.datetime "updated_at", null: false
     t.bigint "visit_id"
+    t.index ["facet", "status"], name: "idx_enliterator_suggestions_on_facet_and_status"
     t.index ["proposed_key", "status"], name: "idx_enliterator_suggestions_on_key_and_status"
-    t.index ["stream", "status"], name: "idx_enliterator_suggestions_on_stream_and_status"
     t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_suggestions_on_tendable"
   end
 
@@ -478,6 +478,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_140000) do
     t.text "error"
     t.bigint "escalated_from_id"
     t.integer "escalation_step", default: 0, null: false
+    t.string "facet", null: false
     t.datetime "finished_at"
     t.jsonb "input_refs", default: {}
     t.string "model"
@@ -486,14 +487,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_140000) do
     t.jsonb "reconciliation", default: {}
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
-    t.string "stream", null: false
     t.string "tendable_id", null: false
     t.string "tendable_type", null: false
     t.string "tier"
     t.jsonb "tokens", default: {}
     t.datetime "updated_at", null: false
     t.index ["tendable_type", "tendable_id", "created_at"], name: "idx_enliterator_visits_on_tendable_and_created_at"
-    t.index ["tendable_type", "tendable_id", "stream"], name: "idx_enliterator_visits_on_tendable_and_stream"
+    t.index ["tendable_type", "tendable_id", "facet"], name: "idx_enliterator_visits_on_tendable_and_facet"
     t.index ["tendable_type", "tendable_id", "tier"], name: "idx_enliterator_visits_on_tendable_and_tier"
   end
 

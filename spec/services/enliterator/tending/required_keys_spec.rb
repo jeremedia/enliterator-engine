@@ -20,7 +20,7 @@ RSpec.describe "Enliterator::Tending::Visitor required-key escalation (staffing 
 
     def model_id = "model-#{@tier}"
 
-    def tend(text:, stream:, state:, neighbors:, tags: [], contract: nil, required: nil)
+    def tend(text:, facet:, state:, neighbors:, tags: [], contract: nil, required: nil)
       @calls += 1
       @captured_required << required
       Result.new(parsed: { "claims" => @claims, "confidence" => @confidence },
@@ -33,8 +33,8 @@ RSpec.describe "Enliterator::Tending::Visitor required-key escalation (staffing 
 
   def configure_policy!(max_promotions: 1)
     policy = Enliterator::Staffing::Policy.new do
-      stream :authorship, tier: "cheap",
-             keys: { authored_by: "The author(s).", advisor: "The advisor(s)." },
+      facet :authorship, tier: "cheap",
+             terms: { authored_by: "The author(s).", advisor: "The advisor(s)." },
              required: [ :authored_by ]
       ladder [ "cheap", "quality" ]
       verify_floor "quality"
@@ -51,7 +51,7 @@ RSpec.describe "Enliterator::Tending::Visitor required-key escalation (staffing 
   end
 
   def tend!
-    Enliterator::Tending::Visitor.new(widget, stream: "authorship", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "authorship", embedder: embedder).call
   end
 
   describe "required key ABSENT at high confidence still escalates" do
@@ -154,10 +154,10 @@ RSpec.describe "Enliterator::Tending::Visitor required-key escalation (staffing 
     end
   end
 
-  describe "byte-identical when the stream declares no required keys" do
+  describe "byte-identical when the facet declares no required keys" do
     it "writes a reconciliation with NO required_unmet key" do
       policy = Enliterator::Staffing::Policy.new do
-        stream :summary, tier: "cheap", keys: { summary: "One abstract." }
+        facet :summary, tier: "cheap", terms: { summary: "One abstract." }
         ladder [ "cheap", "quality" ]
         verify_floor "quality"
       end
@@ -167,7 +167,7 @@ RSpec.describe "Enliterator::Tending::Visitor required-key escalation (staffing 
       allow(Enliterator).to receive(:llm).and_call_original
       allow(Enliterator).to receive(:llm).with(tier: "cheap").and_return(cheap)
 
-      Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+      Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
       recon = widget.enliterator_visits.last.reload.reconciliation
       expect(recon.key?("required_unmet")).to be(false)
     end

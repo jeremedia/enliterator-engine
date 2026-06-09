@@ -1,6 +1,6 @@
 module Enliterator
   # Suggestion review — the governed-vocabulary queue. The model proposes claim keys
-  # a stream's contract doesn't cover; a curator renders a verdict per proposed_key:
+  # a facet's contract doesn't cover; a curator renders a verdict per proposed_key:
   # APPROVE (a real gap — surface the contract diff to add), MAP (a synonym of an
   # existing key — record the canonical target), or REJECT. The ontology tends itself.
   class SuggestionsController < ApplicationController
@@ -8,8 +8,8 @@ module Enliterator
       Enliterator::ProposedTerm.refresh!                            # materialize pressure
       @terms        = Enliterator::ProposedTerm.open.by_pressure    # pressure-ranked queue
       @canonical    = canonical_keys                                # existing contract keys (map targets)
-      @additions    = Enliterator::Suggestion.contract_additions    # {stream => [approved keys]}
-      @synonyms     = Enliterator::Suggestion.synonyms              # [{stream, proposed_key, mapped_to}]
+      @additions    = Enliterator::Suggestion.contract_additions    # {facet => [approved keys]}
+      @synonyms     = Enliterator::Suggestion.synonyms              # [{facet, proposed_key, mapped_to}]
       @pending      = Enliterator::Suggestion.pending.count
       @resolved     = Enliterator::Suggestion.where.not(status: "pending").count
       @reproposed   = reproposed_terms                             # v0.9: model re-asked after a verdict
@@ -50,7 +50,7 @@ module Enliterator
 
     private
 
-    # Every claim key in any stream's EFFECTIVE contract (code + approved) — the
+    # Every claim key in any facet's EFFECTIVE contract (code + approved) — the
     # legal targets a synonym can map onto.
     def canonical_keys
       Enliterator.staffing.assignments.keys

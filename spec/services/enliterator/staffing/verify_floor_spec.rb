@@ -20,7 +20,7 @@ RSpec.describe "Enliterator::Tending::Visitor verify_floor (staffing path)" do
 
     def model_id = "model-#{@tier}"
 
-    def tend(text:, stream:, state:, neighbors:, tags: [])
+    def tend(text:, facet:, state:, neighbors:, tags: [])
       Result.new(
         parsed: { "claims" => @claims, "confidence" => @confidence },
         raw:    { "tier" => @tier },
@@ -33,7 +33,7 @@ RSpec.describe "Enliterator::Tending::Visitor verify_floor (staffing path)" do
   let(:embedder) { Enliterator::Adapters::Embedder::Null.new }
 
   def call_staffing!
-    Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
   end
 
   describe "a cheap-only run cannot mint verified (below the floor)" do

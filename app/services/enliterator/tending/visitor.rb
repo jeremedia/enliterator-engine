@@ -2,13 +2,13 @@ module Enliterator
   module Tending
     # THE compounding contract (literacy rung 5), now WITH staffing & escalation.
     #
-    # One Visitor instance performs one tending of one record along one stream. It
+    # One Visitor instance performs one tending of one record along one facet. It
     # reads the record's accumulated understanding (prior claims + recent visits +
-    # facets) plus its corpus neighbors, hands all of that to a language model, and
+    # measures) plus its corpus neighbors, hands all of that to a language model, and
     # reconciles the model's proposed claims against what already exists. Because
     # each visit conditions the next, understanding compounds.
     #
-    #   Enliterator::Tending::Visitor.new(record, stream: "summary").call
+    #   Enliterator::Tending::Visitor.new(record, facet: "summary").call
     #
     # TWO paths share this class:
     #
@@ -17,7 +17,7 @@ module Enliterator
     #   v0.1 spec drives this path and must stay green.
     #
     # * STAFFING (v0.2): no `llm:` is injected. The staffing policy picks the tier
-    #   for the stream, clamps the ladder by the record's constraints, runs a visit
+    #   for the facet, clamps the ladder by the record's constraints, runs a visit
     #   at that tier, and — when the result is low-confidence or self-flagged —
     #   ESCALATES up the ladder (bounded by max_promotions), handing the junior
     #   tier's proposed claims to the senior for review. Only the FINAL tier's visit
@@ -28,11 +28,11 @@ module Enliterator
       # should invalidate cached interpretation. Stamped onto every Visit.
       PROMPT_VERSION = "v0.1".freeze
 
-      attr_reader :tendable, :stream, :embedder
+      attr_reader :tendable, :facet, :embedder
 
-      def initialize(tendable, stream:, llm: nil, embedder: Enliterator.embedder)
+      def initialize(tendable, facet:, llm: nil, embedder: Enliterator.embedder)
         @tendable     = tendable
-        @stream       = stream.to_s
+        @facet       = facet.to_s
         @injected_llm = llm           # non-nil => v0.1 back-compat path
         @embedder     = embedder
       end
@@ -63,7 +63,7 @@ module Enliterator
         adapter = @injected_llm
         started = Time.current
         visit = tendable.enliterator_visits.create!(
-          stream:         stream,
+          facet:         facet,
           status:         "running",
           model:          adapter.model_id,
           tier:           adapter.model_id,
@@ -73,12 +73,12 @@ module Enliterator
         )
 
         begin
-          state     = tendable.literacy_state(stream: stream)
+          state     = tendable.literacy_state(facet: facet)
           neighbors = nearest_neighbors(tendable, limit: 5)
 
           response = adapter.tend(
-            text:      tendable.enliterator_text(stream: stream),
-            stream:    stream,
+            text:      tendable.enliterator_text(facet: facet),
+            facet:    facet,
             state:     state,
             neighbors: neighbors
           )
@@ -96,7 +96,7 @@ module Enliterator
             neighbors: neighbors, state: state
           )
 
-          Enliterator::Facets.recompute!(tendable)
+          Enliterator::Measures.recompute!(tendable)
           visit
         rescue => e
           fail_visit!(visit, e)
@@ -108,30 +108,30 @@ module Enliterator
 
       def call_with_staffing
         policy  = Enliterator.staffing
-        allowed = policy.allowed_tiers(tendable, stream)
+        allowed = policy.allowed_tiers(tendable, facet)
 
-        # v0.3 output contract for this stream (the controlled key vocabulary), or
-        # nil when the stream is unconstrained (declared via #assign / not at all).
+        # v0.3 output contract for this facet (the controlled key vocabulary), or
+        # nil when the facet is unconstrained (declared via #assign / not at all).
         # nil ⇒ open keys + no suggestions ⇒ byte-identical to v0.2.
         # v0.9: the EFFECTIVE contract — code keys + any curator-approved keys — so
-        # an approved key is emitted as a claim, not re-proposed. == keys_for when
+        # an approved key is emitted as a claim, not re-proposed. == terms_for when
         # nothing is approved.
-        contract = Enliterator::Vocabulary.for(stream)
+        contract = Enliterator::Vocabulary.for(facet)
 
-        # v0.5: keys this stream MUST yield a non-blank claim for (subset of contract),
+        # v0.5: keys this facet MUST yield a non-blank claim for (subset of contract),
         # or nil. An unmet required key forces escalation regardless of confidence and
         # bars `verified` at the top tier. nil ⇒ byte-identical to v0.3/v0.4.
-        required = policy.required_keys(stream)
+        required = policy.required_terms(facet)
 
         # No tier may legally run this record (e.g. on-prem-only with no on-prem
         # ladder). Record a failed visit and surface the misconfiguration.
         if allowed.empty?
           raise Enliterator::ConfigurationError,
                 "No staffing tier may run #{tendable.class.name}/#{tendable.id} " \
-                "on stream #{stream.inspect} (allowed ladder is empty after constraints)."
+                "on facet #{facet.inspect} (allowed ladder is empty after constraints)."
         end
 
-        start_tier = clamp_start_tier(policy.tier_for(stream), allowed)
+        start_tier = clamp_start_tier(policy.tier_for(facet), allowed)
         # The remaining climb available to this record, in ladder order.
         climb      = ladder_climb(start_tier, allowed)
 
@@ -154,7 +154,7 @@ module Enliterator
 
           # v0.5: a required key that came back empty forces escalation even when the
           # model reported high confidence (the confidently-empty author case).
-          required_unmet = required.present? && required_keys_unmet?(required, current_parsed["claims"])
+          required_unmet = required.present? && required_terms_unmet?(required, current_parsed["claims"])
 
           # Decide whether to climb: low confidence / self-flag / unmet required key,
           # a higher tier exists in the allowed ladder, and we are under the bound.
@@ -175,13 +175,13 @@ module Enliterator
         # Recompute unmet against the FINAL tier's claims. If still unmet at the top
         # of the climb, the visit finalizes succeeded but mints no verified and is
         # flagged (reconciliation["required_unmet"] = true).
-        final_unmet = required.present? && required_keys_unmet?(required, current_parsed["claims"])
+        final_unmet = required.present? && required_terms_unmet?(required, current_parsed["claims"])
 
         # Only the FINAL tier's visit reconciles and writes claims. It is also the
         # only place v0.3 suggestions are persisted (junior visits never persist).
         finalize_final_visit!(current_visit, current_parsed, current_tier, policy,
                               contract: contract, required_unmet: final_unmet)
-        Enliterator::Facets.recompute!(tendable)
+        Enliterator::Measures.recompute!(tendable)
         current_visit
       end
 
@@ -292,12 +292,12 @@ module Enliterator
       def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil, required: nil)
         adapter = Enliterator.llm(tier: tier)
         log_event("resolve", tier: tier, adapter: adapter.class.name, model_id: adapter.model_id,
-                             stream: stream, tendable: tendable_ref, step: step)
+                             facet: facet, tendable: tendable_ref, step: step)
         refuse_null!(adapter, tier)
         started = Time.current
 
         visit = tendable.enliterator_visits.create!(
-          stream:           stream,
+          facet:           facet,
           status:           "running",
           model:            adapter.model_id,
           tier:             tier.to_s,
@@ -309,7 +309,7 @@ module Enliterator
         )
 
         begin
-          state = tendable.literacy_state(stream: stream)
+          state = tendable.literacy_state(facet: facet)
           # Senior REVIEWS junior: hand the lower tier's draft claims up so the
           # prompt presents them explicitly (Base#build_user pulls this key out).
           state = state.merge("proposed_by_lower_tier" => proposed_by_lower) if proposed_by_lower
@@ -319,8 +319,8 @@ module Enliterator
 
           response = tend_with_optional_kwargs(
             adapter,
-            text:      tendable.enliterator_text(stream: stream),
-            stream:    stream,
+            text:      tendable.enliterator_text(facet: facet),
+            facet:    facet,
             state:     state,
             neighbors: neighbors,
             tags:      tags,
@@ -342,7 +342,7 @@ module Enliterator
             duration_ms:    duration_ms,
             finished_at:    finished
           )
-          log_event("visit", visit_id: visit.id, stream: stream, tier: tier, step: step,
+          log_event("visit", visit_id: visit.id, facet: facet, tier: tier, step: step,
                              confidence: visit.confidence, applied: visit.applied,
                              tokens: token_total(visit.tokens), duration_ms: duration_ms,
                              status: "succeeded")
@@ -358,13 +358,13 @@ module Enliterator
       # summary. This is the ONLY place claims are written in the staffing path —
       # and the ONLY place v0.3 suggestions are persisted (junior visits never do).
       #
-      # CONTRACT (v0.3): when the stream has an output contract, reconcile ONLY the
+      # CONTRACT (v0.3): when the facet has an output contract, reconcile ONLY the
       # claims whose key is in the allowed vocabulary; off-list keys are dropped (the
       # schema enum should already prevent them — this is the safety net). When no
       # contract, reconcile ALL proposed claims (v0.2, byte-identical).
       def finalize_final_visit!(visit, parsed, tier, policy, contract: nil, required_unmet: false)
         # v0.5: a still-unmet required key at the top of the climb bars `verified` —
-        # we never mint a verified claim for a stream that failed to produce a
+        # we never mint a verified claim for a facet that failed to produce a
         # mandated fact. When required_unmet is false this is unchanged from v0.4.
         may_verify = policy.may_verify?(tier) && !required_unmet
         claims     = contract.nil? ? parsed["claims"] : filter_claims_to_contract(parsed["claims"], contract)
@@ -379,7 +379,7 @@ module Enliterator
         # writes the exact same reconciliation hash as v0.4 (specs assert it).
         recon[:required_unmet] = true if required_unmet
         visit.update!(reconciliation: recon, applied: true)
-        log_event("reconcile", visit_id: visit.id, stream: stream, tier: tier,
+        log_event("reconcile", visit_id: visit.id, facet: facet, tier: tier,
                               ops: recon_ops(recon), required_unmet: (required_unmet || nil))
 
         # Persist the model's proposed key additions for governance. No-op when the
@@ -402,7 +402,7 @@ module Enliterator
       end
 
       # Materialize each suggestion the model proposed into an Enliterator::Suggestion
-      # row carrying full provenance (tendable, stream, final tier/model, final visit).
+      # row carrying full provenance (tendable, facet, final tier/model, final visit).
       # Fires Enliterator.configuration.suggestion_sink per row when configured.
       def persist_suggestions!(suggestions, visit:, tier:)
         return if suggestions.blank?
@@ -426,7 +426,7 @@ module Enliterator
 
           attrs = {
             tendable:     tendable,
-            stream:       stream,
+            facet:       facet,
             proposed_key: proposed_key,
             rationale:    raw["rationale"] || raw[:rationale],
             tier:         tier.to_s,
@@ -467,12 +467,12 @@ module Enliterator
 
       # Call #tend, passing the optional `tags:`/`contract:` keywords ONLY when the
       # adapter's #tend accepts them. `contract:` is additionally passed only when
-      # non-nil, so an unconstrained stream (no contract) yields a call byte-identical
+      # non-nil, so an unconstrained facet (no contract) yields a call byte-identical
       # to v0.2 even on adapters that DO accept `contract:`. The Gateway accepts both;
       # Null/Bedrock accept `contract:` (and ignore it); per-tier stubs that accept
       # only `tags:` (escalation spec) still work — they're never handed a contract.
-      def tend_with_optional_kwargs(adapter, text:, stream:, state:, neighbors:, tags:, contract:, required: nil)
-        kwargs = { text: text, stream: stream, state: state, neighbors: neighbors }
+      def tend_with_optional_kwargs(adapter, text:, facet:, state:, neighbors:, tags:, contract:, required: nil)
+        kwargs = { text: text, facet: facet, state: state, neighbors: neighbors }
         kwargs[:tags]     = tags     if adapter_accepts_kwarg?(adapter, :tags)
         kwargs[:contract] = contract if !contract.nil? && adapter_accepts_kwarg?(adapter, :contract)
         kwargs[:required] = required if !required.nil? && adapter_accepts_kwarg?(adapter, :required)
@@ -487,12 +487,12 @@ module Enliterator
       end
 
       # LiteLLM spend tags for one gateway request. The join key to LiteLLM's
-      # authoritative dollars; also the shape Spend.by_stream approximates locally.
+      # authoritative dollars; also the shape Spend.by_facet approximates locally.
       def spend_tags(tier:, step:)
         [
           "enliterator",
           "host:#{host_name}",
-          "stream:#{stream}",
+          "facet:#{facet}",
           "tier:#{tier}",
           "esc:#{step}",
           "record:#{tendable.class.name}/#{tendable.id}"
@@ -522,7 +522,7 @@ module Enliterator
 
         raise Enliterator::ConfigurationError,
               "Enliterator resolved the Null LLM adapter for tier #{tier.inspect} on a real tend " \
-              "(#{tendable_ref}, stream #{stream.inspect}): no gateway key and no llm_adapter are " \
+              "(#{tendable_ref}, facet #{facet.inspect}): no gateway key and no llm_adapter are " \
               "configured, so nothing would actually run. Set ENLITERATOR_LLM_KEY (or " \
               "configuration.llm_adapter), or set configuration.allow_null_llm = true to permit the " \
               "inert adapter."
@@ -537,7 +537,7 @@ module Enliterator
       # with a blank value. The signal that forces escalation / bars verified. A
       # claim "meets" a required key when it carries a non-blank value (op-agnostic:
       # ADD/UPDATE/NOOP of a real value all assert the fact).
-      def required_keys_unmet?(required, claims)
+      def required_terms_unmet?(required, claims)
         req = Array(required).map(&:to_s)
         return false if req.empty?
 
@@ -609,7 +609,7 @@ module Enliterator
           duration_ms:    duration_ms,
           finished_at:    finished
         )
-        log_event("visit", visit_id: visit.id, stream: stream, tier: visit.tier, step: 0,
+        log_event("visit", visit_id: visit.id, facet: facet, tier: visit.tier, step: 0,
                            confidence: visit.confidence, applied: visit.applied,
                            ops: recon_ops(recon), tokens: token_total(visit.tokens),
                            duration_ms: duration_ms, status: "succeeded", back_compat: true)
@@ -622,7 +622,7 @@ module Enliterator
           finished_at: Time.current,
           updated_at:  Time.current
         )
-        log_event("fail", visit_id: visit.id, stream: stream, tier: visit.tier,
+        log_event("fail", visit_id: visit.id, facet: facet, tier: visit.tier,
                           status: "failed", error: error.message)
       end
 
@@ -685,12 +685,12 @@ module Enliterator
         tendable.enliterator_claims.live.find_by(key: key)
       end
 
-      # The prior AUTHORITATIVE visits this pass read for context (same stream, the
+      # The prior AUTHORITATIVE visits this pass read for context (same facet, the
       # 5 most recent applied visits preceding this one — matching literacy_state).
       def prior_visit_ids(visit)
         tendable.enliterator_visits
           .applied
-          .where(stream: stream)
+          .where(facet: facet)
           .where.not(id: visit.id)
           .order(created_at: :desc)
           .limit(5)

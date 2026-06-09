@@ -1,5 +1,5 @@
 module Enliterator
-  # Tends one record along one stream. The record is passed as an ActiveJob
+  # Tends one record along one facet. The record is passed as an ActiveJob
   # argument and serialized via GlobalID, so the host's queue backend (Sidekiq
   # for HSDL, anything ActiveJob-compatible elsewhere) carries only a reference.
   #
@@ -12,8 +12,8 @@ module Enliterator
     # If the record was deleted between enqueue and run, there's nothing to tend.
     discard_on ActiveJob::DeserializationError
 
-    def perform(tendable, stream)
-      tendable.tend!(stream: stream)
+    def perform(tendable, facet)
+      tendable.tend!(facet: facet)
     end
   end
 end

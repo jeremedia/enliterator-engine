@@ -9,12 +9,12 @@ RSpec.describe "Enliterator suggestion review", type: :request do
   before do
     Enliterator.configure do |c|
       c.staffing = Enliterator::Staffing::Policy.new do
-        stream :summary, tier: "cheap", keys: { summary: "An abstract.", authored_by: "The author(s)." }
+        facet :summary, tier: "cheap", terms: { summary: "An abstract.", authored_by: "The author(s)." }
         ladder [ "cheap" ]
       end
     end
-    Enliterator::Suggestion.create!(tendable: w, stream: "summary", proposed_key: "keywords", rationale: "kw terms", status: "pending")
-    Enliterator::Suggestion.create!(tendable: w, stream: "summary", proposed_key: "author",   rationale: "a name",  status: "pending")
+    Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "keywords", rationale: "kw terms", status: "pending")
+    Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "author",   rationale: "a name",  status: "pending")
   end
 
   it "GET /enliterator/suggestions renders the ranked queue" do
@@ -81,14 +81,14 @@ RSpec.describe "Enliterator suggestion review", type: :request do
 
   it "ranks the pending queue by pressure" do
     # bump author's pressure with a second proposal
-    Enliterator::Suggestion.create!(tendable: Widget.create!(title: "B", body: "y"), stream: "summary", proposed_key: "author", rationale: "again", status: "pending")
+    Enliterator::Suggestion.create!(tendable: Widget.create!(title: "B", body: "y"), facet: "summary", proposed_key: "author", rationale: "again", status: "pending")
     get "/enliterator/suggestions"
     expect(response.body.index("author")).to be < response.body.index("keywords")
   end
 
   describe "convergence surfaces (v0.9)" do
     it "renders the 'Re-proposed after a verdict' panel for keys the model keeps re-asking" do
-      Enliterator::Suggestion.create!(tendable: w, stream: "summary", proposed_key: "thematic_focus", rationale: "r", status: "mapped", mapped_to: "summary")
+      Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "thematic_focus", rationale: "r", status: "mapped", mapped_to: "summary")
       Enliterator::ProposedTerm.create!(proposed_key: "thematic_focus", post_verdict_attempts: 4)
       get "/enliterator/suggestions"
       expect(response.body).to include("Re-proposed after a verdict").and include("thematic_focus")
