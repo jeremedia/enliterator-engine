@@ -171,7 +171,10 @@ namespace :enliterator do
     loop do
       batch_size = [ 2_000, limit ? limit - total["surveyed"] : 2_000 ].min
       break if batch_size <= 0
-      batch = Enliterator::Condition.survey_due(limit: batch_size)
+      # fresh_only: this task reads the shelf ONCE and terminates — the
+      # stalest fallback would feed endless re-surveys (the heartbeat's
+      # time-boxed phase owns the rolling re-read).
+      batch = Enliterator::Condition.survey_due(limit: batch_size, fresh_only: true)
       break if batch.empty?
 
       Enliterator::Condition.survey_batch!(batch).each do |v|

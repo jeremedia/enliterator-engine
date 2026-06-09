@@ -244,10 +244,18 @@ module Enliterator
     # The next records to shelf-read: never-surveyed first (per model, fair
     # quota + one redistribution pass), then stalest computed_at. Returns
     # loaded records.
-    def survey_due(limit:, models: tendable_models)
+    #
+    # fresh_only: true skips the stalest fallback — for run-to-completion
+    # callers (the enliterator:survey rake): without it, once the frontier is
+    # exhausted the stalest fallback feeds endless re-surveys and a "to
+    # completion" loop NEVER terminates (caught live on HSDL: 408K survey
+    # events over a 315K corpus before supervision pulled the cord). The
+    # heartbeat phase keeps both (it's time-boxed; rolling re-surveys are its
+    # job).
+    def survey_due(limit:, models: tendable_models, fresh_only: false)
       return [] if models.empty? || limit <= 0
       picked = never_surveyed(limit, models)
-      picked += stalest(limit - picked.size) if picked.size < limit
+      picked += stalest(limit - picked.size) if picked.size < limit && !fresh_only
       picked
     end
 

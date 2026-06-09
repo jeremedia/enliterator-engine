@@ -209,5 +209,14 @@ RSpec.describe Enliterator::Condition do
       expect(due.first.id).to eq(never.id)       # never-surveyed first
       expect(due.second.id).to eq(old.id)        # then stalest
     end
+
+    it "fresh_only never falls back to re-surveys — a run-to-completion loop terminates" do
+      described_class.register(:legibility, gates_tending: true) { |_r| { ok: true } }
+      w = Widget.create!(title: "only", body: "b")
+      described_class.survey!(w)
+
+      expect(described_class.survey_due(limit: 10, fresh_only: true)).to eq([])
+      expect(described_class.survey_due(limit: 10).map(&:id)).to eq([ w.id ])   # heartbeat path re-reads
+    end
   end
 end
