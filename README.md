@@ -61,9 +61,11 @@ bin/rails db:migrate
 
 ### Mounting the UI (v0.6)
 
-Mount the engine in the host's routes to get six read-only web surfaces — a **status
-browser**, a **conversation UI**, a **governed-vocabulary review queue**, a **context
-tree**, an **About explainer**, and a **Settings** surface — for free:
+Mount the engine in the host's routes to get seven web surfaces — a **status
+browser**, a **conversation UI** (with a scope banner naming the active context), a
+**governed-vocabulary review queue**, a **context tree**, a **heartbeat pulse monitor**
+(trigger one tending cycle and watch it live), an **About explainer**, and a
+**Settings** surface — for free:
 
 ```ruby
 # config/routes.rb
