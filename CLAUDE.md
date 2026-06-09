@@ -92,15 +92,21 @@ claims/visits, per-context facets, membership-scoped neighbors — rule: NULL co
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, released through **v0.12**.
-- HSDL dev has ~250 theses tended, 994 visits, vocabulary converging (the `keywords` term was
-  ratified live as the end-to-end convergence proof).
+- Remote: github.com/jeremedia/enliterator-engine, released through **v0.12** (v0.13 contexts +
+  v0.14 trajectory committed locally; push gated).
+- HSDL dev: the federation is seated as a context tree (chds-theses 1,327 / crs-reports 35,020 /
+  executive-orders 1,026 / election-security 82); divergence validated (EO supersession graph,
+  CRS issue_for_congress); the `keywords` term ratified live as the convergence proof.
 - **Deadline shaping the build**: FEDLINK talk (Library of Congress) **2026-07-14** — the audience
   is federal librarians; speak their language (authority control, finding aids, literary warrant).
-- Known open gaps (deliberate): the compounding thesis is not yet *measured* (no multi-pass
-  cohort study); no scheduler/heartbeat (all tending is hand-cranked); no claim-accuracy golden
-  set; `/enliterator` mount is auth-less (dev only — wrap in CHDS Pulse auth before staging).
-- Deferred by design: SKOS/BT/NT syndetic structure, LRM/WEMI, the cross-record flywheel.
+- v0.14 adds the measurement instrument (`Trajectory`, `Trajectory::Judge`, the "Understanding
+  over time" drill-down) + the HSDL two-arm compounding experiment (arm A neighbor-enriched vs
+  arm B control) whose report GATES v0.15 (the heartbeat).
+- Known open gaps (deliberate): no scheduler/heartbeat yet (hand-cranked until the compounding
+  report says what to trigger on); no claim-accuracy golden set; `/enliterator` mount is auth-less
+  (dev only — wrap in CHDS Pulse auth before staging).
+- Deferred by design: SKOS/BT/NT syndetic structure, LRM/WEMI, the cross-record flywheel,
+  per-scope tended-counts on inherited facets, genre-intrinsic→root claim promotion.
 
 ## Jeremy's standing directives for this project
 

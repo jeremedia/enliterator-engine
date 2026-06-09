@@ -27,6 +27,10 @@ module Enliterator
       @visits = @record.enliterator_visits.includes(:context).order(created_at: :desc).limit(20)
       @measures = @record.enliterator_measures.each_with_object({}) { |f, h| h[f.name] = f.score }
       @contexts = @record.respond_to?(:enliterator_contexts) ? @record.enliterator_contexts.order(:name) : []
+      # v0.14: understanding over time — only facets with >1 applied visit get a
+      # timeline (a single visit has no trajectory; the section is absent).
+      @trajectories = Enliterator::Trajectory.for(@record, last: 6)
+                        .select { |line| line[:steps].size > 1 }
     end
   end
 end

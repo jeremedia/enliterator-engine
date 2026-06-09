@@ -934,3 +934,56 @@ verified live (an EO-context claim is invisible from election-security's scope).
 - HSDL seated + divergence/cross-cutting validated on real data (HSDL-side changes gated, uncommitted).
 - Deferred: per-scope tended-count semantics on inherited facets (currently path-scope counts);
   promoting genre-intrinsic claims to root; the cross-record flywheel; SKOS/BT/NT unification.
+
+# v0.14 — The Compounding Proof (trajectory, judge, supervised experiment)
+
+The engine's central thesis — the tenth visit is smarter than the first — was asserted (About),
+structurally supported (provenance chains, reconcile ops, state threading), and never MEASURED. v0.14
+is the loop's final supervised exam and the deliberate end of the hand-cranked era: it proves (or
+disproves) the thing automation would repeat, and its report is the GATE for v0.15 (the heartbeat).
+Failure modes hunted by name: FREEZE (all NOOPs — compounding is hollow) and CHURN (cosmetic rewrites
+dressed as UPDATEs — worse, because it looks like compounding).
+
+## 1. `Enliterator::Trajectory` (pure-read longitudinal service)
+- `state_at(record, time, context:)` — the claim set live at any past moment, reconstructed from the
+  supersession chain: live at T iff created_at<=T AND NOT(superseded by a claim created<=T) AND
+  NOT(a DELETE tombstone — status superseded, no successor — updated_at<=T). (Tombstone time ≈
+  updated_at; no dedicated column — adequate under single-writer tending, noted in the docstring.)
+- `for(record, facet:, context:, last:)` — per facet (a claim's facet = its creating visit's), the
+  ordered APPLIED visits with ops (from Visit.reconciliation), confidence, state-at-visit, and the
+  per-key diff from the prior state (added/changed(from→to)/deleted) with a CHURN flag: bigram-Dice
+  similarity of old vs new > 0.85 ⇒ an update that didn't really update.
+- `compounding_summary(records, context:)` — per pass-index rollup: op mix, mean confidence,
+  churn_rate (churned/updated), novel_rate (added/total ops). The experiment report's substrate.
+
+## 2. `Enliterator::Trajectory::Judge` (the semantic check)
+Blind pairwise comparison via the considerer's `#decide` plumbing: the record snippet + two claim-
+states labeled A/B in RANDOMIZED order (no before/after/earlier/later language anywhere in the prompt
+— spec-enforced; the de-blinding map stays local). Schema: winner/richer/more_accurate ∈ {A,B,tie} +
+rationale + confidence → de-blinded `{later_wins: true|false|nil(tie), …}`. Tier = considerer_tier
+else ladder top; Null adapter ⇒ nil verdict (soft degrade, never raises — judging writes nothing).
+Churn (string) and judge (semantic) cross-validate: high churn + ties ⇒ cosmetic; low churn +
+later-wins ⇒ real deepening.
+
+## 3. "Understanding over time" (status drill-down — the demo surface)
+For each facet with >1 applied visit: a table — rows = claim keys, columns = applied visits
+(chronological, capped 6), cell = the value AT that visit, CHANGED cells highlighted, with per-visit
+op-chips (+a ~u =n −d) and confidence in the header. Absent with a single visit (byte-identical page).
+
+## 4. The experiment (HSDL-side, gated)
+`lib/tasks/enliterator_compounding.rake`: `setup` (deterministic cohort — 10 theses + 5 CRS + 5 EOs,
+pass-1 fill, split into ARM A/enriched + ARM B/control, tmp/enliterator_compounding/cohort.json);
+`enrich` (tend K=3 nearest untended context-mates of each arm-A record — the SURROUNDINGS are the
+variable: a re-visit has no reason to be smarter unless neighbors/vocabulary/contexts changed);
+`pass` (re-tend the cohort, bypassing the staged-first-pass done-skip — deliberate); `report`
+(Trajectory rollup per arm + Judge first-vs-latest → markdown: op mix per pass per arm, churn rate,
+confidence trajectory, judge later-wins %, and the headline ARM A − ARM B delta). Run shape:
+setup → enrich → pass → enrich → pass → report, all supervised.
+
+## Done = all of (this phase):
+- Trajectory + Judge + the drill-down surface; specs green at 296 (was 281; +15: trajectory 9,
+  judge 4, status surface 2).
+- The supervised experiment run on the real collection; the report + an explicit v0.15
+  recommendation (heartbeat trigger the data supports, or the fix re-visiting needs first).
+- README (trajectory + experiment), About living-doc (measured compounding + colophon v0.14),
+  CLAUDE.md current-state.
