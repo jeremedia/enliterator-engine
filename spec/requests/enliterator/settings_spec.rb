@@ -43,4 +43,23 @@ RSpec.describe "Enliterator settings", type: :request do
     get "/enliterator/settings"
     expect(response.body).to include("/enliterator/suggestions")
   end
+  describe "Heartbeat panel (v0.15)" do
+    it "shows the knobs and 'never run' before adoption" do
+      get "/enliterator/settings"
+      expect(response.body).to include("Heartbeat")
+        .and include("Per-cycle token budget")
+        .and include("Change share")
+        .and include("never run")
+    end
+
+    it "shows the last cycle from the ledger" do
+      Enliterator::Heartbeat.create!(
+        started_at: 2.hours.ago, finished_at: 2.hours.ago + 5.minutes, mode: "sync",
+        budget_tokens: 30_000, planned: { "counts" => { "frontier" => 3 } },
+        tokens_spent: { "total" => 900 }
+      )
+      get "/enliterator/settings"
+      expect(response.body).to include("Last cycle").and include("sync").and include("900")
+    end
+  end
 end

@@ -28,6 +28,10 @@ module Enliterator
 
       # Live tally of what's accrued: approved terms now in force across all facets.
       @approved_live = @contracts.sum { |c| c[:terms].count { |t| t[:approved] } }
+
+      # v0.15: the heartbeat's knobs + the last cycle from the ledger (cheap
+      # reads — no planner queries on this page).
+      @last_heartbeat = Enliterator::Heartbeat.order(:started_at).last
     end
 
     private

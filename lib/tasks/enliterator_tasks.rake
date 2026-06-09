@@ -103,10 +103,59 @@ namespace :enliterator do
     end
   end
 
+  # The event-driven heartbeat (v0.15) — one full metabolic cycle: plan →
+  # tend (change-triggered + frontier + safety-net sweep, budget-capped) →
+  # consider → ledger. Default is SYNC (per-item logged, budget enforced on
+  # actual tokens — the supervised mode); production opts into ENQUEUE=1
+  # deliberately. PLAN=1 prints the work queue and the frontier horizon
+  # without executing anything.
+  #
+  #   bin/rails enliterator:heartbeat                      # sync cycle at the configured budget
+  #   PLAN=1 bin/rails enliterator:heartbeat               # dry-run: print the plan + horizon
+  #   BUDGET=30000 bin/rails enliterator:heartbeat         # supervised small cycle
+  #   ENQUEUE=1 bin/rails enliterator:heartbeat            # enqueue TendingVisitJobs instead
+  #   FORCE=1 ...                                          # override the overlap lock (recorded)
+  #   SKIP_CONSIDER=1 ...                                  # host schedules the considerer separately
+  desc "Run one heartbeat cycle (plan → tend → consider → ledger). BUDGET= PLAN=1 ENQUEUE=1 FORCE=1 SKIP_CONSIDER=1"
+  task heartbeat: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:heartbeat] #{msg}") : puts(msg) }
+    budget = ENV["BUDGET"].presence&.to_i
+
+    if ENV["PLAN"].present?
+      plan = Enliterator::Heartbeat.plan(budget: budget)
+      log.call("── heartbeat plan ── budget #{plan.budget} tokens (change cap #{plan.change_cap})")
+      plan.lane_counts.sort.each do |lane, reasons|
+        log.call("   #{lane}: #{reasons.sort.map { |r, n| "#{r}=#{n}" }.join('  ')}")
+      end
+      log.call("   total: #{plan.items.size} item(s), est #{plan.est_total} tokens")
+      log.call("   #{plan.horizon_line}")
+      plan.warnings.each { |w| log.call("   ⚠ #{w}") }
+      next
+    end
+
+    begin
+      row = Enliterator::Heartbeat.beat!(
+        execute:       ENV["ENQUEUE"].present? ? :enqueue : :sync,
+        budget:        budget,
+        skip_consider: ENV["SKIP_CONSIDER"].present?,
+        force:         ENV["FORCE"].present?
+      )
+      log.call("heartbeat ##{row.id} #{row.error ? 'ABORTED' : 'done'} — " \
+               "planned #{row.planned_count}, executed #{row.executed.values.sum { |c| c.values.sum }}, " \
+               "tokens #{row.tokens_spent['total'] || 'enqueued'}")
+      row.warnings.each { |w| log.call("   ⚠ #{w}") }
+    rescue Enliterator::Heartbeat::Overlap => e
+      abort "[enliterator:heartbeat] REFUSED: #{e.message}"
+    end
+  end
+
   # Run the considerer over the open vocabulary requests: refresh pressure, ask the
   # agent across the whole field, auto-apply the safe verdicts (maps + confident
   # rejects), hold approves for ratification. Wire this AFTER enliterator:tend in
-  # the host scheduler so the vocabulary converges each cycle.
+  # the host scheduler so the vocabulary converges each cycle. (v0.15: the
+  # heartbeat runs this pass itself each cycle — keep this task for hosts that
+  # schedule governance separately, with SKIP_CONSIDER=1 on the heartbeat.)
   #
   #   bin/rails enliterator:consider
   #   CONTEXT=crs-reports bin/rails enliterator:consider   # one context's open field (v0.13)

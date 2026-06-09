@@ -26,6 +26,49 @@
   </div>
 <% end %>
 
+<%# v0.15: the heartbeat — what the next cycle would do, and what the last one did.
+    Rendered only once a cycle has ever run (adoption-gated: no planner queries
+    on hosts that haven't adopted; the page stays byte-identical to v0.14). %>
+<% if @last_heartbeat %>
+  <h2>Heartbeat <span class="muted" style="font-weight:400">— event-driven tending, on the ledger</span></h2>
+  <div class="card">
+    <% plan = @heartbeat_plan %>
+    <div>
+      <span class="muted samples">next cycle:</span>
+      <% if plan.items.any? %>
+        <% plan.counts.sort.each do |reason, n| %>
+          <span class="chip"><%= reason %> <strong><%= n %></strong></span>
+        <% end %>
+        <span class="muted">est <%= number_with_delimiter(plan.est_total) %> of <%= number_with_delimiter(plan.budget) %> tokens</span>
+      <% else %>
+        <span class="muted">nothing to do — the collection is current</span>
+      <% end %>
+    </div>
+    <div class="muted" style="margin-top:.35rem"><%= plan.horizon_line %></div>
+    <% if plan.warnings.any? %>
+      <details style="margin-top:.35rem"><summary class="muted samples"><%= plan.warnings.size %> planner note(s)</summary>
+        <ul class="muted samples" style="margin:.3rem 0 0 1rem">
+          <% plan.warnings.each do |w| %><li><%= w %></li><% end %>
+        </ul>
+      </details>
+    <% end %>
+    <div class="muted samples" style="margin-top:.5rem; border-top:1px solid var(--line); padding-top:.4rem">
+      last cycle: #<%= @last_heartbeat.id %> · <%= @last_heartbeat.mode %> ·
+      <%= @last_heartbeat.started_at.strftime("%Y-%m-%d %H:%M") %> ·
+      <% if @last_heartbeat.finished? %>
+        <% if @last_heartbeat.error %>
+          <span class="warn">aborted — <%= @last_heartbeat.error %></span>
+        <% else %>
+          <%= (@last_heartbeat.executed || {}).map { |r, c| "#{r} #{c.reject { |_, v| v.to_i.zero? }.map { |k, v| "#{k} #{v}" }.join(', ')}" }.join(" · ") %>
+          <% if @last_heartbeat.tokens_spent["total"] %>· <%= number_with_delimiter(@last_heartbeat.tokens_spent["total"]) %> tokens<% end %>
+        <% end %>
+      <% else %>
+        <span class="warn">still open<%= " — likely crashed" if @last_heartbeat.started_at < 6.hours.ago %></span>
+      <% end %>
+    </div>
+  </div>
+<% end %>
+
 <h2>Facets</h2>
 <div class="row">
   <% s[:facets].each do |st| %>
