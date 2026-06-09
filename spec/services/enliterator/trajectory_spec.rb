@@ -75,6 +75,33 @@ RSpec.describe Enliterator::Trajectory do
     end
   end
 
+  describe ".state_after (post-reconcile state — the instrument-calibration fix)" do
+    it "includes the visit's OWN writes even though claims land after the visit row's created_at" do
+      t1 = 3.hours.ago
+      v1 = visit!(at: t1, recon: {})
+      # The real-data condition: the claim is created SECONDS after the Visit row
+      # (the row opens the pass; reconcile writes at the end).
+      claim!(key: "summary", value: "written during v1", visit: v1, at: t1 + 8.seconds)
+
+      expect(described_class.state_at(widget, v1)).to be_empty            # before-the-visit semantics
+      expect(described_class.state_after(widget, v1).map(&:key)).to eq([ "summary" ])  # what it left behind
+    end
+
+    it "bounds at the next applied visit on the facet (the next pass's writes excluded)" do
+      t1, t2 = 3.hours.ago, 1.hour.ago
+      v1 = visit!(at: t1, recon: {})
+      old = claim!(key: "summary", value: "v1 take", visit: v1, at: t1 + 5.seconds)
+      v2 = visit!(at: t2, recon: {})
+      fresh = claim!(key: "summary", value: "v2 deeper take", visit: v2, at: t2 + 5.seconds)
+      old.supersede!(fresh)
+
+      after_v1 = described_class.state_after(widget, v1)
+      expect(after_v1.map(&:id)).to eq([ old.id ])      # v2's supersession not yet visible
+      after_v2 = described_class.state_after(widget, v2)
+      expect(after_v2.map(&:id)).to eq([ fresh.id ])
+    end
+  end
+
   describe ".for (the per-facet timeline)" do
     let(:t1) { 3.hours.ago }
     let(:t2) { 1.hour.ago }

@@ -72,9 +72,11 @@ module Enliterator
         Enliterator.llm(tier: tier)
       end
 
-      def facet_state(record, visit_or_time, facet, context)
+      # The state a visit LEFT BEHIND (post-reconcile — Trajectory.state_after;
+      # a visit's writes land after its row's created_at), facet-restricted.
+      def facet_state(record, visit, facet, context)
         facet_visit_ids = record.enliterator_visits.where(facet: facet).pluck(:id).to_set
-        Enliterator::Trajectory.state_at(record, visit_or_time, context: context)
+        Enliterator::Trajectory.state_after(record, visit, context: context)
           .select { |c| c.visit_id && facet_visit_ids.include?(c.visit_id) }
           .sort_by(&:key)
       end

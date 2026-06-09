@@ -41,6 +41,20 @@ module Enliterator
       claims.select { |c| live_at?(c, t, by_id) }
     end
 
+    # The claim set AFTER a visit's reconcile has been applied. A visit's claims
+    # are written moments AFTER the Visit row's created_at (the row opens the
+    # pass; reconcile closes it), so `state_at(visit.created_at)` is the state
+    # BEFORE the visit — this is the state it left behind. The boundary is the
+    # next applied visit on the same facet (its writes haven't happened yet),
+    # else now. Timeline steps and the judge both read post-visit states.
+    def state_after(record, visit, context: nil)
+      boundary = record.enliterator_visits.applied
+                   .where(facet: visit.facet)
+                   .where("created_at > ?", visit.created_at)
+                   .minimum(:created_at)
+      state_at(record, boundary ? boundary - 0.001 : Time.current, context: context)
+    end
+
     # ---- the per-record timeline ------------------------------------------
 
     # Per facet: the ordered APPLIED visits with ops, confidence, the claim state
@@ -59,7 +73,7 @@ module Enliterator
 
         prior_state = nil
         steps = vs.map do |v|
-          state = facet_state_at(record, v, facet_visit_ids, context: context)
+          state = facet_state_after(record, v, facet_visit_ids, context: context)
           step = {
             visit:      v,
             ops:        ops_of(v),
@@ -126,10 +140,10 @@ module Enliterator
       end
     end
 
-    # State at visit V restricted to claims created by this facet's visits
+    # State AFTER visit V, restricted to claims created by this facet's visits
     # (facet_visit_ids: a Set of visit ids belonging to the facet).
-    def facet_state_at(record, visit, facet_visit_ids, context: nil)
-      state_at(record, visit, context: context)
+    def facet_state_after(record, visit, facet_visit_ids, context: nil)
+      state_after(record, visit, context: context)
         .select { |c| c.visit_id && facet_visit_ids.include?(c.visit_id) }
         .index_by(&:key)
     end

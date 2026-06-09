@@ -987,3 +987,28 @@ setup → enrich → pass → enrich → pass → report, all supervised.
   recommendation (heartbeat trigger the data supports, or the fix re-visiting needs first).
 - README (trajectory + experiment), About living-doc (measured compounding + colophon v0.14),
   CLAUDE.md current-state.
+
+## v0.14 findings (the supervised run, 2026-06-09 — cohort 20, 3 passes, 66 enrichment tends)
+- **Instrument calibration caught by supervision:** the first judge run scored later-wins 95% —
+  an artifact: claims land moments AFTER their Visit row's created_at, so "state at visit 1" was
+  EMPTY and anything beat nothing (the judge's readable rationales exposed it). Fixed with
+  `Trajectory.state_after` (post-reconcile boundary = next applied visit on the facet, else now);
+  regression-spec'd with the real-data write pattern. Calibrated numbers below.
+- **No churn.** Zero gratuitous rewrites across both arms (churn_rate ≈ 0; summary NOOPs at
+  conf ≈ 0.95 everywhere). Re-visits are SAFE — the reconcile contract holds under repetition.
+- **No free compounding from re-reading.** Unchanged surroundings ⇒ NOOP (arm B pass 3: 0 adds,
+  novel_rate 0). The tenth visit is NOT smarter by staring at the same text again; the judge ties
+  dominate (identical states), later-wins ~17.5% both arms, arm delta ≈ 0 at this n.
+- **Deepening tracks surroundings-change** — visible in ops (pass-2 adds; the only context-facet
+  adds were arm-A significance; connections grew with the corpus) but the A/B judge delta was
+  nulled by a DESIGN FLAW we caught: root facets use corpus-wide neighbors, so arm A's 66
+  enrichment tends contaminated arm B's root-facet re-reads. Clean A/B isolation needs
+  context-facet-only comparison or per-arm corpora; n=20 × 2 re-passes is small.
+- **Where the value is: the frontier.** Pass 1 minted 158 claims; passes 2–3 added 13. First
+  attention dwarfs re-attention at this collection's maturity.
+
+**The v0.15 gate verdict: event-driven heartbeat, not wall-clock.** Blind scheduled re-tending is
+safe but mostly NOOP spend. Automation should (1) prioritize the UNTENDED FRONTIER (35K CRS docs),
+(2) trigger re-tends on CHANGE — new context-mates tended, vocabulary approvals, record text
+change — with `stale_after` kept only as a slow safety-net sweep, (3) carry a per-cycle spend cap
++ the trajectory surface as the standing watch instrument.
