@@ -45,6 +45,14 @@ module Enliterator
         items      = []
         change_cap = (@budget * @config.heartbeat_change_share.to_f).floor
 
+        # v0.17: untendable records (condition rollup score 0.0) are excluded
+        # from EVERY queue below via cond_pred. One honest global count here —
+        # an exclusion the plan never mentions would be a silent omission.
+        if condition_adopted?
+          n = Enliterator::Measure.where(name: Enliterator::Condition::ROLLUP, score: 0.0).count
+          @warnings << "#{n} record(s) untendable — excluded from every queue (see the conservation report)" if n.positive?
+        end
+
         items.concat(collect_change(change_cap))
         change_used = items.sum(&:est_tokens)
 
@@ -168,6 +176,7 @@ module Enliterator
               FROM enliterator_visits
               WHERE #{ctx_pred(lane)} AND facet = ? AND tendable_type = ?
                 AND status = 'succeeded' AND applied
+                #{cond_pred('enliterator_visits.tendable_type', 'enliterator_visits.tendable_id')}
               GROUP BY tendable_id
             ) lv
             JOIN #{model.quoted_table_name} t ON CAST(#{pk} AS TEXT) = lv.tendable_id
@@ -189,6 +198,7 @@ module Enliterator
             FROM enliterator_visits
             WHERE #{ctx_pred(lane)} AND facet = ? AND tendable_type = ?
               AND status = 'succeeded' AND applied
+              #{cond_pred('enliterator_visits.tendable_type', 'enliterator_visits.tendable_id')}
             GROUP BY tendable_id
           SQL
           model.where(model.primary_key => last_by_id.keys).find_each do |record|
@@ -232,6 +242,7 @@ module Enliterator
                      COUNT(*) OVER () AS total
               FROM enliterator_visits
               WHERE #{ctx_pred(lane)} AND facet = ? AND status = 'succeeded' AND applied
+                #{cond_pred('enliterator_visits.tendable_type', 'enliterator_visits.tendable_id')}
             )
             SELECT tendable_type, tendable_id
             FROM lane
@@ -274,6 +285,7 @@ module Enliterator
               SELECT tendable_type, tendable_id
               FROM enliterator_visits
               WHERE #{ctx_pred(lane)} AND facet = ? AND status = 'succeeded' AND applied
+                #{cond_pred('enliterator_visits.tendable_type', 'enliterator_visits.tendable_id')}
               GROUP BY tendable_type, tendable_id
               HAVING MAX(started_at) < ?
             ) sub
@@ -284,6 +296,7 @@ module Enliterator
             SELECT tendable_type, tendable_id
             FROM enliterator_visits
             WHERE #{ctx_pred(lane)} AND facet = ? AND status = 'succeeded' AND applied
+              #{cond_pred('enliterator_visits.tendable_type', 'enliterator_visits.tendable_id')}
             GROUP BY tendable_type, tendable_id
             HAVING MAX(started_at) < ?
             ORDER BY MAX(started_at) ASC
@@ -393,6 +406,7 @@ module Enliterator
                 WHERE f.tendable_type = #{type} AND f.tendable_id = CAST(#{pk} AS TEXT)
                   AND f.context_id IS NULL AND f.facet = ?
                   AND f.status = 'failed' AND f.created_at > ?)
+              #{cond_pred(type, "CAST(#{pk} AS TEXT)")}
             ORDER BY #{pk}
             LIMIT ? OFFSET ?
           SQL
@@ -410,6 +424,7 @@ module Enliterator
                 WHERE f.tendable_type = m.member_type AND f.tendable_id = m.member_id
                   AND f.context_id = ? AND f.facet = ?
                   AND f.status = 'failed' AND f.created_at > ?)
+              #{cond_pred('m.member_type', 'm.member_id')}
             ORDER BY m.created_at, m.id
             LIMIT ? OFFSET ?
           SQL
@@ -429,6 +444,7 @@ module Enliterator
                 ON v.tendable_type = #{type} AND v.tendable_id = CAST(#{pk} AS TEXT)
                AND v.context_id IS NULL AND v.facet = ? AND v.status = 'succeeded' AND v.applied
               WHERE v.id IS NULL
+                #{cond_pred(type, "CAST(#{pk} AS TEXT)")}
             SQL
           else
             select_value(<<~SQL, lane.context_id, lane.facet, lane.context_id).to_i
@@ -438,6 +454,7 @@ module Enliterator
                 ON v.tendable_type = m.member_type AND v.tendable_id = m.member_id
                AND v.context_id = ? AND v.facet = ? AND v.status = 'succeeded' AND v.applied
               WHERE m.context_id = ? AND v.id IS NULL
+                #{cond_pred('m.member_type', 'm.member_id')}
             SQL
           end
       end
@@ -458,6 +475,7 @@ module Enliterator
             SELECT tendable_type, tendable_id
             FROM enliterator_visits
             WHERE #{ctx_pred(lane)} AND facet = ? AND status = 'succeeded' AND applied
+              #{cond_pred('enliterator_visits.tendable_type', 'enliterator_visits.tendable_id')}
             GROUP BY tendable_type, tendable_id
             HAVING MAX(started_at) < ?
             ORDER BY MAX(started_at) ASC
@@ -549,6 +567,25 @@ module Enliterator
         else
           "context_id IS NULL"
         end
+      end
+
+      # v0.17: the untendable gate — appended to EVERY candidate query (not
+      # just frontier: a host's link-checker flipping a status column bumps
+      # updated_at, and without gating source_change the condition system
+      # would cause re-tends of the records it just condemned). Rendered ONLY
+      # once a survey has ever run (memoized) — non-adopters keep byte-
+      # identical SQL. score = 0.0 only: degraded records tend normally, and
+      # never-surveyed records pass (presumption of tendability).
+      def cond_pred(type_sql, id_sql)
+        return "" unless condition_adopted?
+        " AND NOT EXISTS (SELECT 1 FROM enliterator_measures cm" \
+        " WHERE cm.tendable_type = #{type_sql} AND cm.tendable_id = #{id_sql}" \
+        " AND cm.name = '#{Enliterator::Condition::ROLLUP}' AND cm.score = 0.0)"
+      end
+
+      def condition_adopted?
+        return @condition_adopted if defined?(@condition_adopted)
+        @condition_adopted = Enliterator::Condition.adopted?
       end
 
       def member_models_for(lane)
