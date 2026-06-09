@@ -115,6 +115,18 @@ module Enliterator
     # digest should point this at it.
     attr_accessor :heartbeat_source_changed
 
+    # ---- v0.17 Condition (the collection shelf-reads itself) ---------------
+
+    # Wall-clock budget (ms) for the per-cycle survey phase: probes are
+    # column-reads, so the bound is time, not tokens.
+    attr_accessor :heartbeat_survey_budget_ms
+
+    # When the survey asserts the locked `source_status` claim: :untendable
+    # (default — only records the engine cannot read get a catalog note) or
+    # :all (degraded records too — the dead-link-with-surrogate note enters
+    # literacy_state/Chat, at a prompt-token cost on every future visit).
+    attr_accessor :condition_claim_scope
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -150,6 +162,8 @@ module Enliterator
       @heartbeat_change_share = 0.2
       @heartbeat_neighbor_threshold = 3
       @heartbeat_source_changed = nil
+      @heartbeat_survey_budget_ms = 10_000
+      @condition_claim_scope = :untendable
     end
 
     def logger

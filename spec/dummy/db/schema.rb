@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_09_210002) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_09_230000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -452,6 +452,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_210002) do
     t.string "mode", default: "sync", null: false
     t.jsonb "planned", default: {}
     t.datetime "started_at", null: false
+    t.jsonb "survey", default: {}
     t.jsonb "tokens_spent", default: {}
     t.datetime "updated_at", null: false
     t.jsonb "warnings", default: []
@@ -467,7 +468,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_210002) do
     t.string "tendable_id", null: false
     t.string "tendable_type", null: false
     t.datetime "updated_at", null: false
+    t.index ["name", "computed_at"], name: "idx_enliterator_measures_on_name_computed"
     t.index ["tendable_type", "tendable_id", "name"], name: "idx_enliterator_facets_on_tendable_and_name", unique: true
+    t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_measures_untendable", where: "(((name)::text = 'condition'::text) AND (score = (0.0)::double precision))"
   end
 
   create_table "enliterator_proposed_terms", force: :cascade do |t|
@@ -512,6 +515,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_210002) do
     t.index ["facet", "status"], name: "idx_enliterator_suggestions_on_facet_and_status"
     t.index ["proposed_key", "status"], name: "idx_enliterator_suggestions_on_key_and_status"
     t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_suggestions_on_tendable"
+  end
+
+  create_table "enliterator_treatments", force: :cascade do |t|
+    t.float "confidence"
+    t.datetime "considered_at"
+    t.datetime "created_at", null: false
+    t.text "diagnosis"
+    t.datetime "last_seen_at"
+    t.integer "last_seen_count"
+    t.string "model"
+    t.integer "rung"
+    t.jsonb "sample", default: []
+    t.string "signature", null: false
+    t.string "tier"
+    t.text "treatment"
+    t.datetime "updated_at", null: false
+    t.index ["signature"], name: "index_enliterator_treatments_on_signature", unique: true
   end
 
   create_table "enliterator_visits", force: :cascade do |t|

@@ -9,7 +9,18 @@ module Enliterator
     class << self
       # Register (or replace) a measure by name. The block receives the tendable and
       # must return {score: Float (0..1), signals: Hash}.
+      #
+      # The "condition"/"condition_*" namespace is RESERVED (v0.17): those rows
+      # are written by Enliterator::Condition on its own survey cadence, and a
+      # measure registered here runs on EVERY tend — it would silently clobber
+      # the survey's verdicts and corrupt the untendable gate.
       def register(name, &block)
+        n = name.to_s
+        if n == Enliterator::Condition::ROLLUP || n.start_with?(Enliterator::Condition::ROLLUP)
+          raise ArgumentError,
+                "measure name #{n.inspect} is reserved for the condition survey — " \
+                "register source-condition probes with Enliterator::Condition.register instead"
+        end
         @registry[name.to_sym] = block
         name.to_sym
       end

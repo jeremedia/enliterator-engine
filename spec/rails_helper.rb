@@ -34,6 +34,9 @@ RSpec.configure do |config|
   # not leak into the next.
   config.before(:each) do
     Enliterator.reset_configuration!
+    # v0.17: condition probes are module state like the configuration — a probe
+    # registered in one example must not survey for the next.
+    Enliterator::Condition.reset_registry!
     # v0.5: the suite legitimately runs the inert Null adapter (deterministic, no
     # network). Opt in suite-wide so the production-only "refuse Null" guard stays
     # inert in tests. reset_configuration! restores the false default each example,
