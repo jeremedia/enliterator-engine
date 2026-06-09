@@ -113,6 +113,7 @@ module Enliterator
         survey_phase!(run_warnings)
         work_items!(plan, counts, run_warnings)
         consider!(run_warnings) unless skip_consider
+        conserve! unless skip_consider
         drain_deficit_check!(run_warnings) if mode == "enqueue"
       rescue => e
         finalize!(counts, run_warnings, error_message: "#{e.class}: #{e.message}")
@@ -297,6 +298,17 @@ module Enliterator
       log("cycle #{error_message ? 'ABORTED' : 'finished'}: " \
           "#{counts.map { |r, c| "#{r}=#{c.compact.map { |k, v| "#{k}:#{v}" }.join(',')}" }.join('  ')} " \
           "tokens=#{mode == 'sync' ? actual_tokens_spent : 'enqueued'}#{error_message ? " error=#{error_message}" : ''}")
+    end
+
+    # v0.17: the conservator's pass — diagnosis + treatment proposals over the
+    # condition piles (the Considerer pattern; its own delta gate skips the
+    # LLM when nothing changed). Only meaningful once a survey has run.
+    # Outcome rides the considerer jsonb under "conservator".
+    def conserve!
+      return unless condition_adopted?
+      outcome = Enliterator::Conservator.new.assess!
+      update!(considerer: (considerer || {}).merge("conservator" => outcome))
+      log("conservator: #{outcome.map { |k, v| "#{k}=#{v}" }.join(' ')}")
     end
 
     def condition_untendable?(item)
