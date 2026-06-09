@@ -12,6 +12,18 @@ module Enliterator
       # never run a heartbeat: absent, the page is byte-identical to v0.14.
       @last_heartbeat = Enliterator::Heartbeat.order(:started_at).last
       @heartbeat_plan = @last_heartbeat ? Enliterator::Heartbeat.plan : nil
+
+      # v0.17: the conservation report — gated the same way (any survey ever).
+      if (@condition_adopted = Enliterator::Condition.adopted?)
+        @condition = {
+          surveyed:      Enliterator::Condition.surveyed_count,
+          total:         Enliterator::Condition.tendable_models.sum(&:count),
+          untendable:    Enliterator::Condition.untendable_count,
+          piles:         Enliterator::Condition.piles,
+          residue_count: Enliterator::Condition.residue_count,
+          treatments:    Enliterator::Treatment.all.index_by(&:signature)
+        }
+      end
     end
 
     def show

@@ -38,6 +38,17 @@ the lower rungs are the load-bearing structure that makes rung 5 honest.
 | 4 | **tended** | understanding is maintained, not abandoned | the event-driven heartbeat (`enliterator:heartbeat`): frontier first, re-tend on change, budget-capped, on a ledger |
 | 5 | **compounding** | each visit improves on the last | the Visitor hands prior claims + recent visits into the next visit's context; claims are reconciled (ADD/UPDATE/DELETE/NOOP), not overwritten |
 
+Beneath the rungs sits the substrate's own ladder (v0.17 — digital preservation's):
+**present → intact → extractable → intelligible**. Host-registered condition probes
+(`Enliterator::Condition.register`) shelf-read the collection on the heartbeat — link checking,
+fixity/format validation, extraction quality — and records the engine cannot read are pulled
+from every tending queue until repaired. What can't be probed is intelligibility: there the
+tending loop itself is the instrument, and records that read fine but never yield understanding
+surface as the *residue* pile. A **Conservator** agent writes per-pile diagnoses and treatment
+proposals for collections staff (the probe's stated remediation is ground truth; the agent
+augments, never invents). Resolution is measured — a repaired record passes its next survey and
+leaves its pile. `rake enliterator:survey` runs the initial inventory.
+
 The compounding rung is proven in the test suite: `spec/services/enliterator/tending/visitor_spec.rb` asserts that the second LLM call receives the first visit's claim in its `state`, and that an UPDATE supersedes the prior claim while preserving the provenance chain.
 
 ## Quick start
