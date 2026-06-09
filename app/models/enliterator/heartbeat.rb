@@ -39,26 +39,46 @@ module Enliterator
     #                       estimates are the only bound. Actuals stay
     #                       derivable via Visit.where(heartbeat_id:).
     def self.beat!(execute: :sync, budget: nil, skip_consider: false, force: false)
-      mode = execute.to_s
-      raise ArgumentError, "execute must be one of #{MODES.join('/')}" unless MODES.include?(mode)
-
-      open = unfinished.where("started_at > ?", OVERLAP_WINDOW.ago).order(:started_at).last
-      if open && !force
-        raise Overlap, "heartbeat ##{open.id} is still open (started #{open.started_at.iso8601}) — " \
-                       "a running or crashed cycle. Investigate it, or pass force: true / FORCE=1."
-      end
-
-      the_plan = plan(budget: budget)
-      row = create!(
-        started_at:      Time.current,
-        mode:            mode,
-        budget_tokens:   the_plan.budget,
-        planned:         the_plan.to_ledger,
-        config_snapshot: config_snapshot,
-        warnings:        open ? [ "forced past open heartbeat ##{open.id} (started #{open.started_at.iso8601})" ] : []
-      )
+      row, the_plan = open!(mode: execute, budget: budget, force: force)
       row.execute!(the_plan, skip_consider: skip_consider)
       row
+    end
+
+    # Open a cycle: validate, take the lock, plan, create the row — and return
+    # [row, plan] so the caller chooses HOW to execute (inline via execute!,
+    # or in the background via execute_async! — the v0.16 trigger page).
+    #
+    # The check→plan→create sequence runs inside a transaction holding a
+    # Postgres advisory lock: two concurrent triggers (two browser tabs, a
+    # button and a rake) would otherwise BOTH pass the unfinished-row check
+    # during the seconds the plan scan takes, and both open cycles — doubled
+    # spend, the exact failure this instrument exists to prevent. The engine
+    # is Postgres-only (pgvector), so the lock costs nothing and needs no
+    # migration. `Overlap` raises synchronously, before any row exists.
+    def self.open!(mode: :sync, budget: nil, force: false)
+      mode = mode.to_s
+      raise ArgumentError, "mode must be one of #{MODES.join('/')}" unless MODES.include?(mode)
+
+      transaction do
+        connection.execute("SELECT pg_advisory_xact_lock(hashtext('enliterator_heartbeat'))")
+
+        open = unfinished.where("started_at > ?", OVERLAP_WINDOW.ago).order(:started_at).last
+        if open && !force
+          raise Overlap, "heartbeat ##{open.id} is still open (started #{open.started_at.iso8601}) — " \
+                         "a running or crashed cycle. Investigate it, or pass force: true / FORCE=1."
+        end
+
+        the_plan = plan(budget: budget)
+        row = create!(
+          started_at:      Time.current,
+          mode:            mode,
+          budget_tokens:   the_plan.budget,
+          planned:         the_plan.to_ledger,
+          config_snapshot: config_snapshot,
+          warnings:        open ? [ "forced past open heartbeat ##{open.id} (started #{open.started_at.iso8601})" ] : []
+        )
+        [ row, the_plan ]
+      end
     end
 
     def self.config_snapshot
@@ -100,6 +120,37 @@ module Enliterator
 
       finalize!(counts, run_warnings)
       self
+    end
+
+    # Execute the cycle in a background THREAD (the v0.16 trigger page) and
+    # return the Thread. Deliberately not ActiveJob: a dead worker would make
+    # the button a silent no-op, and the in-process thread works in every
+    # host. Trade-offs, accepted and documented: while the cycle runs, the
+    # executor's running share makes dev code-reload WAIT (minutes), and the
+    # thread holds one AR connection from the pool. NOT
+    # `permit_concurrent_loads` — that permits loads, not the unload a
+    # reloader needs, and nothing here joins another thread.
+    #
+    # Hardening: execute! already records cycle errors on the row and
+    # re-raises; the outer rescue covers the one silent path left — a failure
+    # of finalize! itself (or anything before execute!) — with a best-effort
+    # row stamp via update_columns, so an open row can never just stop moving
+    # with no explanation. Thread#report_on_exception stays true as backstop.
+    def execute_async!(plan, skip_consider: false)
+      thread = Thread.new do
+        Rails.application.executor.wrap do
+          execute!(plan, skip_consider: skip_consider)
+        end
+      rescue => e
+        Enliterator.logger&.error("[enliterator:heartbeat] async cycle ##{id} died: #{e.class}: #{e.message}")
+        begin
+          update_columns(finished_at: Time.current, error: "#{e.class}: #{e.message}") if reload.finished_at.nil?
+        rescue StandardError
+          nil
+        end
+      end
+      thread.name = "enliterator-heartbeat-#{id}"
+      thread
     end
 
     private
