@@ -10,6 +10,10 @@ Enliterator::Engine.routes.draw do
   # what literacy this particular enliteration has been given. Read-only.
   get "settings", to: "settings#index", as: :settings
 
+  # The context tree (v0.13): nested enliterated collections — per-context facets,
+  # members, and claim counts. The "collections within collections" view.
+  get "contexts", to: "contexts#index", as: :contexts
+
   get "status", to: "status#index", as: :status
   # Per-record drill-down. :type/:id are separate segments so polymorphic, possibly
   # non-integer (uuid) host PKs survive routing; the id constraint allows dots/uuids.

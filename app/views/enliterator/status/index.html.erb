@@ -7,6 +7,25 @@
   Drill into any record at <code>/status/&lt;Type&gt;/&lt;id&gt;</code>, or follow the source chips from <%= link_to "Chat", conversation_path %>.
 </p>
 
+<%# v0.13: where you are in the context tree + the lenses below this one %>
+<% if current_context || @children.any? %>
+  <div class="card" style="padding:.6rem 1.1rem">
+    <span class="muted samples">viewing:</span>
+    <%= link_to "whole collection", root_path(context: "root"), style: ("font-weight:600" unless current_context) %>
+    <% current_context&.path&.each do |c| %>
+      <span class="muted">›</span>
+      <%= link_to c.name, root_path(context: c.key), style: ("font-weight:600" if c.id == current_context.id) %>
+    <% end %>
+    <% if @children.any? %>
+      <span class="muted samples" style="margin-left:.75rem">within:</span>
+      <% @children.each do |c| %>
+        <%= link_to c.name, root_path(context: c.key), class: "chip", style: "text-decoration:none" %>
+      <% end %>
+    <% end %>
+    <span class="muted samples" style="float:right"><%= link_to "tree →", contexts_path %></span>
+  </div>
+<% end %>
+
 <h2>Facets</h2>
 <div class="row">
   <% s[:facets].each do |st| %>

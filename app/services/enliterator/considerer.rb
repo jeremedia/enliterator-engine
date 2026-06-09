@@ -36,17 +36,20 @@ module Enliterator
       "required" => %w[recommendations]
     }.freeze
 
-    def initialize(llm: nil, autonomy: nil, min_confidence: nil)
+    def initialize(llm: nil, autonomy: nil, min_confidence: nil, context: nil)
       @llm            = llm
       @autonomy       = (autonomy || Enliterator.configuration.considerer_autonomy || :auto_safe).to_sym
       @min_confidence = (min_confidence || Enliterator.configuration.considerer_min_confidence || 0.75).to_f
+      # v0.13: consider ONE context's open field (its verdicts write to it,
+      # rule 4). nil = the root scope — the entire pre-v0.13 universe.
+      @context        = context
     end
 
-    # Refresh pressure, ask the agent over the whole open field, apply per autonomy.
-    # @return [Hash] summary counts.
+    # Refresh pressure, ask the agent over the current scope's open field, apply
+    # per autonomy. @return [Hash] summary counts.
     def consider!
       Enliterator::ProposedTerm.refresh!
-      terms = Enliterator::ProposedTerm.open.by_pressure.to_a
+      terms = scoped_terms
       return empty_summary if terms.empty?
 
       canonical = canonical_keys
@@ -61,17 +64,27 @@ module Enliterator
 
     private
 
+    # The open terms whose PENDING proposals live in the current scope (pressure
+    # itself stays a global signal on ProposedTerm).
+    def scoped_terms
+      pending_keys = Enliterator::Suggestion.pending
+                       .where(context_id: @context&.id)
+                       .distinct.pluck(:proposed_key)
+      Enliterator::ProposedTerm.open.by_pressure.where(proposed_key: pending_keys).to_a
+    end
+
     def adapter
       return @llm if @llm
       tier = Enliterator.configuration.considerer_tier || Enliterator.staffing.ladder.last || "quality"
       Enliterator.llm(tier: tier)
     end
 
-    # Every claim key in any facet's EFFECTIVE contract (code + approved) — valid
-    # map targets, so the considerer can map a synonym onto a newly-approved key.
+    # Every term in the current context's EFFECTIVE vocabulary (inherited + own,
+    # code + approved) — valid map targets, so the considerer can map a synonym
+    # onto a newly-approved or inherited term.
     def canonical_keys
-      Enliterator.staffing.assignments.keys
-        .flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }.uniq.sort
+      Enliterator.staffing.facets_for(@context&.path_keys).keys
+        .flat_map { |s| (Enliterator::Vocabulary.for(s, context: @context) || {}).keys }.uniq.sort
     end
 
     def apply!(recs, canonical, terms)
@@ -90,7 +103,7 @@ module Enliterator
         case decision
         when "map"
           if @autonomy == :auto_safe && conf >= @min_confidence && canonical.include?(map_to)
-            Enliterator::Suggestion.map_key!(key, to: map_to, note: "considerer: #{rationale}")
+            Enliterator::Suggestion.map_key!(key, to: map_to, note: "considerer: #{rationale}", context: @context)
             term&.clear_recommendation!
             summary[:auto_mapped] += 1
           else
@@ -99,7 +112,7 @@ module Enliterator
           end
         when "reject"
           if @autonomy == :auto_safe && conf >= @min_confidence
-            Enliterator::Suggestion.reject_key!(key, note: "considerer: #{rationale}")
+            Enliterator::Suggestion.reject_key!(key, note: "considerer: #{rationale}", context: @context)
             term&.clear_recommendation!
             summary[:auto_rejected] += 1
           else

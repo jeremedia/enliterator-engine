@@ -93,8 +93,21 @@
     <%= link_to "Status", root_path %>
     <%= link_to "Chat", conversation_path %>
     <%= link_to "Requests", suggestions_path %>
+    <%= link_to "Contexts", contexts_path %>
     <%= link_to "Settings", settings_path, style: "margin-left:auto" %>
     <%= link_to "About", about_path %>
+    <%# v0.13 context switcher — every surface is viewed THROUGH a context.
+        Hidden entirely when no tree is seeded (flat installs see no change). %>
+    <% if context_switcher_options.any? %>
+      <select id="ctx-switch" title="View through a context"
+              style="font: inherit; font-size: .82rem; padding: .15rem .4rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--accent); max-width: 14rem"
+              onchange="location.search='?context='+encodeURIComponent(this.value)">
+        <option value="root" <%= "selected" unless current_context %>>whole collection</option>
+        <% context_switcher_options.each do |label, key| %>
+          <option value="<%= key %>" <%= "selected" if current_context&.key == key %>><%= label %></option>
+        <% end %>
+      </select>
+    <% end %>
   </nav>
   <main class="enl">
     <% flash.each do |type, msg| %>

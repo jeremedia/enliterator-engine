@@ -1,0 +1,53 @@
+<% content_for :head do %><title>Contexts — Enliterator</title><% end %>
+
+<h1>Contexts <span class="muted" style="font-weight:400; font-size:.95rem">— collections within collections</span></h1>
+<p class="muted" style="max-width:64ch">
+  A context is a <strong>lens</strong>: an item belongs to the whole collection and to any number of
+  labeled sub-collections, and each context reads its members through its own facets and vocabulary,
+  <em>inheriting</em> its ancestors'. Claims live per context and read cumulatively — the finding-aid
+  principle: an item understood through its place in the hierarchy plus its own description.
+  Select any context here (or in the nav switcher) to view every surface through it.
+</p>
+
+<% if @rows.empty? %>
+  <div class="card">
+    <p class="muted">No contexts seeded yet — the whole collection is one root context. Create
+    <code>Enliterator::Context</code> records (an <code>ancestry</code> tree) and place members with
+    <code>record.place_in_context!(ctx)</code>; declare per-context facets with the staffing policy's
+    <code>context "key" do … end</code> blocks.</p>
+  </div>
+<% else %>
+  <div class="card">
+    <table>
+      <tr><th>context</th><th>own facets <span class="muted" style="font-weight:400">(what tends here)</span></th><th>members</th><th>live claims</th><th>tending visits</th></tr>
+      <%# Root row: the whole collection (the NULL scope, rule 1) %>
+      <tr>
+        <td><strong><%= link_to "whole collection", root_path(context: "root") %></strong>
+            <% unless current_context %><span class="chip tier">viewing</span><% end %></td>
+        <td class="samples"><%= @policy.facets_declared_in(nil).join(", ").presence || "—" %></td>
+        <td class="muted">all</td>
+        <td><%= @stats[:claims][nil].to_i %></td>
+        <td><%= @stats[:visits][nil].to_i %></td>
+      </tr>
+      <% @rows.each do |ctx, depth| %>
+        <tr>
+          <td style="padding-left: <%= 0.5 + depth * 1.4 %>rem">
+            <strong><%= link_to ctx.name, root_path(context: ctx.key) %></strong>
+            <code class="muted" style="font-size:.75rem"><%= ctx.key %></code>
+            <% if current_context&.id == ctx.id %><span class="chip tier">viewing</span><% end %>
+          </td>
+          <td class="samples"><%= @policy.facets_declared_in(ctx.key).join(", ").presence || "inherits only" %></td>
+          <td><%= @stats[:members][ctx.id].to_i %></td>
+          <td><%= @stats[:claims][ctx.id].to_i %></td>
+          <td><%= @stats[:visits][ctx.id].to_i %></td>
+        </tr>
+      <% end %>
+    </table>
+  </div>
+  <p class="muted samples" style="max-width:64ch">
+    "Own facets" are the facets <em>declared</em> in a context — what a tending pass runs there. A
+    context also inherits every ancestor's facets, and its members are read in light of root claims.
+    Counts are each context's own scope (root counts = root-scope rows, not the rolled-up union).
+    Clicking a context name opens Status viewed through it.
+  </p>
+<% end %>

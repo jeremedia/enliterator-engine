@@ -20,12 +20,15 @@ module Enliterator
     VALUE_MAX = 200      # chars per claim value in the prompt
 
     def initialize(llm: nil, embedder: Enliterator.embedder, synopsis: nil,
-                   retrieve_k: 5, history_cap: 6)
+                   retrieve_k: 5, history_cap: 6, context: nil)
       @llm         = llm
       @embedder    = embedder
       @synopsis    = synopsis
       @retrieve_k  = retrieve_k
       @history_cap = history_cap
+      # v0.13: converse THROUGH a context — the self-portrait, retrieval pool,
+      # and claim reads are all scoped to it. nil = the whole collection (root).
+      @context     = context
     end
 
     # Answer a question. When +stream+ is true and a block is given, the block is
@@ -55,7 +58,7 @@ module Enliterator
 
     # The self-portrait used to ground the conversation (memoized per instance).
     def synopsis
-      @synopsis ||= Enliterator::Synopsis.build
+      @synopsis ||= Enliterator::Synopsis.build(context: @context)
     end
 
     private
@@ -83,21 +86,34 @@ module Enliterator
     end
 
     # The drill-down: embed the question, find nearest tended records, load each
-    # one's live claims. Mirrors Visitor#nearest_neighbors + literacy_state.
+    # one's live claims. Mirrors Visitor#nearest_neighbors + literacy_state —
+    # including the v0.13 scoping: within a context the retrieval pool is the
+    # context's MEMBERS and the claims read up its path; root stays corpus-wide.
     def retrieve(question)
       vector = @embedder.embed(question)
       return [] if vector.nil?
 
-      Enliterator::Embedding.nearest_to(vector, kind: "primary", limit: @retrieve_k).filter_map do |emb|
+      pool = Enliterator::Embedding.where(kind: "primary")
+      if @context
+        membership = Enliterator::ContextMembership
+                       .where(context_id: @context.id)
+                       .where("enliterator_context_memberships.member_type = enliterator_embeddings.embeddable_type")
+                       .where("enliterator_context_memberships.member_id = enliterator_embeddings.embeddable_id")
+        pool = pool.where(membership.arel.exists)
+      end
+
+      pool.nearest_neighbors(:embedding, vector, distance: "cosine").first(@retrieve_k).filter_map do |emb|
         rec = emb.embeddable
         next if rec.nil?
+        claims = rec.enliterator_claims.live
+        claims = claims.where(context_id: @context.scope_ids) if @context
         {
           type:     rec.class.name,
           id:       rec.id,
           label:    (rec.try(:title) || rec.try(:name) || "#{rec.class.name}/#{rec.id}").to_s,
           snippet:  snippet_for(rec),
           distance: (emb.respond_to?(:neighbor_distance) ? emb.neighbor_distance : nil),
-          claims:   rec.enliterator_claims.live.limit(CLAIM_CAP).map(&:to_state)
+          claims:   claims.limit(CLAIM_CAP).map(&:to_state)
         }
       end
     end

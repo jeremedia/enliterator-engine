@@ -3,7 +3,9 @@ module Enliterator
   # in the browser, with per-record drill-down into claims / visits / measures.
   class StatusController < ApplicationController
     def index
-      @synopsis = Enliterator::Synopsis.build(since: params[:since].presence)
+      # v0.13: the portrait of the SELECTED context (root = the whole collection).
+      @synopsis = Enliterator::Synopsis.build(since: params[:since].presence, context: current_context)
+      @children = current_context ? current_context.children.order(:name) : Enliterator::Context.roots.order(:name)
     end
 
     def show
@@ -17,12 +19,14 @@ module Enliterator
       @record = klass.find_by(id: params[:id]) # nil (not raise) on miss
       return render(:not_found, status: :not_found) if @record.nil?
 
-      # Browser detail wants the WHOLE record, across facets (literacy_state is
-      # facet-scoped, for prompt context — not what a drill-down wants).
+      # Browser detail wants the WHOLE record, across facets AND contexts
+      # (literacy_state is facet-scoped, for prompt context — not a drill-down).
+      # Claims/visits carry their context so the view can label each lens.
       @type   = params[:type]
-      @claims = @record.enliterator_claims.live.order(:key)
-      @visits = @record.enliterator_visits.order(created_at: :desc).limit(20)
+      @claims = @record.enliterator_claims.live.includes(:context).order(:key)
+      @visits = @record.enliterator_visits.includes(:context).order(created_at: :desc).limit(20)
       @measures = @record.enliterator_measures.each_with_object({}) { |f, h| h[f.name] = f.score }
+      @contexts = @record.respond_to?(:enliterator_contexts) ? @record.enliterator_contexts.order(:name) : []
     end
   end
 end

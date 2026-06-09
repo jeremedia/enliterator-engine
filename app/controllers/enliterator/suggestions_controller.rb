@@ -1,25 +1,30 @@
 module Enliterator
-  # Suggestion review — the governed-vocabulary queue. The model proposes claim keys
-  # a facet's contract doesn't cover; a curator renders a verdict per proposed_key:
-  # APPROVE (a real gap — surface the contract diff to add), MAP (a synonym of an
-  # existing key — record the canonical target), or REJECT. The ontology tends itself.
+  # Suggestion review — the governed-vocabulary queue (authority control). The model
+  # proposes terms a facet's vocabulary doesn't cover; a curator renders a verdict
+  # per proposed_key: APPROVE (a real gap), MAP (a USE/UF synonym of an existing
+  # term), or REJECT. The ontology tends itself.
+  #
+  # v0.13: governance is a WRITE surface, so the queue shows the CURRENT CONTEXT'S
+  # OWN pending proposals (what a verdict here would actually resolve — rule 4:
+  # verdicts write to their own context). Root shows the root-scope (NULL) queue —
+  # the entire pre-v0.13 universe, so flat installs are unchanged.
   class SuggestionsController < ApplicationController
     def index
       Enliterator::ProposedTerm.refresh!                            # materialize pressure
-      @terms        = Enliterator::ProposedTerm.open.by_pressure    # pressure-ranked queue
-      @canonical    = canonical_keys                                # existing contract keys (map targets)
-      @additions    = Enliterator::Suggestion.contract_additions    # {facet => [approved keys]}
-      @synonyms     = Enliterator::Suggestion.synonyms              # [{facet, proposed_key, mapped_to}]
-      @pending      = Enliterator::Suggestion.pending.count
-      @resolved     = Enliterator::Suggestion.where.not(status: "pending").count
+      @terms        = scoped_terms                                  # pressure-ranked, current scope
+      @canonical    = canonical_keys                                # legal map targets in this context
+      @additions    = Enliterator::Suggestion.where(context_id: current_context&.id).contract_additions
+      @synonyms     = Enliterator::Suggestion.where(context_id: current_context&.id).synonyms
+      @pending      = Enliterator::Suggestion.pending.where(context_id: current_context&.id).count
+      @resolved     = Enliterator::Suggestion.where.not(status: "pending").where(context_id: current_context&.id).count
       @reproposed   = reproposed_terms                             # v0.9: model re-asked after a verdict
       @verdicts     = verdicts_for(@reproposed)                    # {proposed_key => {status:, mapped_to:}}
     end
 
-    # Run the considerer over the whole open field — it auto-applies the safe
-    # verdicts (maps + confident rejects) and holds approves for ratification.
+    # Run the considerer over the current scope's open field — it auto-applies the
+    # safe verdicts (maps + confident rejects) and holds approves for ratification.
     def consider
-      s = Enliterator::Considerer.new.consider!
+      s = Enliterator::Considerer.new(context: current_context).consider!
       redirect_to suggestions_path,
         notice: "Considered #{s[:considered]}: auto-mapped #{s[:auto_mapped]}, auto-rejected #{s[:auto_rejected]}, " \
                 "#{s[:approves_recommended]} approval(s) recommended, #{s[:held]} held."
@@ -34,12 +39,12 @@ module Enliterator
 
       n =
         case params[:decision]
-        when "approve" then Enliterator::Suggestion.approve_key!(key, note: note)
-        when "reject"  then Enliterator::Suggestion.reject_key!(key, note: note)
+        when "approve" then Enliterator::Suggestion.approve_key!(key, note: note, context: current_context)
+        when "reject"  then Enliterator::Suggestion.reject_key!(key, note: note, context: current_context)
         when "map"
           target = params[:mapped_to].to_s
           return redirect_to(suggestions_path, alert: "Pick a key to map \"#{key}\" onto.") if target.blank?
-          Enliterator::Suggestion.map_key!(key, to: target, note: note)
+          Enliterator::Suggestion.map_key!(key, to: target, note: note, context: current_context)
         else
           return redirect_to(suggestions_path, alert: "Unknown decision: #{params[:decision].inspect}.")
         end
@@ -50,16 +55,25 @@ module Enliterator
 
     private
 
-    # Every claim key in any facet's EFFECTIVE contract (code + approved) — the
-    # legal targets a synonym can map onto.
-    def canonical_keys
-      Enliterator.staffing.assignments.keys
-        .flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }.uniq.sort
+    # The pressure-ranked queue, filtered to terms with pending proposals in the
+    # CURRENT scope (pressure itself stays a global signal on ProposedTerm).
+    def scoped_terms
+      pending_keys = Enliterator::Suggestion.pending
+                       .where(context_id: current_context&.id)
+                       .distinct.pluck(:proposed_key)
+      Enliterator::ProposedTerm.open.by_pressure.where(proposed_key: pending_keys)
     end
 
-    # Terms the model has re-proposed AFTER a curator's verdict — the suppressed
-    # re-files (post_verdict_attempts), ranked by how insistent the model is. This is
-    # the "model overruling the curator" signal: the place to reconsider a verdict.
+    # Every term in the current context's EFFECTIVE vocabulary (inherited + own,
+    # code + approved) — the legal targets a synonym can map onto.
+    def canonical_keys
+      Enliterator.staffing.facets_for(current_context&.path_keys).keys
+        .flat_map { |s| (Enliterator::Vocabulary.for(s, context: current_context) || {}).keys }.uniq.sort
+    end
+
+    # Terms the model has re-proposed AFTER a verdict — the suppressed re-files
+    # (post_verdict_attempts), ranked by how insistent the model is. This is the
+    # "model overruling the curator" signal: the place to reconsider a verdict.
     def reproposed_terms
       Enliterator::ProposedTerm.where("post_verdict_attempts > 0").order(post_verdict_attempts: :desc)
     end
