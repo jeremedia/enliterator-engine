@@ -7,6 +7,10 @@ module Enliterator
 
     def index
       @synopsis = Enliterator::Synopsis.build(context: current_context)
+      # The scope banner: the context cookie persists across visits, so the page
+      # must SAY what it's scoped to — a chat silently pinned to an 82-record
+      # sub-collection is indistinguishable from a broken one.
+      @scope_count = current_context&.memberships&.count
     end
 
     def stream
@@ -20,7 +24,11 @@ module Enliterator
         stream:   true
       ) { |delta| sse(:token, t: delta) }
 
-      sse(:provenance, records: provenance[:records], tier: provenance[:tier], degraded: provenance[:degraded])
+      # `context` makes each answer self-describing about its scope — the
+      # retrieval pool that produced it, not just which records it cited.
+      sse(:provenance, records: provenance[:records], tier: provenance[:tier],
+                       degraded: provenance[:degraded],
+                       context: current_context&.key || "root")
       sse(:done, {})
     rescue ActionController::Live::ClientDisconnected
       # client navigated away mid-stream — nothing to clean up beyond the ensure
