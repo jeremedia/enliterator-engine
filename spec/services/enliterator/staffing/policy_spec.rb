@@ -50,12 +50,12 @@ RSpec.describe Enliterator::Staffing::Policy do
   end
 
   describe "#tier_for" do
-    it "returns the assigned tier for a mapped stream" do
+    it "returns the assigned tier for a mapped facet" do
       expect(policy.tier_for("summary")).to eq("cheap")
       expect(policy.tier_for(:critique)).to eq("quality")
     end
 
-    it "falls back to the ladder head for an unmapped stream" do
+    it "falls back to the ladder head for an unmapped facet" do
       expect(policy.tier_for("unmapped_role")).to eq("cheap")
     end
   end
@@ -94,7 +94,7 @@ RSpec.describe Enliterator::Staffing::Policy do
   describe ".default" do
     let(:default_policy) { described_class.default("cheap") }
 
-    it "routes every stream to the single default tier" do
+    it "routes every facet to the single default tier" do
       expect(default_policy.tier_for("anything")).to eq("cheap")
       expect(default_policy.tier_for("summary")).to eq("cheap")
     end

@@ -33,9 +33,9 @@ module Enliterator
       end
     end
 
-    # Eager-load the facet registry so host-registered facets survive boot.
+    # Eager-load the measure registry so host-registered measures survive boot.
     config.to_prepare do
-      Enliterator::Facets.load_default! if defined?(Enliterator::Facets)
+      Enliterator::Measures.load_default! if defined?(Enliterator::Measures)
     end
   end
 end

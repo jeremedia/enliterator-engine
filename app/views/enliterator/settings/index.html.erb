@@ -8,20 +8,20 @@
   vocabulary — is governed on <%= link_to "Requests", suggestions_path %>.
 </p>
 
-<h2>Streams <span class="muted" style="font-weight:400">— roles, and the capability assigned to each</span></h2>
+<h2>Facets <span class="muted" style="font-weight:400">— roles, and the capability assigned to each</span></h2>
 <div class="card">
   <% if @policy.assignments.any? %>
     <table>
-      <tr><th>stream (role)</th><th>tier</th><th>escalation climb</th><th>vocabulary</th><th>required</th></tr>
+      <tr><th>facet (role)</th><th>tier</th><th>escalation climb</th><th>vocabulary</th><th>required</th></tr>
       <% @contracts.each do |c| %>
-        <% approved_n = c[:keys].count { |k| k[:approved] } %>
+        <% approved_n = c[:terms].count { |k| k[:approved] } %>
         <tr>
-          <td><strong><%= c[:stream] %></strong></td>
+          <td><strong><%= c[:facet] %></strong></td>
           <td><span class="chip tier"><%= c[:tier] %></span></td>
           <td class="mono"><%= c[:climb].join(" → ") %></td>
           <td>
-            <% if c[:keys].any? %>
-              <%= c[:keys].size %> term<%= "s" if c[:keys].size != 1 %><% if approved_n.positive? %> <span class="muted">(<%= approved_n %> authorized)</span><% end %>
+            <% if c[:terms].any? %>
+              <%= c[:terms].size %> term<%= "s" if c[:terms].size != 1 %><% if approved_n.positive? %> <span class="muted">(<%= approved_n %> authorized)</span><% end %>
             <% else %>
               <span class="muted">open (no controlled terms)</span>
             <% end %>
@@ -31,33 +31,33 @@
       <% end %>
     </table>
   <% else %>
-    <p class="muted">No staffing policy configured — the default routes every stream to
-      <code><%= @policy.ladder.first || "cheap" %></code>. Declare streams with
+    <p class="muted">No staffing policy configured — the default routes every facet to
+      <code><%= @policy.ladder.first || "cheap" %></code>. Declare facets with
       <code>Enliterator::Staffing::Policy</code> in your initializer.</p>
   <% end %>
 </div>
 
-<h2>Vocabulary <span class="muted" style="font-weight:400">— the controlled vocabulary per stream, code + what's accrued</span></h2>
+<h2>Vocabulary <span class="muted" style="font-weight:400">— the controlled vocabulary per facet, code + what's accrued</span></h2>
 <% if @approved_live.positive? %>
-  <p class="muted samples"><strong><%= @approved_live %></strong> curator-authorized term<%= "s" if @approved_live != 1 %> are <span class="chip" style="background:var(--accent-soft); color:var(--accent)">live</span> across these streams — in force in the vocabulary the model sees, but not yet codified in the policy. Codify them from <%= link_to "Requests", suggestions_path %>.</p>
+  <p class="muted samples"><strong><%= @approved_live %></strong> curator-authorized term<%= "s" if @approved_live != 1 %> are <span class="chip" style="background:var(--accent-soft); color:var(--accent)">live</span> across these facets — in force in the vocabulary the model sees, but not yet codified in the policy. Codify them from <%= link_to "Requests", suggestions_path %>.</p>
 <% end %>
 <div class="row">
   <% @contracts.each do |c| %>
-    <% next if c[:keys].empty? %>
+    <% next if c[:terms].empty? %>
     <div class="card">
-      <div><strong><%= c[:stream] %></strong> <span class="chip tier"><%= c[:tier] %></span></div>
+      <div><strong><%= c[:facet] %></strong> <span class="chip tier"><%= c[:tier] %></span></div>
       <table style="margin-top:.5rem">
-        <% c[:keys].each do |k| %>
+        <% c[:terms].each do |k| %>
           <tr>
-            <td style="width:40%"><code><%= k[:key] %></code><% if k[:approved] %> <span class="chip" style="background:var(--accent-soft); color:var(--accent)" title="curator-approved; live but not codified">live</span><% end %></td>
+            <td style="width:40%"><code><%= k[:term] %></code><% if k[:approved] %> <span class="chip" style="background:var(--accent-soft); color:var(--accent)" title="curator-approved; live but not codified">live</span><% end %></td>
             <td class="samples"><%= k[:description] %></td>
           </tr>
         <% end %>
       </table>
     </div>
   <% end %>
-  <% if @contracts.all? { |c| c[:keys].empty? } %>
-    <div class="card"><span class="muted">No stream is under a contract — all keys are open. Bind a controlled vocabulary with <code>stream(name, tier:, keys:)</code>.</span></div>
+  <% if @contracts.all? { |c| c[:terms].empty? } %>
+    <div class="card"><span class="muted">No facet is under a contract — all keys are open. Bind a controlled vocabulary with <code>facet(name, tier:, keys:)</code>.</span></div>
   <% end %>
 </div>
 
@@ -99,7 +99,7 @@
   <table>
     <tr><th style="width:34%">setting</th><th>value</th></tr>
     <tr><td>Models tended</td><td class="mono"><%= @models.any? ? @models.join(", ") : "none yet" %></td></tr>
-    <tr><td>Default tending streams</td><td class="mono"><%= Array(@config.tending_streams).join(", ") %></td></tr>
+    <tr><td>Default tending facets</td><td class="mono"><%= Array(@config.tending_facets).join(", ") %></td></tr>
     <tr><td>Stale after</td><td><%= @config.stale_after.inspect %> <span class="muted">— a record older than this is eligible for re-tending</span></td></tr>
     <tr><td>Scheduled-walk batch</td><td><%= @config.tend_batch_size %> records / run</td></tr>
     <tr><td>Job queue</td><td class="mono"><%= @config.queue_name %></td></tr>
@@ -111,7 +111,7 @@
 </div>
 
 <p class="muted samples" style="margin-top:1.5rem; border-top:1px solid var(--line); padding-top:.75rem; max-width:64ch">
-  Read-only. Streams, tiers, and the ladder are code (the host initializer); the approved vocabulary
+  Read-only. Facets, tiers, and the ladder are code (the host initializer); the approved vocabulary
   accrues through <%= link_to "Requests", suggestions_path %>. This is the configuration of the whole
   collection.
 </p>

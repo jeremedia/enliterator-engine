@@ -14,7 +14,7 @@ RSpec.describe Enliterator::Tending::Visitor do
   # A deterministic, network-free LLM adapter for the compounding test.
   #
   # - Conforms to the LLM contract: responds to #model_id and
-  #   #tend(text:, stream:, state:, neighbors:) returning a Result-like object
+  #   #tend(text:, facet:, state:, neighbors:) returning a Result-like object
   #   that responds to .parsed / .raw / .tokens.
   # - Captures EVERY `state:` it is given (in call order) so the spec can prove
   #   prior understanding flowed into the next visit.
@@ -34,7 +34,7 @@ RSpec.describe Enliterator::Tending::Visitor do
       "stub-compounding"
     end
 
-    def tend(text:, stream:, state:, neighbors:)
+    def tend(text:, facet:, state:, neighbors:)
       @calls += 1
       # Snapshot the compounding context exactly as the Visitor handed it over.
       @captured_states << state
@@ -69,7 +69,7 @@ RSpec.describe Enliterator::Tending::Visitor do
       "stub-always-update"
     end
 
-    def tend(text:, stream:, state:, neighbors:)
+    def tend(text:, facet:, state:, neighbors:)
       parsed = {
         "claims" => [
           { "key" => "summary", "op" => "UPDATE", "value" => "should-not-apply", "confidence" => 0.9 }
@@ -91,8 +91,8 @@ RSpec.describe Enliterator::Tending::Visitor do
     # Run the Visitor twice over the same widget with the same stub instance, so
     # the second call sees the claim the first call produced.
     def tend_twice!
-      visit1 = described_class.new(widget, stream: "summary", llm: llm, embedder: embedder).call
-      visit2 = described_class.new(widget, stream: "summary", llm: llm, embedder: embedder).call
+      visit1 = described_class.new(widget, facet: "summary", llm: llm, embedder: embedder).call
+      visit2 = described_class.new(widget, facet: "summary", llm: llm, embedder: embedder).call
       [ visit1, visit2 ]
     end
 
@@ -106,7 +106,7 @@ RSpec.describe Enliterator::Tending::Visitor do
     end
 
     it "creates a draft 'summary' claim with value 'v1' after the first call" do
-      described_class.new(widget, stream: "summary", llm: llm, embedder: embedder).call
+      described_class.new(widget, facet: "summary", llm: llm, embedder: embedder).call
 
       claim = widget.enliterator_claims.find_by(key: "summary")
       expect(claim).to be_present
@@ -209,7 +209,7 @@ RSpec.describe Enliterator::Tending::Visitor do
         locked:     true
       )
 
-      visit = described_class.new(widget, stream: "summary", llm: llm, embedder: embedder).call
+      visit = described_class.new(widget, facet: "summary", llm: llm, embedder: embedder).call
 
       locked.reload
       # Untouched: same value, still live, never superseded.

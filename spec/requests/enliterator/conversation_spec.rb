@@ -19,7 +19,7 @@ RSpec.describe "Enliterator conversation", type: :request do
   before do
     Enliterator.configure do |c|
       c.staffing = Enliterator::Staffing::Policy.new do
-        stream :summary, tier: "cheap", keys: { summary: "An abstract." }
+        facet :summary, tier: "cheap", terms: { summary: "An abstract." }
         ladder [ "cheap" ]
       end
       c.llm_adapter = SseStubLLM.new

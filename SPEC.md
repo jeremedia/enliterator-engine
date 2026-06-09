@@ -829,3 +829,34 @@ this enliteration actually works on."
 - "Settings" added to the engine nav (grouped right with About).
 - Specs green at 254 (was 250), ADDING `requests/enliterator/settings_spec.rb` (org chart renders; considerer/guard shown; approved key marked live; links to Requests).
 - README: fifth surface in the mounting list.
+
+# v0.12 — Speak the library's language (the rename pass)
+
+The engine was re-deriving library/information science under software names. This pass renames toward
+the field's own vocabulary so the work is legible to (and contributory for) librarians. **No behavior
+change** — pure rename; 254 specs stay green throughout. NOTE: the historical sections above predate
+this and use the OLD names; the mapping below translates them.
+
+## The mapping (old → new)
+- `Enliterator::Contract` → **`Enliterator::Vocabulary`** (`Vocabulary.for(facet)` = effective controlled vocabulary: code terms + curator-authorized terms). Authority control.
+- A tending **stream** → a **facet** (Ranganathan's faceted classification — the dimension a record is read along). Column renames: `visits.stream`/`suggestions.stream` → `facet`; `proposed_terms.by_stream` → `by_facet`. DSL: `assign`/`stream(name, tier:, keys:)` → `assign`/**`facet(name, tier:, terms:)`**. Query API: `keys_for`→`terms_for`, `allowed_keys`→`allowed_terms`, `required_keys`→`required_terms`. `config.tending_streams` → `tending_facets`.
+- The quality-score **`Enliterator::Facet`/`Facets`** (a named score + signals, e.g. completeness) → **`Enliterator::Measure`/`Measures`** (`enliterator_facets` table → `enliterator_measures`). This frees "facet" for its true sense; completeness is a *measure*, not a classification facet. The state key `facets:` → `measures:`.
+- Claim **keys** → **terms** in the controlled-vocabulary sense (the `Claim.key` *column* stays — key/value is a natural pair; the term IS the key).
+
+## Surface copy reframed in LIS terms
+- Requests → "**Authority control** — the controlled vocabulary, reviewing itself": the model PROPOSES a term (doesn't invent off-list); a term earns its place by recurring (literary warrant); synonyms shown as **USE/UF** references.
+- Status → "the collection's **finding aid**, maintained for itself" (scope & content, controlled vocabulary, connection graph, tending health).
+- Chat → "a **reference interview** with the collection" (iterative, citation-following).
+
+## Homonym discipline (why this was surgical, not a global sed)
+"stream" is overloaded: the facet concept AND HTTP/SSE streaming (`conversation#stream`, `converse(stream:)`, `stream_raw`). Word-boundary perl (`\bstream\b`) renamed the facet sense on pure-facet files while leaving `upstream`/`streaming`/`streamUrl`/`conversation_stream_path` and the converse streaming flag untouched; the 4 adapters were hand-edited (tend's `stream:` → `facet:`, converse's `stream:` kept). `.keys` (Hash method) meant `keys→terms` was colon-targeted (`keys:`), never bare.
+
+## Migrations (additive, reversible; data preserved)
+`RenameFacetsToMeasures` (rename_table), `RenameStreamToFacet` (rename_column ×2), `RenameByStreamAndFacetIndexes` (by_stream column + two stale index names). Applied to dummy + HSDL dev with all data intact (994 visits, 500 measures, approved terms).
+
+## Done = all of (this phase):
+- `Contract→Vocabulary`; `stream→facet` (columns, DSL, query API, config, prompt); quality `Facet→Measure` (model/registry/table); `keys→terms` (DSL + query API + UI).
+- Surface copy reframed (authority control / finding aid / reference interview / USE-UF).
+- HSDL initializer migrated (`facet`/`terms:`/`Measures.register`); HSDL dev migrated.
+- 254 specs green throughout (no behavior change). README + this section updated.
+- Deferred (aware-not-now): LRM/WEMI (Work/Expression/Manifestation/Item) on the record; SKOS/BIBFRAME emission; syndetic structure (BT/NT/RT) unifying vocabulary + the context tree.

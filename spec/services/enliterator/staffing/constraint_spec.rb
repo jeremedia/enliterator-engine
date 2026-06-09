@@ -22,7 +22,7 @@ RSpec.describe "Enliterator::Tending::Visitor on-prem constraint (staffing path)
 
     def model_id = "model-#{@tier}"
 
-    def tend(text:, stream:, state:, neighbors:, tags: [])
+    def tend(text:, facet:, state:, neighbors:, tags: [])
       @calls += 1
       Result.new(
         parsed: { "claims" => [ { "key" => "summary", "op" => "ADD", "value" => "on-prem-only" } ],
@@ -62,13 +62,13 @@ RSpec.describe "Enliterator::Tending::Visitor on-prem constraint (staffing path)
   end
 
   it "never invokes the off-prem quality tier" do
-    Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
     expect(cheap.calls).to eq(1)
     expect(quality.calls).to eq(0)
   end
 
   it "runs a single applied cheap visit (no escalation despite low confidence)" do
-    Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
 
     visits = widget.enliterator_visits.to_a
     expect(visits.length).to eq(1)
@@ -78,7 +78,7 @@ RSpec.describe "Enliterator::Tending::Visitor on-prem constraint (staffing path)
   end
 
   it "writes the claim from the on-prem cheap tier" do
-    Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
     claim = widget.enliterator_claims.live.find_by(key: "summary")
     expect(claim).to be_present
     expect(claim.tier).to eq("cheap")

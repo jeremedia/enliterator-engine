@@ -80,8 +80,8 @@ module Enliterator
 
         # Read the record + its compounding context, return a Result.
         #
-        # +contract+ (v0.3) is an optional `{key_sym => "description"}` hash naming
-        # the allowed claim keys for this stream. When present, subclasses thread
+        # +contract+ (v0.3) is an optional `{term_sym => "description"}` hash naming
+        # the allowed terms for this facet. When present, subclasses thread
         # `schema_for(contract)` into their structured-output schema (claim `key`
         # becomes an enum + an optional top-level `suggestions` array) and
         # `system_for(contract)` into the system message. When nil/absent, behavior
@@ -89,7 +89,7 @@ module Enliterator
         # suggestions emphasis).
         #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, stream:, state:, neighbors:, contract: nil, required: nil)
+        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil)
           raise NotImplementedError, "#{self.class} must implement #tend"
         end
 
@@ -126,14 +126,14 @@ module Enliterator
         # @param contract [Hash, nil] `{key => description}` or nil.
         # @return [Hash] JSON Schema.
         def schema_for(contract)
-          keys = allowed_keys_from(contract)
+          keys = allowed_terms_from(contract)
           return RESPONSE_SCHEMA if keys.nil? || keys.empty?
 
           schema = deep_dup(RESPONSE_SCHEMA)
           schema["properties"]["claims"]["items"]["properties"]["key"] = {
             "type" => "string",
             "enum" => keys,
-            "description" => "Stable claim key. Use ONLY one of the allowed keys for this stream."
+            "description" => "Stable term. Use ONLY one of the allowed terms for this facet."
           }
           schema["properties"]["suggestions"] = SUGGESTIONS_SCHEMA_PROPERTY
           # "suggestions" stays OPTIONAL — do not add it to "required".
@@ -150,7 +150,7 @@ module Enliterator
         # @return [String]
         def system_for(contract, required: nil)
           base = build_system
-          keys = allowed_keys_from(contract)
+          keys = allowed_terms_from(contract)
           return base if keys.nil? || keys.empty?
 
           base + "\n\n" + contract_system_block(contract, required: required)
@@ -190,7 +190,7 @@ module Enliterator
 
         # Normalize a contract hash into a sorted list of allowed key STRINGS,
         # or nil when there is no usable contract.
-        def allowed_keys_from(contract)
+        def allowed_terms_from(contract)
           return nil if contract.nil?
           return nil unless contract.is_a?(Hash)
           keys = contract.keys.map(&:to_s).reject(&:empty?)
@@ -205,22 +205,22 @@ module Enliterator
         def contract_system_block(contract, required: nil)
           lines = contract.map { |k, desc| "  - #{k}: #{desc}" }.join("\n")
           block = <<~CONTRACT.strip
-            CONTROLLED VOCABULARY — this stream has a fixed set of allowed claim keys.
-            Use ONLY these keys for the `key` of every claim:
+            CONTROLLED VOCABULARY — this facet has a fixed set of allowed terms.
+            Use ONLY these terms for the `key` of every claim:
 
             #{lines}
 
-            If you observe something worth asserting that NONE of these keys covers,
-            DO NOT invent a new key on a claim. Instead add it to the optional
+            If you observe something worth asserting that NONE of these terms covers,
+            DO NOT invent a new term on a claim. Instead add it to the optional
             top-level `suggestions` array as {proposed_key, rationale, example_value}.
-            Never put an off-list key on a claim.
+            Never put an off-list term on a claim.
           CONTRACT
 
           req = Array(required).map(&:to_s).reject(&:empty?)
           return block if req.empty?
 
           block + "\n\n" + <<~REQUIRED.strip
-            REQUIRED keys — you MUST assert a claim for EACH of: #{req.join(', ')}.
+            REQUIRED terms — you MUST assert a claim for EACH of: #{req.join(', ')}.
             These facts are present in the record; find and assert them. Only if a
             required key is genuinely absent from the record, assert it with an empty
             value and low confidence rather than omitting it.
@@ -273,12 +273,12 @@ module Enliterator
         # that out and present it as an explicit REVIEW section so a senior tier
         # treats the junior's draft as a thing to confirm/correct, not as buried
         # context. Tolerated optionally: when absent, the prompt is unchanged.
-        def build_user(text:, stream:, state:, neighbors:)
+        def build_user(text:, facet:, state:, neighbors:)
           state_hash = state.is_a?(Hash) ? state : {}
           proposed   = state_hash["proposed_by_lower_tier"] || state_hash[:proposed_by_lower_tier]
 
           payload = {
-            "stream" => stream.to_s,
+            "facet" => facet.to_s,
             "record_text" => text.to_s,
             "state" => state,
             "neighbors" => summarize_neighbors(neighbors)
@@ -301,9 +301,9 @@ module Enliterator
             end
 
           <<~USER.strip
-            Tend this record along the "#{stream}" stream.
+            Tend this record along the "#{facet}" facet.
 
-            #{review_block}CONTEXT (JSON — prior claims, recent visits, facets, and corpus neighbors):
+            #{review_block}CONTEXT (JSON — prior claims, recent visits, measures, and corpus neighbors):
             #{JSON.pretty_generate(payload)}
 
             Reconcile the record's understanding and emit claims via the structured

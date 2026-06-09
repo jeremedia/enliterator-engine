@@ -4,29 +4,29 @@ require "rails_helper"
 
 # v0.5 smoke alarm. Pure-read rollup over the Visit history. The headline job:
 # surface a `null` adapter (a misconfigured run that wrote phantom "succeeded"
-# visits) and an empty-final stream at a glance.
+# visits) and an empty-final facet at a glance.
 RSpec.describe Enliterator::Report do
   let(:widget) { Widget.create!(title: "Acme", body: "report fodder") }
 
-  def visit!(stream:, model:, tier:, status: "succeeded", applied: true,
+  def visit!(facet:, model:, tier:, status: "succeeded", applied: true,
              esc: 0, confidence: 0.9, recon: { added: %w[summary], updated: [], deleted: [], noop: [] },
              tokens: { "input" => 10, "output" => 5, "total" => 15 })
     widget.enliterator_visits.create!(
-      stream: stream, model: model, tier: tier, status: status, applied: applied,
+      facet: facet, model: model, tier: tier, status: status, applied: applied,
       escalation_step: esc, confidence: confidence, reconciliation: recon, tokens: tokens
     )
   end
 
   describe ".summary" do
     before do
-      # A healthy gateway stream + one escalation.
-      visit!(stream: "summary", model: "cheap",   tier: "cheap",   confidence: 0.95)
-      visit!(stream: "summary", model: "quality", tier: "quality", esc: 1, confidence: 0.92)
+      # A healthy gateway facet + one escalation.
+      visit!(facet: "summary", model: "cheap",   tier: "cheap",   confidence: 0.95)
+      visit!(facet: "summary", model: "quality", tier: "quality", esc: 1, confidence: 0.92)
       # A NULL adapter run — the smoke alarm — that wrote nothing (empty final).
-      visit!(stream: "authorship", model: "null", tier: "cheap", confidence: 0.0,
+      visit!(facet: "authorship", model: "null", tier: "cheap", confidence: 0.0,
              recon: { added: [], updated: [], deleted: [], noop: [] })
       # A required-unmet flagged visit.
-      visit!(stream: "authorship", model: "quality", tier: "quality", confidence: 0.95,
+      visit!(facet: "authorship", model: "quality", tier: "quality", confidence: 0.95,
              recon: { added: %w[advisor], updated: [], deleted: [], noop: [], required_unmet: true })
     end
 
@@ -54,7 +54,7 @@ RSpec.describe Enliterator::Report do
     end
 
     it "buckets confidence (including nil)" do
-      visit!(stream: "summary", model: "cheap", tier: "cheap", confidence: nil)
+      visit!(facet: "summary", model: "cheap", tier: "cheap", confidence: nil)
       r = described_class.summary
       expect(r["summary"][:confidence]).to include("0.8-1.0" => 2, "nil" => 1)
     end
@@ -64,8 +64,8 @@ RSpec.describe Enliterator::Report do
       expect(tokens).to eq("input" => 20, "output" => 10, "total" => 30)
     end
 
-    it "filters to a single stream" do
-      expect(described_class.summary(stream: "authorship").keys).to eq(%w[authorship])
+    it "filters to a single facet" do
+      expect(described_class.summary(facet: "authorship").keys).to eq(%w[authorship])
     end
   end
 end

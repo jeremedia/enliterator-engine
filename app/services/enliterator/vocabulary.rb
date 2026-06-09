@@ -1,7 +1,7 @@
 module Enliterator
-  # The effective CONTROLLED VOCABULARY for a stream — the terms the model is
+  # The effective CONTROLLED VOCABULARY for a facet — the terms the model is
   # actually permitted to assert. It is the CODE vocabulary (the staffing policy's
-  # `keys_for`) plus any AUTHORIZED terms a curator adopted (v0.9 convergence): once
+  # `terms_for`) plus any AUTHORIZED terms a curator adopted (v0.9 convergence): once
   # a proposed term is approved, it joins the vocabulary so the model emits it as a
   # claim instead of re-proposing it.
   #
@@ -12,20 +12,20 @@ module Enliterator
   # the DB derivation is redundant). Code-defined terms always win on a name conflict.
   #
   # When nothing is approved (or `apply_approved_keys` is false), `Vocabulary.for`
-  # returns exactly `staffing.keys_for(stream)` — including `nil` for an
-  # unconstrained stream — so the path stays byte-identical to v0.3/v0.8.
+  # returns exactly `staffing.terms_for(facet)` — including `nil` for an
+  # unconstrained facet — so the path stays byte-identical to v0.3/v0.8.
   module Vocabulary
     module_function
 
     DEFAULT_DESCRIPTION = "Approved vocabulary term."
 
     # @return [Hash{String=>String}, nil] effective {term => description}, or nil
-    #   when the stream is unconstrained (open terms) and has no authorized terms.
-    def for(stream)
-      code = Enliterator.staffing.keys_for(stream)            # Hash or nil
+    #   when the facet is unconstrained (open terms) and has no authorized terms.
+    def for(facet)
+      code = Enliterator.staffing.terms_for(facet)            # Hash or nil
       return code unless Enliterator.configuration.apply_approved_keys
 
-      ext = approved_extension(stream)
+      ext = approved_extension(facet)
       return code if ext.empty?
 
       merged = (code || {}).dup
@@ -33,10 +33,10 @@ module Enliterator
       merged
     end
 
-    # Terms a curator AUTHORIZED for this stream, with a description (the term's
+    # Terms a curator AUTHORIZED for this facet, with a description (the term's
     # considerer rationale, else a default). {} when none.
-    def approved_extension(stream)
-      terms = Enliterator::Suggestion.where(stream: stream.to_s, status: "approved").distinct.pluck(:proposed_key)
+    def approved_extension(facet)
+      terms = Enliterator::Suggestion.where(facet: facet.to_s, status: "approved").distinct.pluck(:proposed_key)
       return {} if terms.empty?
 
       descs = Enliterator::ProposedTerm.where(proposed_key: terms).pluck(:proposed_key, :recommended_rationale).to_h

@@ -26,10 +26,10 @@
 <div class="card">
   <% if @visits.any? %>
     <table>
-      <tr><th>stream</th><th>tier</th><th>step</th><th>conf</th><th>status</th><th>applied</th><th>at</th></tr>
+      <tr><th>facet</th><th>tier</th><th>step</th><th>conf</th><th>status</th><th>applied</th><th>at</th></tr>
       <% @visits.each do |v| %>
         <tr class="<%= "warn-row" if v.model == "null" %>">
-          <td><%= v.stream %></td>
+          <td><%= v.facet %></td>
           <td><%= v.tier %><% if v.model == "null" %> <span class="warn">null</span><% end %></td>
           <td><%= v.escalation_step %></td>
           <td><%= v.confidence %></td>
@@ -44,10 +44,10 @@
   <% end %>
 </div>
 
-<% if @facets.any? %>
-  <h2>Facets</h2>
+<% if @measures.any? %>
+  <h2>Measures</h2>
   <div class="card">
-    <% @facets.each do |name, score| %>
+    <% @measures.each do |name, score| %>
       <div><strong><%= name %></strong>: <span class="mono"><%= score %></span></div>
     <% end %>
   </div>

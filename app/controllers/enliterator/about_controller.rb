@@ -18,7 +18,7 @@ module Enliterator
     def collection_stats
       policy = Enliterator.staffing
       {
-        streams:        policy ? policy.assignments.keys : [],
+        facets:        policy ? policy.assignments.keys : [],
         models:         Enliterator.tendable_models.map(&:name),
         tended_records: Enliterator::Visit.where(status: "succeeded", applied: true)
                           .distinct.count(Arel.sql("tendable_type || ':' || tendable_id")),

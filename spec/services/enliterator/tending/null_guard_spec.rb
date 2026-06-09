@@ -17,7 +17,7 @@ RSpec.describe "Enliterator::Tending::Visitor null-adapter guard (staffing path)
   # No gateway key, no llm_adapter, no staffing → default policy routes "summary"
   # to "cheap", and Enliterator.llm(tier: "cheap") resolves to Null.
   def tend!
-    Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
   end
 
   describe "when allow_null_llm is false (production default)" do

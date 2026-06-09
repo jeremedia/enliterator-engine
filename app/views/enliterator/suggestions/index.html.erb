@@ -26,7 +26,7 @@
             <% if t.resurged_count.to_i.positive? %><br><span class="warn" title="re-proposed after a verdict">⚠ resurged <%= t.resurged_count %></span><% end %>
           </td>
           <td><span class="big" style="font-size:1.1rem"><%= t.pressure %></span><br><span class="muted" style="font-size:.75rem"><%= t.distinct_records %> rec</span></td>
-          <td class="samples"><%= t.by_stream.keys.join(", ") %></td>
+          <td class="samples"><%= t.by_facet.keys.join(", ") %></td>
           <td class="samples">
             <%= truncate(t.sample_rationale.to_s, length: 120) %>
             <% if t.sample_example.present? %><br><em><%= truncate(t.sample_example.is_a?(String) ? t.sample_example : t.sample_example.to_json, length: 70) %></em><% end %>
@@ -98,11 +98,11 @@
 
 <% if @additions.any? %>
   <h2>Approved &amp; live — codify in your policy</h2>
-  <p class="muted">These terms are <strong>already live</strong> in the controlled vocabulary — the model emits them as claims now. Paste them into the matching <code>stream</code> in your staffing policy initializer to make them a permanent, versioned code artifact (after which this DB-derived addition is redundant).</p>
-  <% @additions.each do |stream, keys| %>
+  <p class="muted">These terms are <strong>already live</strong> in the controlled vocabulary — the model emits them as claims now. Paste them into the matching <code>facet</code> in your staffing policy initializer to make them a permanent, versioned code artifact (after which this DB-derived addition is redundant).</p>
+  <% @additions.each do |facet, keys| %>
     <div class="card">
-      <div class="muted">stream <code><%= stream %></code></div>
-<pre class="mono" style="white-space:pre-wrap; margin:.4rem 0 0">keys: {
+      <div class="muted">facet <code><%= facet %></code></div>
+<pre class="mono" style="white-space:pre-wrap; margin:.4rem 0 0">terms: {
 <% keys.each do |k| -%>
   <%= k %>: "TODO: describe <%= k %>",
 <% end -%>
@@ -115,9 +115,9 @@
   <h2>USE references <span class="muted" style="font-weight:400">— synonyms folded onto a preferred term</span></h2>
   <div class="card">
     <table>
-      <tr><th>variant (UF)</th><th>USE →</th><th>stream</th></tr>
+      <tr><th>variant (UF)</th><th>USE →</th><th>facet</th></tr>
       <% @synonyms.each do |s| %>
-        <tr><td><code><%= s[:proposed_key] %></code></td><td><code><%= s[:mapped_to] %></code></td><td class="samples"><%= s[:stream] %></td></tr>
+        <tr><td><code><%= s[:proposed_key] %></code></td><td><code><%= s[:mapped_to] %></code></td><td class="samples"><%= s[:facet] %></td></tr>
       <% end %>
     </table>
   </div>

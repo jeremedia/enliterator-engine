@@ -15,7 +15,7 @@ RSpec.describe "Enliterator::Tending::Visitor convergence (v0.9)" do
     Result = Struct.new(:parsed, :raw, :tokens, keyword_init: true)
     def initialize(claims: [], suggestions: []) = (@claims = claims; @suggestions = suggestions)
     def model_id = "model-cheap"
-    def tend(text:, stream:, state:, neighbors:, tags: [], contract: nil, required: nil)
+    def tend(text:, facet:, state:, neighbors:, tags: [], contract: nil, required: nil)
       Result.new(parsed: { "claims" => @claims, "confidence" => 0.9, "suggestions" => @suggestions }, raw: {}, tokens: {})
     end
   end
@@ -23,7 +23,7 @@ RSpec.describe "Enliterator::Tending::Visitor convergence (v0.9)" do
   def configure_policy!
     Enliterator.configure do |c|
       c.staffing = Enliterator::Staffing::Policy.new do
-        stream :summary, tier: "cheap", keys: { summary: "An abstract." }
+        facet :summary, tier: "cheap", terms: { summary: "An abstract." }
         ladder [ "cheap" ]
         verify_floor "cheap"
       end
@@ -34,7 +34,7 @@ RSpec.describe "Enliterator::Tending::Visitor convergence (v0.9)" do
     configure_policy!
     allow(Enliterator).to receive(:llm).and_call_original
     allow(Enliterator).to receive(:llm).with(tier: "cheap").and_return(stub)
-    Enliterator::Tending::Visitor.new(widget, stream: "summary", embedder: embedder).call
+    Enliterator::Tending::Visitor.new(widget, facet: "summary", embedder: embedder).call
   end
 
   it "files a Suggestion for an UNRESOLVED proposed key" do
@@ -44,7 +44,7 @@ RSpec.describe "Enliterator::Tending::Visitor convergence (v0.9)" do
   end
 
   it "SUPPRESSES a re-proposal of a resolved key and bumps post_verdict_attempts" do
-    Enliterator::Suggestion.create!(tendable: widget, stream: "summary", proposed_key: "old_key", rationale: "r", status: "rejected")
+    Enliterator::Suggestion.create!(tendable: widget, facet: "summary", proposed_key: "old_key", rationale: "r", status: "rejected")
     Enliterator::ProposedTerm.create!(proposed_key: "old_key", post_verdict_attempts: 0)
 
     expect {
@@ -54,7 +54,7 @@ RSpec.describe "Enliterator::Tending::Visitor convergence (v0.9)" do
   end
 
   it "an APPROVED key is in the effective contract, so a model claim for it is written" do
-    Enliterator::Suggestion.create!(tendable: widget, stream: "summary", proposed_key: "keywords", rationale: "r", status: "approved")
+    Enliterator::Suggestion.create!(tendable: widget, facet: "summary", proposed_key: "keywords", rationale: "r", status: "approved")
     Enliterator::ProposedTerm.create!(proposed_key: "keywords", recommended_rationale: "salient terms")
 
     tend_with!(ConvStub.new(claims: [ { "key" => "keywords", "op" => "ADD", "value" => "FOIA, AI" } ]))

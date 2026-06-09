@@ -2,12 +2,12 @@ module Enliterator
   # The tending rollup — the "smoke alarm" the Visit table always COULD answer but
   # nothing surfaced. A pure-read aggregation over the immutable Visit history that
   # makes a misconfiguration glaring at a glance: the adapter/model mix exposes a
-  # `null` model instantly, the empty-final rate exposes a stream that "succeeded"
-  # while writing nothing, and required_unmet counts streams that missed a mandated
+  # `null` model instantly, the empty-final rate exposes a facet that "succeeded"
+  # while writing nothing, and required_unmet counts facets that missed a mandated
   # fact. No network, no gateway call — one ActiveRecord read.
   #
   #   Enliterator::Report.summary
-  #   Enliterator::Report.summary(since: 7.days, stream: "authorship")
+  #   Enliterator::Report.summary(since: 7.days, facet: "authorship")
   #   # => {
   #   #   "authorship" => {
   #   #     total: 250, status: {"succeeded"=>250},
@@ -23,16 +23,16 @@ module Enliterator
   module Report
     module_function
 
-    # Roll up the Visit history per stream. See the module doc for the shape.
+    # Roll up the Visit history per facet. See the module doc for the shape.
     #
     # @param host   [String, nil] forwarded to Spend (engine tables are per-host).
     # @param since  [Time, ActiveSupport::Duration, nil] only visits at/after this
     #   point. A Duration (e.g. 7.days) reads as "ago".
-    # @param stream [String, Symbol, nil] restrict to one stream.
+    # @param facet [String, Symbol, nil] restrict to one facet.
     # @return [Hash{String => Hash}]
-    def summary(host: nil, since: nil, stream: nil)
-      rows = visit_scope(since: since, stream: stream)
-               .pluck(:stream, :status, :model, :tier, :escalation_step, :applied, :confidence, :reconciliation)
+    def summary(host: nil, since: nil, facet: nil)
+      rows = visit_scope(since: since, facet: facet)
+               .pluck(:facet, :status, :model, :tier, :escalation_step, :applied, :confidence, :reconciliation)
 
       data = Hash.new { |h, s| h[s] = new_bucket }
 
@@ -52,7 +52,7 @@ module Enliterator
         end
       end
 
-      spend = Enliterator::Spend.by_stream(host: host, since: since, stream: stream)
+      spend = Enliterator::Spend.by_facet(host: host, since: since, facet: facet)
 
       data.each do |s, b|
         b[:escalation_rate]  = ratio(b[:escalated],   b[:total])
@@ -67,9 +67,9 @@ module Enliterator
 
     # ---- internals -------------------------------------------------------
 
-    def visit_scope(since:, stream:)
+    def visit_scope(since:, facet:)
       scope = Enliterator::Visit.all
-      scope = scope.where(stream: stream.to_s) if stream
+      scope = scope.where(facet: facet.to_s) if facet
       if since
         cutoff = since.is_a?(ActiveSupport::Duration) ? since.ago : since
         scope  = scope.where("enliterator_visits.created_at >= ?", cutoff)

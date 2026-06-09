@@ -67,7 +67,7 @@ module Enliterator
       Enliterator.llm(tier: tier)
     end
 
-    # Every claim key in any stream's EFFECTIVE contract (code + approved) — valid
+    # Every claim key in any facet's EFFECTIVE contract (code + approved) — valid
     # map targets, so the considerer can map a synonym onto a newly-approved key.
     def canonical_keys
       Enliterator.staffing.assignments.keys
@@ -130,13 +130,13 @@ module Enliterator
     def system_prompt(canonical)
       <<~SYS.strip
         You tend the CONTROLLED VOCABULARY of an enliteration. While tending records the
-        model proposed claim keys the streams' contracts don't cover. For EACH proposed
+        model proposed claim keys the facets' contracts don't cover. For EACH proposed
         key decide exactly one:
           - map: a synonym/variant of an existing canonical key — set `map_to` to an EXACT
             key from the list below. Prefer this over approving a near-duplicate.
           - approve: a genuinely new, durable concept the contract should adopt — optionally
             give a clean `canonical_name`.
-          - reject: noise, too specific, redundant, or it belongs to another stream's role.
+          - reject: noise, too specific, redundant, or it belongs to another facet's role.
         Weigh PRESSURE (demand). Treat resurged>0 (re-proposed after a prior verdict) as a
         strong signal the key was wrongly dismissed. Give a one-line rationale and a
         confidence in [0,1] per key.
@@ -147,10 +147,10 @@ module Enliterator
 
     def user_prompt(terms)
       lines = terms.map do |t|
-        streams = t.by_stream.keys.join("/")
+        facets = t.by_facet.keys.join("/")
         resurged = t.resurged_count.to_i.positive? ? ", RESURGED #{t.resurged_count}" : ""
         eg = t.sample_example.present? ? " — e.g. #{render(t.sample_example)}" : ""
-        "- #{t.proposed_key}  [pressure #{t.pressure}, #{t.distinct_records} records, streams: #{streams}#{resurged}]\n    #{t.sample_rationale.to_s[0, 140]}#{eg}"
+        "- #{t.proposed_key}  [pressure #{t.pressure}, #{t.distinct_records} records, facets: #{facets}#{resurged}]\n    #{t.sample_rationale.to_s[0, 140]}#{eg}"
       end
       <<~USER.strip
         Decide these #{terms.size} proposed keys (highest pressure first):

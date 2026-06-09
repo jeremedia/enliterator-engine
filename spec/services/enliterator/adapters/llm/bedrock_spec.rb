@@ -67,8 +67,8 @@ RSpec.describe Enliterator::Adapters::LLM::Bedrock do
   let(:result) do
     adapter.tend(
       text:      "Notes on the Analytical Engine.",
-      stream:    "summary",
-      state:     { claims: [], recent_visits: [], facets: {} },
+      facet:    "summary",
+      state:     { claims: [], recent_visits: [], measures: {} },
       neighbors: []
     )
   end
@@ -162,7 +162,7 @@ RSpec.describe Enliterator::Adapters::LLM::Bedrock do
       end.new
       adapter = described_class.new(model_id: "m", client: empty_client)
 
-      parsed = adapter.tend(text: "x", stream: "summary", state: {}, neighbors: []).parsed
+      parsed = adapter.tend(text: "x", facet: "summary", state: {}, neighbors: []).parsed
       expect(parsed["claims"]).to eq([])
       expect(parsed["confidence"]).to eq(0.0)
     end
@@ -171,7 +171,7 @@ RSpec.describe Enliterator::Adapters::LLM::Bedrock do
       no_usage_client = FakeConverseClient.new(claims: [], usage: nil)
       adapter = described_class.new(model_id: "m", client: no_usage_client)
 
-      expect(adapter.tend(text: "x", stream: "summary", state: {}, neighbors: []).tokens).to eq({})
+      expect(adapter.tend(text: "x", facet: "summary", state: {}, neighbors: []).tokens).to eq({})
     end
   end
 end

@@ -24,7 +24,7 @@ RSpec.describe Enliterator::Conversation do
 
   def configure_policy!
     policy = Enliterator::Staffing::Policy.new do
-      stream :summary, tier: "cheap", keys: { summary: "An abstract." }
+      facet :summary, tier: "cheap", terms: { summary: "An abstract." }
       ladder [ "cheap", "quality" ]
     end
     Enliterator.configure { |c| c.staffing = policy }

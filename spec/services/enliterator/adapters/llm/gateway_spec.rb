@@ -99,10 +99,10 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
     let(:result) do
       adapter.tend(
         text:      "Notes on the Analytical Engine.",
-        stream:    "summary",
-        state:     { claims: [], recent_visits: [], facets: {} },
+        facet:    "summary",
+        state:     { claims: [], recent_visits: [], measures: {} },
         neighbors: [],
-        tags:      %w[enliterator host:dummy stream:summary tier:cheap esc:0]
+        tags:      %w[enliterator host:dummy facet:summary tier:cheap esc:0]
       )
     end
 
@@ -153,14 +153,14 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
       kwargs = fake_client.completions.last_kwargs
 
       tags = kwargs.dig(:request_options, :extra_body, :metadata, :tags)
-      expect(tags).to eq(%w[enliterator host:dummy stream:summary tier:cheap esc:0])
+      expect(tags).to eq(%w[enliterator host:dummy facet:summary tier:cheap esc:0])
       expect(tags).to be_an(Array)
     end
 
     it "omits request_options entirely when no tags are passed (v0.1-shaped call)" do
       adapter.tend(
         text:      "x",
-        stream:    "summary",
+        facet:    "summary",
         state:     {},
         neighbors: []
       )
@@ -177,7 +177,7 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
     end
 
     it "surfaces a parsed escalate flag when the model sets it" do
-      result = adapter.tend(text: "x", stream: "summary", state: {}, neighbors: [])
+      result = adapter.tend(text: "x", facet: "summary", state: {}, neighbors: [])
       expect(result.parsed["escalate"]).to be(true)
     end
   end
@@ -187,7 +187,7 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
   # top-level `suggestions` array, while the system message gains a controlled-
   # vocabulary block. When NO contract is passed the request stays byte-identical
   # to v0.2 (parameters == RESPONSE_SCHEMA, no suggestions, original system text).
-  describe "#tend with a stream contract" do
+  describe "#tend with a facet contract" do
     let(:contract) do
       { author: "Who authored the work.", date: "When the work was created." }
     end
@@ -195,7 +195,7 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
     def request_params!
       adapter.tend(
         text:      "x",
-        stream:    "metadata",
+        facet:    "metadata",
         state:     {},
         neighbors: [],
         contract:  contract
@@ -241,7 +241,7 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
 
   describe "#tend with NO contract is byte-identical to v0.2" do
     it "sends RESPONSE_SCHEMA verbatim and the original system text" do
-      adapter.tend(text: "x", stream: "summary", state: {}, neighbors: [])
+      adapter.tend(text: "x", facet: "summary", state: {}, neighbors: [])
       params = fake_client.completions.last_kwargs
 
       expect(params[:tools].first[:function][:parameters])

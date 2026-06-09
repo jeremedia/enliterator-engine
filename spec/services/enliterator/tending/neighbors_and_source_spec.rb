@@ -3,9 +3,9 @@
 require "rails_helper"
 
 # v0.4: neighbors carry CONTENT (resolved to records, truncated), and the tend
-# text source is stream-aware. These are what unlock real cross-record connection
+# text source is facet-aware. These are what unlock real cross-record connection
 # claims and title-page-sourced authorship.
-RSpec.describe "Enliterator v0.4 neighbor content + stream-aware source" do
+RSpec.describe "Enliterator v0.4 neighbor content + facet-aware source" do
   let(:embedder) { Enliterator::Adapters::Embedder::Null.new }
 
   def embed!(widget)
@@ -21,7 +21,7 @@ RSpec.describe "Enliterator v0.4 neighbor content + stream-aware source" do
       b = Widget.create!(title: "Beta",  body: "human trafficking detection in transport")
       [ a, b ].each { |w| embed!(w) }
 
-      visitor = Enliterator::Tending::Visitor.new(a, stream: "connections", embedder: embedder)
+      visitor = Enliterator::Tending::Visitor.new(a, facet: "connections", embedder: embedder)
       neighbors = visitor.nearest_neighbors(a, limit: 5)
 
       expect(neighbors).to all(be_a(Widget))
@@ -31,7 +31,7 @@ RSpec.describe "Enliterator v0.4 neighbor content + stream-aware source" do
 
     it "returns [] when the record has no primary embedding" do
       a = Widget.create!(title: "NoEmbed", body: "x")
-      visitor = Enliterator::Tending::Visitor.new(a, stream: "connections", embedder: embedder)
+      visitor = Enliterator::Tending::Visitor.new(a, facet: "connections", embedder: embedder)
       expect(visitor.nearest_neighbors(a, limit: 5)).to eq([])
     end
   end
@@ -48,17 +48,17 @@ RSpec.describe "Enliterator v0.4 neighbor content + stream-aware source" do
     end
   end
 
-  describe "enliterator_text is stream-aware" do
-    it "passes stream to a stream-aware to_enliterator_text override" do
+  describe "enliterator_text is facet-aware" do
+    it "passes facet to a facet-aware to_enliterator_text override" do
       w = Widget.create!(title: "t", body: "b")
-      def w.to_enliterator_text(stream: nil) = "SOURCE-FOR=#{stream}"
-      expect(w.enliterator_text(stream: "authorship")).to eq("SOURCE-FOR=authorship")
+      def w.to_enliterator_text(facet: nil) = "SOURCE-FOR=#{facet}"
+      expect(w.enliterator_text(facet: "authorship")).to eq("SOURCE-FOR=authorship")
     end
 
     it "falls back to the zero-arg override (back-compat, no crash)" do
       w = Widget.create!(title: "t", body: "b") # Widget#to_enliterator_text takes no args
-      expect { w.enliterator_text(stream: "summary") }.not_to raise_error
-      expect(w.enliterator_text(stream: "summary")).to eq(w.to_enliterator_text)
+      expect { w.enliterator_text(facet: "summary") }.not_to raise_error
+      expect(w.enliterator_text(facet: "summary")).to eq(w.to_enliterator_text)
     end
   end
 end

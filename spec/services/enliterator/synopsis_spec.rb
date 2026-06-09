@@ -3,23 +3,23 @@
 require "rails_helper"
 
 # v0.6 collection self-portrait. Pure-read aggregation over Visits/Claims + the
-# staffing contracts. tended_count comes from Visits (Claim has no stream column);
-# vocabulary comes from the contract; connections from connection-stream keys.
+# staffing contracts. tended_count comes from Visits (Claim has no facet column);
+# vocabulary comes from the contract; connections from connection-facet keys.
 RSpec.describe Enliterator::Synopsis do
   let(:alpha) { Widget.create!(title: "Alpha", body: "alpha body") }
   let(:beta)  { Widget.create!(title: "Beta",  body: "beta body") }
 
   def configure_policy!
     policy = Enliterator::Staffing::Policy.new do
-      stream :summary,     tier: "cheap", keys: { summary: "An abstract." }
-      stream :connections, tier: "cheap", keys: { related_records: "Linked records.", thematic_cluster: "The theme." }
+      facet :summary,     tier: "cheap", terms: { summary: "An abstract." }
+      facet :connections, tier: "cheap", terms: { related_records: "Linked records.", thematic_cluster: "The theme." }
       ladder [ "cheap", "quality" ]
     end
     Enliterator.configure { |c| c.staffing = policy }
   end
 
-  def visit!(rec, stream)
-    rec.enliterator_visits.create!(stream: stream, status: "succeeded", applied: true)
+  def visit!(rec, facet)
+    rec.enliterator_visits.create!(facet: facet, status: "succeeded", applied: true)
   end
 
   def claim!(rec, key, value, status: "draft")
@@ -39,20 +39,20 @@ RSpec.describe Enliterator::Synopsis do
   describe ".build" do
     subject(:syn) { described_class.build(sample_cap: 2, value_chars: 40) }
 
-    it "counts DISTINCT tended records per stream (from Visits)" do
-      expect(syn[:streams].find { |s| s[:stream] == "summary" }[:tended_count]).to eq(2)
-      expect(syn[:streams].find { |s| s[:stream] == "connections" }[:tended_count]).to eq(1)
+    it "counts DISTINCT tended records per facet (from Visits)" do
+      expect(syn[:facets].find { |s| s[:facet] == "summary" }[:tended_count]).to eq(2)
+      expect(syn[:facets].find { |s| s[:facet] == "connections" }[:tended_count]).to eq(1)
     end
 
     it "reports vocabulary with live-claim counts, descriptions, and samples" do
-      vocab = syn[:streams].find { |s| s[:stream] == "summary" }[:vocabulary].find { |v| v[:key] == "summary" }
+      vocab = syn[:facets].find { |s| s[:facet] == "summary" }[:vocabulary].find { |v| v[:key] == "summary" }
       expect(vocab[:live_claims]).to eq(2)
       expect(vocab[:description]).to eq("An abstract.")
       expect(vocab[:samples]).to include("Alpha is about X.")
       expect(vocab[:samples].size).to be <= 2
     end
 
-    it "surfaces the connection graph from connection-stream keys" do
+    it "surfaces the connection graph from connection-facet keys" do
       keys = syn[:connections].map { |c| c[:key] }
       expect(keys).to include("related_records", "thematic_cluster")
       expect(syn[:connections].find { |c| c[:key] == "related_records" }[:live_claims]).to eq(1)
@@ -65,17 +65,17 @@ RSpec.describe Enliterator::Synopsis do
 
     it "truncates long sample values to the cap" do
       claim!(alpha, "summary", "z" * 200)
-      vocab = described_class.build(value_chars: 40)[:streams]
-                .find { |s| s[:stream] == "summary" }[:vocabulary].find { |v| v[:key] == "summary" }
+      vocab = described_class.build(value_chars: 40)[:facets]
+                .find { |s| s[:facet] == "summary" }[:vocabulary].find { |v| v[:key] == "summary" }
       expect(vocab[:samples].map(&:length).max).to be <= 41 # 40 + ellipsis
     end
   end
 
   describe ".to_prompt" do
-    it "renders compact, bounded text with streams and connections" do
+    it "renders compact, bounded text with facets and connections" do
       text = described_class.to_prompt(described_class.build)
       expect(text).to include("COLLECTION SELF-PORTRAIT")
-      expect(text).to include('Stream "summary"')
+      expect(text).to include('Facet "summary"')
       expect(text).to include("related_records")
       expect(text).to match(/records tended/)
     end
