@@ -150,6 +150,42 @@ namespace :enliterator do
     end
   end
 
+  # The retrospective conversion (v0.17): shelf-read the whole collection in
+  # one run — the initial condition inventory. The heartbeat's survey phase is
+  # the ONGOING shelf-read; without this task, adopting condition would mean
+  # months of half-surveyed limbo where the gate and the conservation report
+  # are misleading. Probes are column reads; this is minutes, not days.
+  #
+  #   bin/rails enliterator:survey
+  #   LIMIT=5000 bin/rails enliterator:survey   # bounded first pass
+  desc "Shelf-read the collection to completion (initial condition inventory). LIMIT=n"
+  task survey: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:survey] #{msg}") : puts(msg) }
+    unless Enliterator::Condition.probes_registered?
+      abort "[enliterator:survey] no condition probes registered — add Enliterator::Condition.register(...) to the host initializer"
+    end
+
+    limit = ENV["LIMIT"].presence&.to_i
+    total = { "surveyed" => 0, "untendable" => 0, "degraded" => 0 }
+    loop do
+      batch_size = [ 2_000, limit ? limit - total["surveyed"] : 2_000 ].min
+      break if batch_size <= 0
+      batch = Enliterator::Condition.survey_due(limit: batch_size)
+      break if batch.empty?
+
+      Enliterator::Condition.survey_batch!(batch).each do |v|
+        total["surveyed"]   += 1
+        total["untendable"] += 1 if v[:band] == :untendable
+        total["degraded"]   += 1 if v[:band] == :degraded
+      end
+      log.call("surveyed #{total['surveyed']} — untendable #{total['untendable']}, degraded #{total['degraded']}")
+      break if batch.size < batch_size
+    end
+    log.call("done — #{Enliterator::Condition.surveyed_count} record(s) on the condition register; " \
+             "#{Enliterator::Condition.untendable_count} untendable")
+  end
+
   # Run the considerer over the open vocabulary requests: refresh pressure, ask the
   # agent across the whole field, auto-apply the safe verdicts (maps + confident
   # rejects), hold approves for ratification. Wire this AFTER enliterator:tend in

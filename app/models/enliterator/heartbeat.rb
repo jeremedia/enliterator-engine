@@ -110,6 +110,7 @@ module Enliterator
       run_warnings = []
 
       begin
+        survey_phase!(run_warnings)
         work_items!(plan, counts, run_warnings)
         consider!(run_warnings) unless skip_consider
         drain_deficit_check!(run_warnings) if mode == "enqueue"
@@ -155,6 +156,40 @@ module Enliterator
 
     private
 
+    # v0.17: the per-cycle shelf-read. Time-boxed (probes are column reads —
+    # the bound is wall-clock, not tokens); never-surveyed first, then stalest.
+    # Skipped silently when no probes are registered (a host that never adopted
+    # condition isn't omitting anything; SPEC documents the gate).
+    def survey_phase!(run_warnings)
+      return unless Enliterator::Condition.probes_registered?
+
+      budget_ms = Enliterator.configuration.heartbeat_survey_budget_ms.to_i
+      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      stats = { "surveyed" => 0, "untendable" => 0, "degraded" => 0 }
+
+      loop do
+        elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round
+        break if elapsed_ms >= budget_ms
+        batch = Enliterator::Condition.survey_due(limit: 2_000)
+        break if batch.empty?
+
+        Enliterator::Condition.survey_batch!(batch).each do |v|
+          stats["surveyed"]   += 1
+          stats["untendable"] += 1 if v[:band] == :untendable
+          stats["degraded"]   += 1 if v[:band] == :degraded
+        end
+        break if batch.size < 2_000   # the shelf is fully read
+      end
+
+      stats["duration_ms"] = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round
+      update!(survey: stats)
+      log("survey: #{stats.map { |k, v| "#{k}=#{v}" }.join(' ')}")
+    rescue => e
+      # The survey must never kill the tending cycle — record and continue.
+      run_warnings << "survey phase failed: #{e.class}: #{e.message}"
+      log(run_warnings.last)
+    end
+
     def work_items!(plan, counts, run_warnings)
       total_failed = 0
       plan.items.each_with_index do |item, i|
@@ -169,6 +204,16 @@ module Enliterator
         if record.nil?
           counts[item.reason]["skipped"] += 1
           run_warnings << "#{item.tendable_type}/#{item.tendable_id} missing — skipped (#{item.lane})"
+          next
+        end
+
+        # v0.17: the execution-time condition gate — the plan was frozen at
+        # open!, and this cycle's own survey may have condemned a planned
+        # record since. One indexed read beats an LLM call on an unreadable
+        # source.
+        if condition_untendable?(item)
+          counts[item.reason]["skipped"] += 1
+          log("[#{i + 1}/#{plan.items.size}] #{item.tendable_type}/#{item.tendable_id} skipped — untendable at execution (condition)")
           next
         end
 
@@ -252,6 +297,17 @@ module Enliterator
       log("cycle #{error_message ? 'ABORTED' : 'finished'}: " \
           "#{counts.map { |r, c| "#{r}=#{c.compact.map { |k, v| "#{k}:#{v}" }.join(',')}" }.join('  ')} " \
           "tokens=#{mode == 'sync' ? actual_tokens_spent : 'enqueued'}#{error_message ? " error=#{error_message}" : ''}")
+    end
+
+    def condition_untendable?(item)
+      return false unless condition_adopted?
+      Enliterator::Measure.where(tendable_type: item.tendable_type, tendable_id: item.tendable_id,
+                                 name: Enliterator::Condition::ROLLUP, score: 0.0).exists?
+    end
+
+    def condition_adopted?
+      return @condition_adopted if defined?(@condition_adopted)
+      @condition_adopted = Enliterator::Condition.adopted?
     end
 
     # Sync-mode actuals — summed from the visits this cycle stamped (the
