@@ -116,7 +116,7 @@ module Enliterator
         # v0.9: the EFFECTIVE contract — code keys + any curator-approved keys — so
         # an approved key is emitted as a claim, not re-proposed. == keys_for when
         # nothing is approved.
-        contract = Enliterator::Contract.for(stream)
+        contract = Enliterator::Vocabulary.for(stream)
 
         # v0.5: keys this stream MUST yield a non-blank claim for (subset of contract),
         # or nil. An unmet required key forces escalation regardless of confidence and

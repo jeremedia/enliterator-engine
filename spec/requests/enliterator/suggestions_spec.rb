@@ -20,7 +20,7 @@ RSpec.describe "Enliterator suggestion review", type: :request do
   it "GET /enliterator/suggestions renders the ranked queue" do
     get "/enliterator/suggestions"
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include("Vocabulary requests").and include("keywords").and include("author")
+    expect(response.body).to include("Authority control").and include("keywords").and include("author")
   end
 
   it "approve marks the key approved and surfaces it under contract additions" do

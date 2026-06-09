@@ -77,7 +77,7 @@ module Enliterator
     end
 
     def stream_portrait(policy, stream, sample_cap:, value_chars:)
-      contract  = Enliterator::Contract.for(stream) || {} # effective: code + approved keys
+      contract  = Enliterator::Vocabulary.for(stream) || {} # effective: code + approved keys
       code_keys = (policy.keys_for(stream) || {}).keys.to_set
       {
         stream:       stream,
@@ -114,9 +114,9 @@ module Enliterator
     # else any contract key that LOOKS like a cross-record link. Empty ⇒ no panel.
     def connection_portrait(policy, names, sample_cap:, value_chars:)
       keys = names.select { |s| s.match?(CONNECTION_STREAM_RX) }
-                  .flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }
+                  .flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }
       if keys.empty?
-        keys = names.flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }.select { |k| k.to_s.match?(CONNECTION_KEY_RX) }
+        keys = names.flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }.select { |k| k.to_s.match?(CONNECTION_KEY_RX) }
       end
       keys.uniq.map { |k| key_summary(k, sample_cap: sample_cap, value_chars: value_chars) }
     end

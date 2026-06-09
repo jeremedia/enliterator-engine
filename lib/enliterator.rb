@@ -86,7 +86,7 @@ module Enliterator
     # ---- v0.9 Convergence -------------------------------------------------
 
     # When true (default), an APPROVED proposed key joins the effective contract
-    # (Enliterator::Contract.for) the model sees — so it's emitted as a claim and
+    # (Enliterator::Vocabulary.for) the model sees — so it's emitted as a claim and
     # stops being re-proposed. Set false to keep the contract code-only (approvals
     # stay advisory, surfaced as a diff to codify by hand).
     attr_accessor :apply_approved_keys

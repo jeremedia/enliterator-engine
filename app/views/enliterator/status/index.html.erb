@@ -1,7 +1,9 @@
 <% s = @synopsis %>
-<h1>Status</h1>
+<h1>Status <span class="muted" style="font-weight:400; font-size:.95rem">— the collection's finding aid, maintained for itself</span></h1>
 <p class="muted">
-  <% if s[:models].any? %>Tended models: <strong><%= s[:models].join(", ") %></strong>. <% end %>
+  A self-portrait: scope and content, the controlled vocabulary in use, the connection graph, and the
+  health of the tending.
+  <% if s[:models].any? %>Tended: <strong><%= s[:models].join(", ") %></strong>. <% end %>
   Drill into any record at <code>/status/&lt;Type&gt;/&lt;id&gt;</code>, or follow the source chips from <%= link_to "Chat", conversation_path %>.
 </p>
 
@@ -14,7 +16,7 @@
       <div class="muted" style="margin-top:-.3rem">records tended</div>
       <% if st[:vocabulary].any? %>
         <table style="margin-top:.6rem">
-          <tr><th>claim key</th><th>live</th><th>e.g.</th></tr>
+          <tr><th>term</th><th>live</th><th>e.g.</th></tr>
           <% st[:vocabulary].each do |v| %>
             <tr>
               <td><code><%= v[:key] %></code><% if v[:approved] %> <span class="chip" style="background:var(--accent-soft); color:var(--accent)" title="curator-approved; live but not yet codified">live</span><% end %></td>
@@ -24,7 +26,7 @@
           <% end %>
         </table>
       <% else %>
-        <div class="muted samples">no contract (open keys)</div>
+        <div class="muted samples">open vocabulary (no controlled terms)</div>
       <% end %>
     </div>
   <% end %>
