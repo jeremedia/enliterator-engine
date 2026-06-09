@@ -789,3 +789,20 @@ resolved keys + emits approved keys as claims → the open field shrinks toward 
 - `live` chip in status; "Re-proposed after a verdict" panel + retitled approved section in suggestions.
 - Specs green at 247 (was 235), ADDING: `services/enliterator/contract_spec.rb`, `services/enliterator/tending/suppression_spec.rb`, + `post_verdict_attempts`/convergence cases in `proposed_term_spec.rb` and `requests/enliterator/suggestions_spec.rb`.
 - README: the converging cycle (tend → consider → tend shrinks the field).
+
+# v0.10 — The Explainer (the fourth surface)
+
+A read-only About page (`/enliterator/about`) that states what enliteracy is, why the collection is
+tended, and — the question that drives the project — how compounding attention changes a collection NOW
+(dormant → legible; first attention; a self-portrait) and OVER TIME (understanding deepens; the
+vocabulary converges; the investment compounds as models/contracts improve). It is the HSDL demo surface
+AND the project's own north star: a LIVING document, hand-revised each version. Per "infrastructure as
+argument," it demonstrates its own thesis — a resilient live strip pulls real counts (records tended,
+visits, claims, streams, vocabulary resolved/open) from the collection it's mounted on, so the
+explanation is never abstract. Additive and self-contained (inline styling, no new tables, no network).
+
+## Done = all of (this phase):
+- `AboutController#index` (resilient pure-count snapshot; nil + `Rails.logger.warn` on failure, never 500s) + route + `app/views/enliterator/about/index.html.erb`.
+- "About" added to the engine nav (right-aligned).
+- Specs green at 250 (was 247), ADDING `requests/enliterator/about_spec.rb` (prose renders with no data; live strip appears once tended; links the other three surfaces).
+- Revise this page every version — it is the canonical plain-language description of what the engine does.

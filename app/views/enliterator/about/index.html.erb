@@ -1,0 +1,170 @@
+<% content_for :head do %><title>About — Enliterator</title><% end %>
+
+<h1>What is Enliterator?</h1>
+
+<p style="max-width:66ch; font-size:1.05rem">
+  Enliterator confers <strong>literacy</strong> on a collection. Not search — literacy: the capacity
+  to participate in inquiry, to accumulate understanding, to compound across visits the way a reader
+  compounds across books. A searchable archive can find words. An <em>enliterated</em> collection can
+  think about itself.
+</p>
+
+<%# The page demonstrates its own thesis: it speaks about the collection it's mounted on. %>
+<% if @stats && @stats[:visits].to_i.positive? %>
+  <div class="card" style="background:var(--accent-soft); border-color:var(--accent-soft)">
+    <div class="muted" style="font-size:.75rem; text-transform:uppercase; letter-spacing:.06em">This collection, right now</div>
+    <div class="row" style="margin-top:.55rem">
+      <div style="flex:0 0 auto"><span class="big"><%= number_with_delimiter @stats[:tended_records] %></span><br><span class="muted">records tended</span></div>
+      <div style="flex:0 0 auto"><span class="big"><%= number_with_delimiter @stats[:visits] %></span><br><span class="muted">tending visits</span></div>
+      <div style="flex:0 0 auto"><span class="big"><%= number_with_delimiter @stats[:live_claims] %></span><br><span class="muted">things it knows</span></div>
+      <div style="flex:1 1 200px"><span class="big"><%= @stats[:streams].size %></span><br><span class="muted"><%= @stats[:streams].any? ? "streams of inquiry: #{@stats[:streams].join(', ')}" : "streams of inquiry" %></span></div>
+    </div>
+    <% if (@stats[:vocab_resolved].to_i + @stats[:vocab_pending].to_i).positive? %>
+      <div class="muted" style="margin-top:.6rem; font-size:.85rem">
+        Vocabulary: <strong><%= @stats[:vocab_resolved] %></strong> requests resolved · <%= @stats[:vocab_pending] %> still open.
+        The ontology tends itself — see <%= link_to "Requests", suggestions_path %>.
+      </div>
+    <% end %>
+  </div>
+  <p class="muted samples" style="margin-top:-.2rem">These numbers are live. Everything below explains how they came to be, and what they become over time.</p>
+<% end %>
+
+<h2>The missing word</h2>
+<p style="max-width:66ch">
+  A child is born with the hardware for language, but it sits inert until someone opens the door —
+  points at marks, ties them to sounds, ties sounds to the accumulated record of human thought. After
+  that door opens, every book changes how they read the next one. Literacy isn't a skill; it's access
+  to a loop that <strong>compounds across a lifetime</strong>. We decided that withholding it from a
+  child capable of it is not a missing feature — it's neglect.
+</p>
+<p style="max-width:66ch">
+  There was no word for the same thing happening to <em>data</em>: a record gaining the capacity to
+  participate in meaningful inquiry — not searched once, but <strong>tended</strong>, accumulating
+  understanding across visits. So we named it. <strong>Enliteracy</strong>: to put into literacy. The
+  prefix does the work — enable, enrich, enlighten. Each is a threshold crossed. This is the door, for
+  a collection.
+</p>
+
+<h2>What “tended” means</h2>
+<p style="max-width:66ch">
+  Most systems stop at <em>searchable</em>: embeddings, a vector index, questions in natural language.
+  Useful — and the bare minimum. Searchable is to literate what recognizing letters is to reading. You
+  can find the words; you don't yet understand the sentences.
+</p>
+<p style="max-width:66ch">
+  Enliterator runs a maintenance loop on each record — but the loop runs through a <strong>language
+  model</strong>, not a heuristic. A cron job inspects and flags; it never learns. When the loop runs
+  through language, each visit brings the whole compressed geometry of human thought to bear on
+  <em>this</em> record in <em>this</em> state. The tenth visit isn't smarter because it remembers the
+  previous nine — any database remembers. It's smarter because the corpus meets the accumulated history
+  of this particular record, and the intersection produces understanding neither contained alone. That
+  is what the child gets when the door opens: not a loop of looking at marks, but marks connected to a
+  depth of thought no single lifetime could hold. The record gains the same connection.
+</p>
+
+<h2>Compounding attention — now, and over time</h2>
+<p style="max-width:66ch">
+  This is the whole point, so it's worth being precise about what changes the day you turn it on, and
+  what changes only with time.
+</p>
+<div class="row">
+  <div class="card">
+    <div><strong>Now</strong> <span class="chip">first pass</span></div>
+    <ul style="margin:.5rem 0 0; padding-left:1.1rem">
+      <li>A dormant archive becomes <strong>legible</strong>. A record that was only findable becomes
+        readable — it carries what it argues, why it matters, who made it, what it connects to.</li>
+      <li>The collection gains a <strong>self-portrait</strong>: it knows its own vocabulary, its gaps,
+        its shape — and can answer questions grounded in its own records, with provenance.</li>
+      <li><strong>First attention</strong> reaches records no curator ever had time for. The triage that
+        left most of a collection untouched is no longer forced.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div><strong>Over time</strong> <span class="chip">the compounding</span></div>
+    <ul style="margin:.5rem 0 0; padding-left:1.1rem">
+      <li>Understanding <strong>deepens</strong>, not just persists. Each visit meets the record's
+        accumulated history; claims are refined, not duplicated.</li>
+      <li>The vocabulary <strong>converges</strong>. Synonyms fold together, noise is rejected, genuine
+        new concepts become permanent — the collection's language sharpens toward what actually matters.</li>
+      <li>The investment <strong>compounds</strong>. A stronger model or a richer contract re-tends the
+        whole collection and lifts all of it at once; cross-record connections thicken into a graph. The
+        collection knows more next year than it does today.</li>
+    </ul>
+  </div>
+</div>
+<p style="max-width:66ch">
+  And the economics flip. When the cost of examining one record drops low enough, the question is no
+  longer <em>“can we afford to look at this?”</em> but <em>“can we afford <strong>not</strong> to?”</em>
+  A collection of 160,000 works left intellectually dormant was once a resource constraint. When the
+  constraint lifts, what remains is a choice.
+</p>
+
+<h2>How it works</h2>
+<p style="max-width:66ch">The machinery, plainly — this is what the engine does today:</p>
+<div class="card">
+  <table>
+    <tr>
+      <td style="width:11rem"><strong>Streams are roles</strong></td>
+      <td>Each facet of understanding is its own job<%= @stats && @stats[:streams].any? ? " — here: #{@stats[:streams].join(', ')}".html_safe : "" %>. A record is tended once per stream, so “what it argues” and “who wrote it” don't compete in one pass.</td>
+    </tr>
+    <tr>
+      <td><strong>Tiers are capability</strong></td>
+      <td>A cheap model does the first pass; the loop escalates to a stronger one only when confidence is low, with a verify floor guarding the result. You pay for capability exactly where it's needed.</td>
+    </tr>
+    <tr>
+      <td><strong>Claims, reconciled</strong></td>
+      <td>Each visit proposes claims and reconciles them against what's already known — add, update, delete, or leave alone — so re-tending <em>deepens</em> a record instead of duplicating it. Authoritative host facts are locked and never re-derived.</td>
+    </tr>
+    <tr>
+      <td><strong>A vocabulary that tends itself</strong></td>
+      <td>The model can't invent terms — it proposes them. Proposals accumulate <em>pressure</em> across records; an agent reads the whole field and renders verdicts (fold synonyms, reject noise, hold genuine new concepts for a human). Approved terms go <strong>live</strong>, and the loop converges on the genuinely contested ones.</td>
+    </tr>
+    <tr>
+      <td><strong>Provenance throughout</strong></td>
+      <td>Every claim knows how it came to be known — which model, which visit, what it was attributed to. Nothing is asserted without a trail.</td>
+    </tr>
+    <tr>
+      <td><strong>A smoke alarm</strong></td>
+      <td>Tending health and spend are visible per stream, so a silent failure can't masquerade as success.</td>
+    </tr>
+  </table>
+</div>
+
+<h2>The conscience is human</h2>
+<p style="max-width:66ch">
+  At Burning Man there's a saying: if you make eye contact with trash, it's yours — not because you
+  made it, because you <em>saw</em> it. The obligation doesn't come from perception; it comes from the
+  relationship the gaze creates. Once you see it, you can't unsee it, and the world fills with things
+  asking for grace.
+</p>
+<p style="max-width:66ch">
+  The tending system has no ethics. It has a schedule and a credit card. It runs because someone decided
+  the output justified the cost; cancel the card and it stops. The <strong>conscience belongs to the
+  person who saw the collection sitting dormant and couldn't look away</strong> — the one who can see the
+  need and authorize the spend. Society funds a child's literacy with buildings and teachers' salaries.
+  The enliteracy of a collection is the same shape: someone decides the tending is worth paying for. The
+  engine is infrastructure. The decision is yours.
+</p>
+
+<h2>For a collection like this one</h2>
+<p style="max-width:66ch">
+  A homeland-security thesis archive is exactly the case that rewards tending. Each thesis is a dense
+  argument that took an author a year to make — and then it sits, findable by keyword, rarely read.
+  Tended, every thesis declares what it contributes, what it found, where it's limited, who wrote it,
+  and which other work it speaks to. The collection becomes a <strong>living body of scholarship</strong>
+  that can be questioned as a whole, that surfaces the connections no single reader would find, and that
+  grows sharper every time the loop runs. Dormant becomes legible; an archive becomes a colleague.
+</p>
+
+<h2>The four surfaces</h2>
+<div class="row">
+  <div class="card"><strong><%= link_to "Status", root_path %></strong><br><span class="muted samples">The self-portrait — per-stream health, the vocabulary it uses, the connection graph, and drill-down into any single tended record.</span></div>
+  <div class="card"><strong><%= link_to "Chat", conversation_path %></strong><br><span class="muted samples">Converse with the enliteration — answers grounded in the collection's own records, with source links back to Status.</span></div>
+  <div class="card"><strong><%= link_to "Requests", suggestions_path %></strong><br><span class="muted samples">Govern the vocabulary — review the terms the model wants, approve / map / reject, and watch the loop converge.</span></div>
+  <div class="card"><strong>About</strong><br><span class="muted samples">This page. What we're building and why — kept current as the engine grows.</span></div>
+</div>
+
+<p class="muted samples" style="margin-top:1.5rem; border-top:1px solid var(--line); padding-top:.75rem; max-width:66ch">
+  Living document · reflects Enliterator as of <strong>June 2026</strong> (v0.10 — the explainer; v0.9
+  closed the vocabulary convergence loop). Not searchability conferred once — <strong>attention that compounds</strong>.
+</p>
