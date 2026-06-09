@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary     = "Enliterate your data: a reusable per-record AI tending loop for Rails."
   spec.description = "Enliterator is a mountable Rails engine that confers literacy on data. " \
                      "Any host model becomes Tendable: it gains embeddings, a provenance-tracked " \
-                     "claim store, quality facets, and a scheduled tending loop where each visit " \
+                     "claim store, quality measures, and a tending loop where each visit " \
                      "reads the record's accumulated history plus its corpus neighbors and " \
                      "reconciles its understanding. Understanding compounds across visits."
   spec.license     = "MIT"
@@ -26,6 +26,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "rails", ">= 7.1"
   spec.add_dependency "neighbor", ">= 0.5"
+  spec.add_dependency "ancestry", ">= 4.3"   # the Context tree (v0.13 — nested enliterated collections)
 
   # LLM and embedding providers are intentionally NOT dependencies.
   # Adapters lazy-require their provider gem (anthropic / openai / aws-sdk-bedrockruntime)

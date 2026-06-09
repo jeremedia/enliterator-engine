@@ -6,6 +6,9 @@ module Enliterator
     belongs_to :tendable, polymorphic: true
     belongs_to :visit, class_name: "Enliterator::Visit", optional: true
     belongs_to :superseded_by, class_name: "Enliterator::Claim", optional: true
+    # v0.13: the context this claim is asserted WITHIN. NULL = the root scope
+    # (root rule) — true of the record in every lens, inherited by all contexts.
+    belongs_to :context, class_name: "Enliterator::Context", optional: true
 
     STATUSES = %w[draft verified superseded].freeze
     REVIEW_STATES = %w[pending approved rejected].freeze

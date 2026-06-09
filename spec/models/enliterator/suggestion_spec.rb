@@ -157,4 +157,38 @@ RSpec.describe Enliterator::Suggestion do
       expect(s.mapped_to).to eq("publication_year")
     end
   end
+
+  describe "context scoping (v0.13, rule 4: verdicts write to their own context, read up the path)" do
+    let(:root)  { Enliterator::Context.create!(key: "hsdl", name: "HSDL") }
+    let(:crs)   { Enliterator::Context.create!(key: "crs-reports", name: "CRS", parent: root) }
+    let(:eo)    { Enliterator::Context.create!(key: "executive-orders", name: "EOs", parent: root) }
+
+    it "a batch verdict resolves only its OWN context's pending rows — a sibling's identical key survives" do
+      described_class.create!(tendable: widget_a, facet: "metadata", proposed_key: "keywords",
+                              rationale: "r", status: "pending", context: crs)
+      described_class.create!(tendable: widget_b, facet: "metadata", proposed_key: "keywords",
+                              rationale: "r", status: "pending", context: eo)
+
+      n = described_class.approve_key!("keywords", context: crs)
+      expect(n).to eq(1)
+      expect(described_class.find_by(context: crs, proposed_key: "keywords").status).to eq("approved")
+      expect(described_class.find_by(context: eo,  proposed_key: "keywords").status).to eq("pending")
+    end
+
+    it "resolved_keys(context:) reads up the path: own + root verdicts, never a sibling's" do
+      suggest!(record: widget_a, key: "root_resolved", status: "rejected")  # NULL = root/legacy
+      described_class.create!(tendable: widget_b, facet: "metadata", proposed_key: "crs_resolved",
+                              rationale: "r", status: "mapped", mapped_to: "x", context: crs)
+      described_class.create!(tendable: widget_c, facet: "metadata", proposed_key: "eo_resolved",
+                              rationale: "r", status: "rejected", context: eo)
+
+      from_crs = described_class.resolved_keys(context: crs)
+      expect(from_crs).to include("root_resolved", "crs_resolved")  # inherits root; sees own
+      expect(from_crs).not_to include("eo_resolved")                 # never a sibling's
+
+      at_root = described_class.resolved_keys
+      expect(at_root).to include("root_resolved")
+      expect(at_root).not_to include("crs_resolved", "eo_resolved")  # root reads only root
+    end
+  end
 end

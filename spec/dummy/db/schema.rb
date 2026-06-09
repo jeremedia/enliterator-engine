@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_09_170002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -385,6 +385,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
   create_table "enliterator_claims", force: :cascade do |t|
     t.string "attributed_to"
     t.float "confidence"
+    t.bigint "context_id"
     t.datetime "created_at", null: false
     t.jsonb "derived_from", default: []
     t.string "key", null: false
@@ -398,8 +399,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
     t.datetime "updated_at", null: false
     t.jsonb "value"
     t.bigint "visit_id"
+    t.index ["context_id"], name: "index_enliterator_claims_on_context_id"
     t.index ["superseded_by_id"], name: "idx_enliterator_claims_on_superseded_by_id"
+    t.index ["tendable_type", "tendable_id", "context_id", "key"], name: "idx_enliterator_claims_on_tendable_context_key"
     t.index ["tendable_type", "tendable_id", "key"], name: "idx_enliterator_claims_on_tendable_and_key"
+  end
+
+  create_table "enliterator_context_memberships", force: :cascade do |t|
+    t.bigint "context_id", null: false
+    t.datetime "created_at", null: false
+    t.string "member_id", null: false
+    t.string "member_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["context_id", "member_type", "member_id"], name: "idx_enliterator_memberships_uniqueness", unique: true
+    t.index ["context_id"], name: "index_enliterator_context_memberships_on_context_id"
+    t.index ["member_type", "member_id"], name: "idx_enliterator_memberships_on_member"
+  end
+
+  create_table "enliterator_contexts", force: :cascade do |t|
+    t.string "ancestry"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "key", null: false
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ancestry"], name: "index_enliterator_contexts_on_ancestry"
+    t.index ["key"], name: "index_enliterator_contexts_on_key", unique: true
   end
 
   create_table "enliterator_embeddings", force: :cascade do |t|
@@ -451,6 +476,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
   end
 
   create_table "enliterator_suggestions", force: :cascade do |t|
+    t.bigint "context_id"
     t.datetime "created_at", null: false
     t.jsonb "example_value", default: {}
     t.string "facet"
@@ -465,6 +491,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
     t.string "tier"
     t.datetime "updated_at", null: false
     t.bigint "visit_id"
+    t.index ["context_id"], name: "index_enliterator_suggestions_on_context_id"
     t.index ["facet", "status"], name: "idx_enliterator_suggestions_on_facet_and_status"
     t.index ["proposed_key", "status"], name: "idx_enliterator_suggestions_on_key_and_status"
     t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_suggestions_on_tendable"
@@ -473,6 +500,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
   create_table "enliterator_visits", force: :cascade do |t|
     t.boolean "applied", default: true, null: false
     t.float "confidence"
+    t.bigint "context_id"
     t.datetime "created_at", null: false
     t.integer "duration_ms"
     t.text "error"
@@ -492,6 +520,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
     t.string "tier"
     t.jsonb "tokens", default: {}
     t.datetime "updated_at", null: false
+    t.index ["context_id"], name: "index_enliterator_visits_on_context_id"
+    t.index ["tendable_type", "tendable_id", "context_id", "facet"], name: "idx_enliterator_visits_on_tendable_context_facet"
     t.index ["tendable_type", "tendable_id", "created_at"], name: "idx_enliterator_visits_on_tendable_and_created_at"
     t.index ["tendable_type", "tendable_id", "facet"], name: "idx_enliterator_visits_on_tendable_and_facet"
     t.index ["tendable_type", "tendable_id", "tier"], name: "idx_enliterator_visits_on_tendable_and_tier"
@@ -1699,7 +1729,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_150000) do
   add_foreign_key "emanation_relationals", "relationals"
   add_foreign_key "emanations", "provenance_and_rights", column: "provenance_and_rights_id"
   add_foreign_key "enliterator_claims", "enliterator_claims", column: "superseded_by_id", on_delete: :nullify
+  add_foreign_key "enliterator_claims", "enliterator_contexts", column: "context_id"
   add_foreign_key "enliterator_claims", "enliterator_visits", column: "visit_id", on_delete: :nullify
+  add_foreign_key "enliterator_context_memberships", "enliterator_contexts", column: "context_id"
+  add_foreign_key "enliterator_suggestions", "enliterator_contexts", column: "context_id"
+  add_foreign_key "enliterator_visits", "enliterator_contexts", column: "context_id"
   add_foreign_key "enliterator_visits", "enliterator_visits", column: "escalated_from_id", on_delete: :nullify
   add_foreign_key "evidence_experiences", "evidences"
   add_foreign_key "evidence_experiences", "experiences"

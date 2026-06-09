@@ -48,35 +48,61 @@ module Enliterator
         @context_caps      = {}
         @term_lists     = {}
         @required_term_map  = {}
+        # v0.13: facet declarations scoped to a named collection context
+        # ({context_key => {assignments:, term_lists:, required:}}). Declarations
+        # OUTSIDE any `context` block land in the flat root registries above —
+        # so a contextless policy is byte-identical to v0.12.
+        @context_facets    = {}
+        @current_context_key = nil
 
         instance_eval(&block) if block
       end
 
       # ---- DSL -------------------------------------------------------------
 
-      # Map a facet (role) to a capability tier (alias).
+      # v0.13: scope facet declarations to a named COLLECTION CONTEXT (a node in
+      # the Enliterator::Context tree, joined by key). Facets declared inside the
+      # block belong to that context and are tended within it (declaration
+      # location = tending scope); a context inherits every ancestor's facets and
+      # its own declarations win on a name conflict. NOT related to #context_cap,
+      # which bounds a tier's LLM context WINDOW — two concepts sharing a word.
+      #
+      #   context "executive-orders" do
+      #     facet :directive, tier: "cheap", terms: { eo_number: "..." }
+      #   end
+      def context(key, &block)
+        raise ArgumentError, "Policy context blocks cannot nest" if @current_context_key
+        @current_context_key = key.to_s
+        instance_eval(&block) if block
+        self
+      ensure
+        @current_context_key = nil
+      end
+
+      # Map a facet (role) to a capability tier (alias) — in the current context
+      # block's registry, or the root registry outside any block.
       def assign(facet, tier:)
-        @assignments[facet.to_s] = tier.to_s
+        bucket[:assignments][facet.to_s] = tier.to_s
         self
       end
 
       # Map a facet (role) to a tier AND bind its output contract: the controlled
-      # vocabulary of claim keys the model may assert on this facet. `keys` is a
-      # `{ key_sym => "description" }` hash. Sets the tier exactly as #assign does,
+      # vocabulary of claim keys the model may assert on this facet. `terms` is a
+      # `{ term_sym => "description" }` hash. Sets the tier exactly as #assign does,
       # then records the contract so the Visitor can constrain the prompt/schema and
       # route off-list observations into `suggestions`. Facets declared with #assign
-      # (no contract) remain unconstrained — open keys, back-compat.
-      # +required+ (v0.5, optional): a subset of `keys` the model MUST assert a
-      # non-blank claim for. When a required key comes back absent or empty, the
+      # (no contract) remain unconstrained — open terms, back-compat.
+      # +required+ (v0.5, optional): a subset of `terms` the model MUST assert a
+      # non-blank claim for. When a required term comes back absent or empty, the
       # Visitor forces escalation regardless of confidence, and the top tier refuses
-      # to mint `verified` while a required key is unmet. nil/omitted ⇒ no required
-      # keys ⇒ byte-identical to v0.3/v0.4.
+      # to mint `verified` while a required term is unmet. nil/omitted ⇒ no required
+      # terms ⇒ byte-identical to v0.3/v0.4.
       def facet(name, tier:, terms:, required: nil)
         assign(name, tier: tier)
-        @term_lists[name.to_s] =
+        bucket[:term_lists][name.to_s] =
           terms.each_with_object({}) { |(k, v), h| h[k.to_s] = v.to_s }
         req = Array(required).map(&:to_s).reject(&:empty?)
-        @required_term_map[name.to_s] = req unless req.empty?
+        bucket[:required][name.to_s] = req unless req.empty?
         self
       end
 
@@ -139,34 +165,74 @@ module Enliterator
       end
 
       # ---- Query API -------------------------------------------------------
+      # v0.13: every facet lookup takes an optional `path:` — the ordered context
+      # keys root → self (from Context#path_keys). Resolution walks the path
+      # DESCENDANT-FIRST (a child's declaration wins), falling through to the
+      # root registries. `path: nil` ⇒ root only — byte-identical to v0.12.
 
       # The capability tier assigned to a facet. Falls back to the ladder head
       # (or the embedding alias as a last resort) so an unmapped facet still runs.
-      def tier_for(facet)
-        @assignments.fetch(facet.to_s) { @ladder_tiers.first || @embedding_alias }
+      def tier_for(facet, path: nil)
+        facet = facet.to_s
+        Array(path).reverse_each do |key|
+          tier = @context_facets.dig(key.to_s, :assignments, facet)
+          return tier if tier
+        end
+        @assignments.fetch(facet) { @ladder_tiers.first || @embedding_alias }
       end
 
-      # The output contract for a facet: a `{ key => description }` hash of the
-      # claim keys the model may assert, or nil when the facet is unconstrained
-      # (declared via #assign or not at all). nil ⇒ open keys (v0.2 behavior).
-      def terms_for(facet)
-        @term_lists[facet.to_s]
+      # The output contract for a facet: a `{ term => description }` hash of the
+      # terms the model may assert, or nil when the facet is unconstrained
+      # (declared via #assign or not at all). nil ⇒ open terms (v0.2 behavior).
+      def terms_for(facet, path: nil)
+        facet = facet.to_s
+        Array(path).reverse_each do |key|
+          lists = @context_facets.dig(key.to_s, :term_lists)
+          return lists[facet] if lists&.key?(facet)
+        end
+        @term_lists[facet]
       end
 
-      # The allowed claim keys for a facet as a `[String]`, or nil when the facet
+      # The allowed terms for a facet as a `[String]`, or nil when the facet
       # is unconstrained. nil (not []) signals "no contract" so callers can branch
       # on presence without confusing it with an empty allow-list.
-      def allowed_terms(facet)
-        contract = @term_lists[facet.to_s]
+      def allowed_terms(facet, path: nil)
+        contract = terms_for(facet, path: path)
         return nil if contract.nil?
         contract.keys
       end
 
-      # The required claim keys for a facet as a `[String]`, or nil when the facet
-      # declares none. nil (not []) signals "no required keys" so callers branch on
+      # The required terms for a facet as a `[String]`, or nil when the facet
+      # declares none. nil (not []) signals "no required terms" so callers branch on
       # presence. Always a subset of allowed_terms(facet).
-      def required_terms(facet)
-        @required_term_map[facet.to_s]
+      def required_terms(facet, path: nil)
+        facet = facet.to_s
+        Array(path).reverse_each do |key|
+          req = @context_facets.dig(key.to_s, :required)
+          return req[facet] if req&.key?(facet)
+        end
+        @required_term_map[facet]
+      end
+
+      # The EFFECTIVE facet set along a context path: an ordered
+      # `{facet_name => declaring_context_key}` ("root" for root declarations;
+      # the deepest declaration wins). With no path: the root facets — v0.12's
+      # `assignments.keys` view.
+      def facets_for(path = nil)
+        out = {}
+        @assignments.each_key { |f| out[f] = "root" }
+        Array(path).each do |key|
+          (@context_facets.dig(key.to_s, :assignments) || {}).each_key { |f| out[f] = key.to_s }
+        end
+        out
+      end
+
+      # The facets a context DECLARES ITSELF (rule 2: declaration location =
+      # tending scope — `tend_context` runs exactly these). nil/"root" ⇒ the
+      # root-declared facets.
+      def facets_declared_in(context_key)
+        return @assignments.keys if context_key.nil? || context_key.to_s == "root"
+        (@context_facets.dig(context_key.to_s, :assignments) || {}).keys
       end
 
       # Tiers at/after `tier` in ladder order (the remaining climb). If `tier`
@@ -207,8 +273,8 @@ module Enliterator
       # The escalation ladder a record/facet may actually traverse, after applying
       # constraints: on-prem-only records are clamped to the on-prem tiers (order
       # preserved). Always returns at least the assigned tier when allowed.
-      def allowed_tiers(tendable, facet)
-        base = ladder_for_stream(facet)
+      def allowed_tiers(tendable, facet, path: nil)
+        base = ladder_from(tier_for(facet, path: path))
 
         if on_prem_only?(tendable)
           allowed = base & @on_prem_tier_list
@@ -242,11 +308,13 @@ module Enliterator
         self
       end
 
-      # Every tier this policy names (assignments, ladder, embedding, on-prem,
-      # verify floor, context caps) — deduped, for validation and introspection.
+      # Every tier this policy names (assignments — root AND context blocks —
+      # ladder, embedding, on-prem, verify floor, context caps) — deduped, for
+      # validation and introspection.
       def referenced_tiers
         tiers = []
         tiers.concat(@assignments.values)
+        @context_facets.each_value { |b| tiers.concat(b[:assignments].values) }
         tiers.concat(@ladder_tiers)
         tiers << @embedding_alias if @embedding_alias
         tiers.concat(@on_prem_tier_list)
@@ -269,11 +337,14 @@ module Enliterator
 
       private
 
-      # The ladder for a facet: starts at the facet's assigned tier and includes
-      # everything at/after it. If the assigned tier is off-ladder, the visitor
-      # still gets a usable single-element climb.
-      def ladder_for_stream(facet)
-        ladder_from(tier_for(facet))
+      # Where DSL writes land: the current `context` block's registries, or the
+      # flat root registries outside any block (the v0.12 shape, untouched).
+      def bucket
+        if @current_context_key
+          @context_facets[@current_context_key] ||= { assignments: {}, term_lists: {}, required: {} }
+        else
+          { assignments: @assignments, term_lists: @term_lists, required: @required_term_map }
+        end
       end
 
       # Defaults to the top configured tier (last on the ladder) when unset, so a

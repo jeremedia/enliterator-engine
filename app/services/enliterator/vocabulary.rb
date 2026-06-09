@@ -19,13 +19,18 @@ module Enliterator
 
     DEFAULT_DESCRIPTION = "Approved vocabulary term."
 
+    # v0.13: context-aware. Code terms resolve along the context's policy path
+    # (a child's declaration wins); curator approvals READ UP THE PATH (rule 4)
+    # — a root/ancestor approval inherits down, a sibling's never leaks over.
+    # `context: nil` ⇒ the root scope, byte-identical to v0.12.
+    #
     # @return [Hash{String=>String}, nil] effective {term => description}, or nil
     #   when the facet is unconstrained (open terms) and has no authorized terms.
-    def for(facet)
-      code = Enliterator.staffing.terms_for(facet)            # Hash or nil
+    def for(facet, context: nil)
+      code = Enliterator.staffing.terms_for(facet, path: context&.path_keys)  # Hash or nil
       return code unless Enliterator.configuration.apply_approved_keys
 
-      ext = approved_extension(facet)
+      ext = approved_extension(facet, context: context)
       return code if ext.empty?
 
       merged = (code || {}).dup
@@ -33,10 +38,14 @@ module Enliterator
       merged
     end
 
-    # Terms a curator AUTHORIZED for this facet, with a description (the term's
-    # considerer rationale, else a default). {} when none.
-    def approved_extension(facet)
-      terms = Enliterator::Suggestion.where(facet: facet.to_s, status: "approved").distinct.pluck(:proposed_key)
+    # Terms a curator AUTHORIZED for this facet — visible from `context` (its
+    # own + ancestors + root NULL) — with a description (the term's considerer
+    # rationale, else a default). {} when none.
+    def approved_extension(facet, context: nil)
+      terms = Enliterator::Suggestion
+                .where(facet: facet.to_s, status: "approved",
+                       context_id: context ? context.scope_ids : nil)
+                .distinct.pluck(:proposed_key)
       return {} if terms.empty?
 
       descs = Enliterator::ProposedTerm.where(proposed_key: terms).pluck(:proposed_key, :recommended_rationale).to_h

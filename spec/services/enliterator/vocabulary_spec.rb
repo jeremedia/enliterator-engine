@@ -53,4 +53,23 @@ RSpec.describe Enliterator::Vocabulary do
     Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "mapped_k",  rationale: "r", status: "mapped")
     expect(described_class.for("summary").keys).to contain_exactly("summary")
   end
+
+  describe "context scoping (v0.13, rule 4: approvals read UP the path)" do
+    let(:root)  { Enliterator::Context.create!(key: "hsdl", name: "HSDL") }
+    let(:child) { Enliterator::Context.create!(key: "crs-reports", name: "CRS", parent: root) }
+    let(:sib)   { Enliterator::Context.create!(key: "executive-orders", name: "EOs", parent: root) }
+
+    it "a root (NULL/legacy) approval is visible from a child context" do
+      Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "keywords", rationale: "r", status: "approved")
+      expect(described_class.for("summary", context: child).keys).to include("keywords")
+    end
+
+    it "a child's approval is visible to itself but NOT to a sibling or root" do
+      Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "crs_only",
+                                      rationale: "r", status: "approved", context: child)
+      expect(described_class.for("summary", context: child).keys).to include("crs_only")
+      expect(described_class.for("summary", context: sib).keys).not_to include("crs_only")
+      expect(described_class.for("summary").keys).not_to include("crs_only")
+    end
+  end
 end
