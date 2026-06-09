@@ -2,6 +2,10 @@ Enliterator::Engine.routes.draw do
   # The engine's mountable UI (v0.6). Hosts: `mount Enliterator::Engine => "/enliterator"`.
   root to: "status#index"
 
+  # The explainer (v0.10): what enliteracy is, why the collection is tended, and how
+  # compounding attention changes it now and over time. A living document.
+  get "about", to: "about#index", as: :about
+
   get "status", to: "status#index", as: :status
   # Per-record drill-down. :type/:id are separate segments so polymorphic, possibly
   # non-integer (uuid) host PKs survive routing; the id constraint allows dots/uuids.

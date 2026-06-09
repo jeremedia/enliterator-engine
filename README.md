@@ -61,8 +61,9 @@ bin/rails db:migrate
 
 ### Mounting the UI (v0.6)
 
-Mount the engine in the host's routes to get two read-only web surfaces — a **status
-browser** and a **conversation UI** — for free:
+Mount the engine in the host's routes to get four read-only web surfaces — a **status
+browser**, a **conversation UI**, a **governed-vocabulary review queue**, and an **About
+explainer** — for free:
 
 ```ruby
 # config/routes.rb
@@ -85,6 +86,9 @@ mount Enliterator::Engine => "/enliterator"
   contract immediately (the diff lets you codify it permanently), and a re-proposal of an
   already-resolved key is **suppressed** — counted under "Re-proposed after a verdict" rather than
   re-flooding the queue. Wire `enliterator:consider` after `enliterator:tend` in your scheduler.
+- `/enliterator/about` — the explainer (v0.10): what enliteracy is, why the collection is tended, and
+  how compounding attention changes it now and over time. The demo surface and a living north-star doc
+  (hand-revised each version); a live strip shows real counts from the collection it's mounted on.
 
 The UI is self-contained (inline CSS/JS, no asset-build step) and renders under any host
 pipeline. The conversation tier defaults to the staffing ladder's top tier; pin it with
