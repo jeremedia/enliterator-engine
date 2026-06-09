@@ -103,4 +103,32 @@ RSpec.describe "Enliterator status browser", type: :request do
         .and include("400 tokens")
     end
   end
+  describe "Condition — the conservation report (v0.17, adoption-gated)" do
+    it "is ABSENT until a survey has ever run" do
+      get "/enliterator/status"
+      expect(response.body).not_to include("conservation report")
+    end
+
+    it "renders coverage, piles with remediation + treatment, and the residue" do
+      Enliterator::Condition.register(:legibility, gates_tending: true) do |r|
+        { ok: r.body.present?, code: "no_text", note: "no usable text",
+          remediation: "upload the PDF" }
+      end
+      dead = Widget.create!(title: "Dead Record", body: nil)
+      Enliterator::Condition.survey_batch!([ dead, widget ])
+      Enliterator::Treatment.create!(signature: "legibility:no_text", rung: 1,
+                                     diagnosis: "These records carry no text.",
+                                     treatment: "Per the stated remediation: upload PDFs.",
+                                     confidence: 0.9, last_seen_count: 1,
+                                     sample: [ [ "Widget", dead.id.to_s, "Dead Record" ] ])
+
+      get "/enliterator/status"
+      expect(response.body).to include("conservation report")
+        .and include("legibility:no_text")
+        .and include("untendable")
+        .and include("upload the PDF")                          # the probe's remediation
+        .and include("These records carry no text.")            # the conservator's diagnosis
+        .and include("Dead Record")                             # a sample title
+    end
+  end
 end

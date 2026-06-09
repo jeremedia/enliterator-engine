@@ -93,8 +93,8 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
 ## Current state & direction
 
 - Remote: github.com/jeremedia/enliterator-engine, released through **v0.14**; **v0.15 (the
-  heartbeat) + v0.16 (the pulse monitor page + chat scope banner) built locally** — push gated
-  on Jeremy's word.
+  heartbeat) + v0.16 (the pulse monitor + chat scope banner) + v0.17 (Condition: probes/survey/
+  gate, the Conservator, the conservation report) built locally** — push gated on Jeremy's word.
 - HSDL dev: the federation is seated as a context tree (chds-theses 1,327 / crs-reports 35,020 /
   executive-orders 1,026 / election-security 82); divergence validated (EO supersession graph,
   CRS issue_for_congress); the `keywords` term ratified live as the convergence proof. HSDL-side
@@ -118,9 +118,17 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   poll loop). Execution = `execute_async!` (named thread under executor.wrap, NOT ActiveJob —
   dead worker = silent no-op; accepted: dev reload waits while a cycle runs). Also: the chat
   scope banner (the context cookie was invisible on /chat — Jeremy hit it as a user).
-- **NEXT**: first cycles supervised from the page → host launchd adoption on Jeremy's word;
-  vocabulary trigger is UNMEASURED (v0.14 tested neighbor-change only) — watch its first real
-  wave via trajectory.
+- **v0.17 — Condition** (SPEC.md v0.17): digital preservation's ladder as host probes
+  (`Condition.register`, `gates_tending:` marks the can-the-engine-read-it probe; NO short-circuit
+  — surrogates count); rollup bands 1.0/0.5/0.0; signature piles; untendable gate on ALL FIVE
+  planner queries (the url_status-flip → source_change loop is closed) + per-item execution gate;
+  survey phase first in execute! (time-boxed) + `rake enliterator:survey` (initial inventory);
+  Conservator (Considerer pattern, positional ids, remediation-as-ground-truth, delta gate) →
+  `enliterator_treatments` (no status machine — resolution is measured); conservation report on
+  Status. `Measures.register` raises on the condition namespace. `Tendable#retract_claim!`.
+- **NEXT**: HSDL probes in the initializer + supervised `enliterator:survey` → first beats with
+  the survey phase live → host launchd adoption on Jeremy's word; vocabulary trigger is
+  UNMEASURED (v0.14 tested neighbor-change only) — watch its first real wave via trajectory.
 - Known open gaps: no claim-accuracy golden set (cheap-tier conf=1.0 unexamined); `/enliterator`
   mount is auth-less (dev only — wrap in CHDS Pulse auth before staging); considerer LLM tokens
   have no usage surface (ledger records outcomes only). Trajectory caveat: clean A/B isolation

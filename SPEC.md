@@ -1149,3 +1149,76 @@ state, no migrations, no websockets** — a 2s poll.
   invisible on /chat; found by Jeremy as a user.)
 - Live on HSDL: a browser-triggered cycle watched end-to-end; second-tab overlap refusal.
 - README (surfaces), About (surfaces grid + the pulse can be pressed), CLAUDE.md current-state.
+
+# v0.17 — Condition (the collection shelf-reads itself)
+
+"Item in the card catalog but can't be found?" is digital preservation's ladder — **present →
+intact → extractable → intelligible** — and this version builds it IN to preservation's own
+practice: inventory/shelf-reading, fixity & format validation (the JHOVE/PREMIS function),
+extraction quality, and condition reports with treatment proposals written by a conservator.
+The economics close a loop: every rung a record fails at is tending spend not committed.
+Rung 4 is never probed — **the tending loop is the instrument**, and the residue (sound
+condition, repeatedly read, zero derived claims) is its reading.
+
+## 1. `Enliterator::Condition` — probes, survey, piles, residue
+- Host-registered probes (`Condition.register(:availability) { |record| {ok:, code:, signals:,
+  remediation:, note:} }`); `gates_tending: true` marks the probe that answers "can the ENGINE
+  read it." NO short-circuit: a dead link with cached text still passes legibility — the library
+  kept a surrogate. nil return = not applicable (multi-model hosts).
+- Survey cadence is its own (`survey_batch!` + `upsert_all`), never per-tend —
+  **`Measures.register` now RAISES on the condition namespace** (a per-tend measure would
+  silently clobber the survey and corrupt the gate).
+- Rollup bands, exact: **1.0 sound / 0.5 degraded** (patron-side failures only) / **0.0
+  untendable** (a gates_tending probe failed). Probe ERRORS are instrument failure: nil score,
+  excluded from the rollup, presumption of tendability.
+- **Signature** = sorted `probe:code` pairs joined `+`, computed at survey time, stored on the
+  rollup's signals — piles are one GROUP BY; no rungs or error text in the string (registry
+  renumbering and message drift must never orphan a treatment).
+- Locked `source_status` claim at **untendable only** by default (`condition_claim_scope :all`
+  opts degraded in — at a prompt-token cost on every future visit, named below); new
+  `Tendable#retract_claim!` withdraws the note when a record recovers. Resolution is MEASURED.
+
+## 2. The gate + the shelf-read cadence
+- The untendable predicate is appended to **all five** candidate queries — frontier,
+  source_change, neighborhood, vocabulary, sweep. Not just frontier: a host's link-checker
+  flipping a status column bumps `updated_at`, and an ungated source_change would re-tend the
+  records the survey just condemned (spec-pinned with exactly that scenario). Rendered only once
+  a survey has ever run — non-adopters keep byte-identical SQL. The plan names its exclusions.
+- `execute!` runs the **survey phase first** (time-boxed, `heartbeat_survey_budget_ms`; outcome
+  on the ledger's `survey` column; a survey failure warns and the cycle continues) and gates each
+  item at execution time (the plan was frozen at open!; this cycle's own survey may have
+  condemned a planned record since).
+- `rake enliterator:survey` = the retrospective conversion (initial inventory, to completion);
+  the heartbeat phase is the ongoing shelf-read.
+
+## 3. `Enliterator::Conservator` + the report
+- The Considerer pattern on the collection's condition: one decide call over the failure piles
+  (+ the residue as synthetic pile `rung4:never_understood`), writing per-pile **diagnosis** and
+  **treatment** for collections staff. The probe's `remediation` is fed in as ground truth — the
+  agent augments and prioritizes, never invents host procedures. Positional ids in prompt AND
+  schema (the signature is the upsert key; a reworded echo must never mint a phantom row).
+  Delta gate: the LLM runs only when a pile changed; sightings always recorded.
+- `enliterator_treatments` has **no status machine**: piles are LIVE — a fixed record passes its
+  next survey and leaves its pile; rows persist as the standing explanation.
+- Status gains the **conservation report** (adoption-gated): coverage, piles with the probe's
+  remediation and the conservator's treatment as visibly distinct columns, the residue, and the
+  untendable total with its queue-exclusion effect. Settings names the probes + knobs.
+
+## Named decisions
+- Condition measures enter `literacy_state` prompts post-adoption (deliberate — arguably useful
+  context; rows only exist for adopters).
+- The Visitor blank-text guard is **explicitly deferred**: the legibility probe is the opt-in
+  guard; an engine-level guard would change unadopted behavior.
+- Degraded never affects scheduling in v0.17 (a future `ORDER BY` option, one line, not taken).
+- Flapping sources chain claims (assert → retract → assert) — accepted; the piles'
+  last_seen_count will reveal whether damping is ever needed.
+- The default `:completeness` measure counts locked claims as "having a claim" — a pre-existing
+  wart v0.17 amplifies (source_status counts); noted, not fixed here.
+- Conservator/considerer LLM token usage remains untracked (no usage surface on decide).
+
+## Done = all of (this phase):
+- Condition + Conservator + gates + survey lane + report; migration (treatments, survey-ordering
+  index, partial untendable index, heartbeats.survey). 33 new examples; **393 green**.
+- HSDL probes (availability ← url_status; integrity ← docling_status; legibility ← text
+  presence) + supervised `enliterator:survey` + a beat with the survey phase live.
+- README, About ("the conservation report" — living-doc rule), CLAUDE.md.

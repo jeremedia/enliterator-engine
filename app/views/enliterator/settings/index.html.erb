@@ -117,6 +117,14 @@
     <tr><td>Per-cycle token budget</td><td><strong><%= number_with_delimiter(@config.heartbeat_budget_tokens) %></strong> <span class="muted">— enforced on ACTUAL tokens in sync mode; the cycle cannot exceed its appropriation</span></td></tr>
     <tr><td>Change share</td><td><%= (@config.heartbeat_change_share.to_f * 100).round %>% <span class="muted">— reserved for change-triggered re-tends (source change → neighborhood → vocabulary); the rest, plus anything unused, goes to the untended frontier</span></td></tr>
     <tr><td>Neighborhood threshold</td><td><%= @config.heartbeat_neighbor_threshold %> <span class="muted">— context-mates tended since a record's last visit before it re-reads (the v0.14 measured signal)</span></td></tr>
+    <tr><td>Condition survey</td><td>
+      <% if Enliterator::Condition.probes_registered? %>
+        <span class="chip tier"><%= Enliterator::Condition.registry.size %> probe(s)</span>
+        <span class="mono"><%= Enliterator::Condition.registry.keys.join(", ") %></span>
+        <span class="muted">— <%= @config.heartbeat_survey_budget_ms %>ms/cycle; catalog note at <code><%= @config.condition_claim_scope %></code></span>
+      <% else %>
+        <span class="muted">no probes registered — the collection is not shelf-reading itself yet</span>
+      <% end %></td></tr>
     <tr><td>Source-change test</td><td>
       <% if @config.heartbeat_source_changed %><span class="chip tier">host-supplied</span> <span class="muted">— the host decides when a record's text has really changed</span>
       <% else %><span class="chip">default</span> <span class="muted">— record updated_at vs the last visit's start (approximate; override with <code>heartbeat_source_changed</code>)</span><% end %></td></tr>

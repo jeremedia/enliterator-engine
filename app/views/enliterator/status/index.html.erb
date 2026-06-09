@@ -69,6 +69,64 @@
   </div>
 <% end %>
 
+<%# v0.17: the conservation report — what the shelf-read found, and what each
+    pile needs. Adoption-gated: absent until a survey has ever run. %>
+<% if @condition_adopted %>
+  <h2>Condition <span class="muted" style="font-weight:400">— the conservation report: what the shelf-read found</span></h2>
+  <div class="card">
+    <% c = @condition %>
+    <div>
+      <span class="chip">surveyed <strong><%= number_with_delimiter(c[:surveyed]) %></strong> of <%= number_with_delimiter(c[:total]) %></span>
+      <% if c[:untendable].positive? %>
+        <span class="chip" style="background:#fdeceb; color:var(--warn)">untendable <strong><%= number_with_delimiter(c[:untendable]) %></strong></span>
+        <span class="muted samples">— excluded from every tending queue until repaired</span>
+      <% end %>
+      <% if c[:residue_count].positive? %>
+        <span class="chip">read but never understood <strong><%= c[:residue_count] %></strong></span>
+      <% end %>
+    </div>
+
+    <% if c[:piles].any? || c[:residue_count].positive? %>
+      <table style="margin-top:.6rem">
+        <tr><th>pile</th><th>records</th><th>what's wrong</th><th>remediation <span class="muted samples">(probe)</span></th><th>treatment <span class="muted samples">(conservator)</span></th></tr>
+        <% c[:piles].each do |pile| %>
+          <% t = c[:treatments][pile[:signature]] %>
+          <tr>
+            <td class="mono" style="font-size:.78rem"><%= pile[:signature] %><br><span class="chip <%= 'tier' if pile[:band] == 'degraded' %>"><%= pile[:band] %></span></td>
+            <td class="big" style="font-size:1.2rem"><%= number_with_delimiter(pile[:count]) %></td>
+            <td class="samples"><%= pile[:failing].map { |probe, f| "#{probe}: #{f['note'] || f['code']}" }.join("; ") %>
+              <% if t&.sample&.any? %><div class="muted samples" style="margin-top:.25rem">e.g. <%= t.sample.filter_map { |(_ty, _id, title)| title }.first(2).join(" · ") %></div><% end %></td>
+            <td class="samples"><%= pile[:failing].values.filter_map { |f| f["remediation"] }.uniq.join(" / ").presence || "—" %></td>
+            <td class="samples">
+              <% if t&.diagnosis.present? %>
+                <strong style="font-weight:600"><%= t.diagnosis %></strong><br><%= t.treatment %>
+                <span class="muted samples">(conf <%= t.confidence&.round(2) %>)</span>
+              <% else %><span class="muted">not yet assessed</span><% end %>
+            </td>
+          </tr>
+        <% end %>
+        <% if c[:residue_count].positive? %>
+          <% t = c[:treatments][Enliterator::Condition::RESIDUE_SIGNATURE] %>
+          <tr>
+            <td class="mono" style="font-size:.78rem"><%= Enliterator::Condition::RESIDUE_SIGNATURE %><br><span class="chip">residue</span></td>
+            <td class="big" style="font-size:1.2rem"><%= c[:residue_count] %></td>
+            <td class="samples">condition sound; repeatedly read; zero derived claims — the engine could not understand these
+              <% if t&.sample&.any? %><div class="muted samples" style="margin-top:.25rem">e.g. <%= t.sample.filter_map { |(_ty, _id, title)| title }.first(2).join(" · ") %></div><% end %></td>
+            <td class="samples">—</td>
+            <td class="samples">
+              <% if t&.diagnosis.present? %>
+                <strong style="font-weight:600"><%= t.diagnosis %></strong><br><%= t.treatment %>
+              <% else %><span class="muted">not yet assessed</span><% end %>
+            </td>
+          </tr>
+        <% end %>
+      </table>
+    <% else %>
+      <div class="muted" style="margin-top:.5rem">Every surveyed record is sound — the shelf is clean.</div>
+    <% end %>
+  </div>
+<% end %>
+
 <h2>Facets</h2>
 <div class="row">
   <% s[:facets].each do |st| %>
