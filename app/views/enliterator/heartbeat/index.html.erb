@@ -150,23 +150,27 @@
     });
     reasons.textContent = chips.join(" · ");
 
-    // The visit ticker — newest first, deduped by visit id. Escalation pairs
-    // (cheap then quality on the same record) read as the loop deciding to
-    // bring more mind — the most demo-compelling thing the engine does.
+    // The visit ticker — newest first, keyed by visit id. A row appears the
+    // moment its visit OPENS (status running, no confidence yet) and updates
+    // in place as the visit finishes — the heartbeat visibly thinking.
+    // Escalation pairs (cheap then quality on the same record) read as the
+    // loop deciding to bring more mind — the most demo-compelling thing the
+    // engine does.
     (p.last_visits || []).slice().reverse().forEach(function (v) {
-      if (seen[v.id]) return;
-      seen[v.id] = true;
-      var li = document.createElement("li");
+      var li = seen[v.id];
+      var fresh = !li;
+      if (fresh) { li = document.createElement("li"); seen[v.id] = li; }
       li.innerHTML = '<span class="muted samples">' + new Date(v.at).toLocaleTimeString() + '</span> ' +
         '<span class="chip">' + v.reason + '</span> ' +
         '<strong>' + v.facet + '</strong>' +
         '<span class="muted">@' + v.context_key + '</span> ' +
         '<span class="mono">' + v.tendable + '</span> ' +
         '<span class="chip tier">' + (v.tier || "") + '</span>' +
-        (v.status === "failed" ? ' <span class="warn">failed</span>'
-                               : ' <span class="muted">conf ' + (v.confidence == null ? "—" : v.confidence) + '</span>') +
+        (v.status === "failed"  ? ' <span class="warn">failed</span>'
+         : v.status === "running" ? ' <span class="muted samples">tending…</span>'
+         : ' <span class="muted">conf ' + (v.confidence == null ? "—" : v.confidence) + '</span>') +
         (v.tokens ? ' <span class="muted samples">' + fmt(v.tokens) + ' tok</span>' : '');
-      ticker.insertBefore(li, ticker.firstChild);
+      if (fresh) ticker.insertBefore(li, ticker.firstChild);
     });
 
     if (p.finished) {
