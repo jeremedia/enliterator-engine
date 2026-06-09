@@ -71,7 +71,7 @@ module Enliterator
     # map targets, so the considerer can map a synonym onto a newly-approved key.
     def canonical_keys
       Enliterator.staffing.assignments.keys
-        .flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }.uniq.sort
+        .flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }.uniq.sort
     end
 
     def apply!(recs, canonical, terms)

@@ -1,8 +1,9 @@
-<h1>Vocabulary requests</h1>
+<h1>Authority control <span class="muted" style="font-weight:400; font-size:.95rem">— the controlled vocabulary, reviewing itself</span></h1>
 <p class="muted">
-  When a stream's vocabulary can't express something, the model files a request instead of inventing a key.
-  The <strong>considerer</strong> reads the whole field, auto-applies the safe verdicts (synonym maps,
-  confident rejects), and leaves approvals — which change the contract — for you.
+  When the established vocabulary can't express something, the model <em>proposes a term</em> rather than
+  inventing one off-list — and a term earns its place by recurring across records (literary warrant). The
+  <strong>considerer</strong> reads the whole field, auto-applies the safe verdicts (USE/UF synonym
+  references, confident rejects), and leaves the approvals — which change the vocabulary — for you.
   <strong><%= @pending %></strong> pending · <%= @resolved %> resolved.
 </p>
 
@@ -97,7 +98,7 @@
 
 <% if @additions.any? %>
   <h2>Approved &amp; live — codify in your policy</h2>
-  <p class="muted">These keys are <strong>already live</strong> in the effective contract — the model emits them as claims now. Paste them into the matching <code>stream</code> in your staffing policy initializer to make them a permanent, versioned code artifact (after which this DB-derived addition is redundant).</p>
+  <p class="muted">These terms are <strong>already live</strong> in the controlled vocabulary — the model emits them as claims now. Paste them into the matching <code>stream</code> in your staffing policy initializer to make them a permanent, versioned code artifact (after which this DB-derived addition is redundant).</p>
   <% @additions.each do |stream, keys| %>
     <div class="card">
       <div class="muted">stream <code><%= stream %></code></div>
@@ -111,10 +112,10 @@
 <% end %>
 
 <% if @synonyms.any? %>
-  <h2>Mapped (synonyms)</h2>
+  <h2>USE references <span class="muted" style="font-weight:400">— synonyms folded onto a preferred term</span></h2>
   <div class="card">
     <table>
-      <tr><th>proposed</th><th>→ canonical</th><th>stream</th></tr>
+      <tr><th>variant (UF)</th><th>USE →</th><th>stream</th></tr>
       <% @synonyms.each do |s| %>
         <tr><td><code><%= s[:proposed_key] %></code></td><td><code><%= s[:mapped_to] %></code></td><td class="samples"><%= s[:stream] %></td></tr>
       <% end %>

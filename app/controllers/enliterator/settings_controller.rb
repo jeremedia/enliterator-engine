@@ -40,7 +40,7 @@ module Enliterator
     def stream_config(stream)
       tier = @policy.tier_for(stream)
       code = @policy.keys_for(stream) || {}
-      eff  = Enliterator::Contract.for(stream) || {}
+      eff  = Enliterator::Vocabulary.for(stream) || {}
       {
         stream:   stream,
         tier:     tier,

@@ -12,7 +12,7 @@
 <div class="card">
   <% if @policy.assignments.any? %>
     <table>
-      <tr><th>stream (role)</th><th>tier</th><th>escalation climb</th><th>contract</th><th>required</th></tr>
+      <tr><th>stream (role)</th><th>tier</th><th>escalation climb</th><th>vocabulary</th><th>required</th></tr>
       <% @contracts.each do |c| %>
         <% approved_n = c[:keys].count { |k| k[:approved] } %>
         <tr>
@@ -21,9 +21,9 @@
           <td class="mono"><%= c[:climb].join(" → ") %></td>
           <td>
             <% if c[:keys].any? %>
-              <%= c[:keys].size %> key<%= "s" if c[:keys].size != 1 %><% if approved_n.positive? %> <span class="muted">(<%= approved_n %> approved)</span><% end %>
+              <%= c[:keys].size %> term<%= "s" if c[:keys].size != 1 %><% if approved_n.positive? %> <span class="muted">(<%= approved_n %> authorized)</span><% end %>
             <% else %>
-              <span class="muted">open (no contract)</span>
+              <span class="muted">open (no controlled terms)</span>
             <% end %>
           </td>
           <td class="samples"><%= c[:required].any? ? c[:required].join(", ") : "—" %></td>
@@ -37,9 +37,9 @@
   <% end %>
 </div>
 
-<h2>Vocabulary <span class="muted" style="font-weight:400">— the contract per stream, code + what's accrued</span></h2>
+<h2>Vocabulary <span class="muted" style="font-weight:400">— the controlled vocabulary per stream, code + what's accrued</span></h2>
 <% if @approved_live.positive? %>
-  <p class="muted samples"><strong><%= @approved_live %></strong> curator-approved key<%= "s" if @approved_live != 1 %> are <span class="chip" style="background:var(--accent-soft); color:var(--accent)">live</span> across these streams — in force in the contract the model sees, but not yet codified in the policy. Codify them from <%= link_to "Requests", suggestions_path %>.</p>
+  <p class="muted samples"><strong><%= @approved_live %></strong> curator-authorized term<%= "s" if @approved_live != 1 %> are <span class="chip" style="background:var(--accent-soft); color:var(--accent)">live</span> across these streams — in force in the vocabulary the model sees, but not yet codified in the policy. Codify them from <%= link_to "Requests", suggestions_path %>.</p>
 <% end %>
 <div class="row">
   <% @contracts.each do |c| %>

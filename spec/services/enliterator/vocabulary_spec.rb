@@ -4,7 +4,7 @@ require "rails_helper"
 
 # v0.9 — the effective contract: code keys + curator-approved keys. Byte-identical
 # to keys_for when nothing is approved; merges approved-key extensions otherwise.
-RSpec.describe Enliterator::Contract do
+RSpec.describe Enliterator::Vocabulary do
   let(:w) { Widget.create!(title: "A", body: "x") }
 
   before do
@@ -33,7 +33,7 @@ RSpec.describe Enliterator::Contract do
 
   it "defaults the description when the term has no rationale" do
     Enliterator::Suggestion.create!(tendable: w, stream: "summary", proposed_key: "case_studies", rationale: "r", status: "approved")
-    expect(described_class.for("summary")["case_studies"]).to eq(Enliterator::Contract::DEFAULT_DESCRIPTION)
+    expect(described_class.for("summary")["case_studies"]).to eq(Enliterator::Vocabulary::DEFAULT_DESCRIPTION)
   end
 
   it "lets code-defined keys win on a name conflict" do

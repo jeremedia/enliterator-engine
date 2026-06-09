@@ -54,7 +54,7 @@ module Enliterator
     # legal targets a synonym can map onto.
     def canonical_keys
       Enliterator.staffing.assignments.keys
-        .flat_map { |s| (Enliterator::Contract.for(s) || {}).keys }.uniq.sort
+        .flat_map { |s| (Enliterator::Vocabulary.for(s) || {}).keys }.uniq.sort
     end
 
     # Terms the model has re-proposed AFTER a curator's verdict — the suppressed
