@@ -40,4 +40,32 @@ RSpec.describe "Enliterator conversation", type: :request do
     expect(response.body).to include("event: provenance")
     expect(response.body).to include("event: done")
   end
+  describe "the scope banner (the context cookie must be LEGIBLE on the page)" do
+    let!(:root) { Enliterator::Context.create!(key: "hsdl", name: "HSDL") }
+    let!(:list) { Enliterator::Context.create!(key: "election-security", name: "Election Security", parent: root) }
+
+    it "names the selected context, its member count, and the way back out" do
+      w = Widget.create!(title: "T", body: "b")
+      w.place_in_context!(list)
+
+      get "/enliterator/chat", params: { context: "election-security" }
+      expect(response.body).to include("Asking within: Election Security")
+        .and include("1 member record(s)")
+        .and include("ask the whole collection instead")
+    end
+
+    it "states the whole-collection scope at root" do
+      get "/enliterator/chat", params: { context: "root" }
+      expect(response.body).to include("whole collection")
+      expect(response.body).not_to include("Asking within:")
+    end
+
+    it "stamps each answer's provenance event with the scope that produced it" do
+      post "/enliterator/chat/stream", params: { question: "hi", context: "election-security" }
+      expect(response.body).to include('"context":"election-security"')
+
+      post "/enliterator/chat/stream", params: { question: "hi", context: "root" }
+      expect(response.body).to include('"context":"root"')
+    end
+  end
 end

@@ -1,6 +1,25 @@
 <h1>Chat with the enliteration</h1>
 <p class="muted">A reference interview with the collection: ask about it as a whole, or about anything it has tended. Answers are grounded in the self-portrait below plus the records retrieved per question — follow a source chip to the record and ask again, the way discovery actually works.</p>
 
+<%# The scope banner. The context cookie persists silently across visits, and
+    the selected context changes EVERYTHING about this page (the self-portrait,
+    the retrieval pool, the claims read) — so the scope must be stated where
+    the conversation happens, not only in the nav's small selector. %>
+<% if current_context %>
+  <div class="card" style="padding:.6rem 1.1rem; border-left:3px solid var(--accent)">
+    <strong>Asking within: <%= current_context.name %></strong>
+    <span class="muted">— <%= @scope_count %> member record(s). Answers retrieve only this collection's
+    members, read through its lens (plus inherited claims).</span>
+    <%= link_to "ask the whole collection instead →", conversation_path(context: "root"),
+                class: "samples", style: "white-space:nowrap" %>
+  </div>
+<% else %>
+  <p class="muted samples" style="margin-top:-.4rem">
+    Asking the <strong>whole collection</strong> — every context's records are in the retrieval pool.
+    <% if context_switcher_options.any? %>Narrow to one collection with the context selector in the nav.<% end %>
+  </p>
+<% end %>
+
 <details class="card">
   <summary>What this collection knows about itself</summary>
   <pre class="mono" style="white-space:pre-wrap; margin:.6rem 0 0"><%= Enliterator::Synopsis.to_prompt(@synopsis) %></pre>
@@ -82,7 +101,16 @@
     return { md: md, prov: prov };
   }
 
-  function renderProvenance(provEl, records) {
+  function renderProvenance(provEl, records, contextKey) {
+    // Stamp the answer with the scope that produced it (non-root only — the
+    // banner above carries the root case). Self-describing transcripts.
+    if (contextKey && contextKey !== "root") {
+      var scope = document.createElement("span");
+      scope.className = "muted samples";
+      scope.style.marginRight = ".4rem";
+      scope.textContent = "asked in " + contextKey + " ·";
+      provEl.appendChild(scope);
+    }
     if (!records || !records.length) return;
     records.forEach(function (r) {
       var a = document.createElement("a");
@@ -111,7 +139,7 @@
     if (!data) return;
     var payload; try { payload = JSON.parse(data); } catch (e) { return; }
     if (ev === "token") { state.text += payload.t || ""; scheduleRender(els, state); }
-    else if (ev === "provenance") { renderProvenance(els.prov, payload.records); }
+    else if (ev === "provenance") { renderProvenance(els.prov, payload.records, payload.context); }
     else if (ev === "error") { state.text += "\n\n_[" + (payload.message || "error") + "]_"; }
   }
 
