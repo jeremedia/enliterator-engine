@@ -806,3 +806,26 @@ explanation is never abstract. Additive and self-contained (inline styling, no n
 - "About" added to the engine nav (right-aligned).
 - Specs green at 250 (was 247), ADDING `requests/enliterator/about_spec.rb` (prose renders with no data; live strip appears once tended; links the other three surfaces).
 - Revise this page every version — it is the canonical plain-language description of what the engine does.
+
+# v0.11 — Settings (the configuration surface, the fifth surface)
+
+A read-only `/enliterator/settings` window onto the accumulating configuration of THIS enliteration —
+the org chart (streams → tiers, the escalation climb per stream, required keys), the effective vocabulary
+per stream (code keys + the approved keys that have accrued through curation, each flagged code/`live`),
+routing & capability (gateway, ladder, escalation threshold, verify floor, embedding/conversation tiers,
+on-prem, context caps), the considerer's autonomy (tier, `auto_safe`, confidence floor, apply-approved),
+and tending behavior (models tended, stale_after, batch, queue, suggestion sink, the Null-LLM guard).
+Configuration is code (the host initializer); this surface reflects it and does not edit it — the one
+thing that genuinely accumulates at runtime, the approved vocabulary, is governed on Requests. (This is
+also the seed surface for the coming context tree: it is, today, the ROOT context's settings.)
+
+Fidelity note (asymmetric observability): "Models tended" reads from the Visit log
+(`Visit.distinct.pluck(:tendable_type)`), not the in-memory `tendable_models` registry — the registry
+fills only as model classes autoload (lazy in dev), so the visit log is the truer authority for "what
+this enliteration actually works on."
+
+## Done = all of (this phase):
+- `SettingsController#index` (pure-read introspection of `configuration` + `staffing` + effective `Contract.for`) + route + `app/views/enliterator/settings/index.html.erb`.
+- "Settings" added to the engine nav (grouped right with About).
+- Specs green at 254 (was 250), ADDING `requests/enliterator/settings_spec.rb` (org chart renders; considerer/guard shown; approved key marked live; links to Requests).
+- README: fifth surface in the mounting list.

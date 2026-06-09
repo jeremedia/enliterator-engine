@@ -93,7 +93,8 @@
     <%= link_to "Status", root_path %>
     <%= link_to "Chat", conversation_path %>
     <%= link_to "Requests", suggestions_path %>
-    <%= link_to "About", about_path, style: "margin-left:auto" %>
+    <%= link_to "Settings", settings_path, style: "margin-left:auto" %>
+    <%= link_to "About", about_path %>
   </nav>
   <main class="enl">
     <% flash.each do |type, msg| %>
