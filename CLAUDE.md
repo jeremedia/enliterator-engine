@@ -92,19 +92,26 @@ claims/visits, per-context facets, membership-scoped neighbors — rule: NULL co
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, released through **v0.12** (v0.13 contexts +
-  v0.14 trajectory committed locally; push gated).
+- Remote: github.com/jeremedia/enliterator-engine, released through **v0.14**.
 - HSDL dev: the federation is seated as a context tree (chds-theses 1,327 / crs-reports 35,020 /
   executive-orders 1,026 / election-security 82); divergence validated (EO supersession graph,
-  CRS issue_for_congress); the `keywords` term ratified live as the convergence proof.
+  CRS issue_for_congress); the `keywords` term ratified live as the convergence proof. HSDL-side
+  work is committed locally on `enliterator-integration` (UNPUSHED — gated).
 - **Deadline shaping the build**: FEDLINK talk (Library of Congress) **2026-07-14** — the audience
   is federal librarians; speak their language (authority control, finding aids, literary warrant).
-- v0.14 adds the measurement instrument (`Trajectory`, `Trajectory::Judge`, the "Understanding
-  over time" drill-down) + the HSDL two-arm compounding experiment (arm A neighbor-enriched vs
-  arm B control) whose report GATES v0.15 (the heartbeat).
-- Known open gaps (deliberate): no scheduler/heartbeat yet (hand-cranked until the compounding
-  report says what to trigger on); no claim-accuracy golden set; `/enliterator` mount is auth-less
-  (dev only — wrap in CHDS Pulse auth before staging).
+- **v0.14 ran the compounding experiment** (SPEC.md "v0.14 findings"): zero churn (re-visits safe);
+  no free compounding from re-reading (unchanged surroundings ⇒ NOOP); deepening tracks
+  surroundings-change; first attention dwarfs re-attention (158 claims pass 1 vs 13 after).
+- **NEXT: v0.15 — the EVENT-DRIVEN heartbeat** (the experiment's gate verdict). Not wall-clock:
+  (1) frontier-first — work the untended members of each context (35K CRS waiting);
+  (2) re-tend ON CHANGE — a record's context-mates got tended / a vocabulary approval landed on
+  its facet / the record's text changed; (3) `stale_after` demoted to a slow safety-net sweep;
+  (4) a per-cycle SPEND CAP and the trajectory surface as the standing watch instrument.
+  All trigger signals are already derivable from existing tables (Visits per context since t,
+  Suggestion status transitions, record updated_at vs last_tended_at).
+- Known open gaps: no claim-accuracy golden set; `/enliterator` mount is auth-less (dev only —
+  wrap in CHDS Pulse auth before staging). Trajectory caveat: clean A/B isolation needs
+  context-facet-only comparison (root facets use corpus-wide neighbors).
 - Deferred by design: SKOS/BT/NT syndetic structure, LRM/WEMI, the cross-record flywheel,
   per-scope tended-counts on inherited facets, genre-intrinsic→root claim promotion.
 
