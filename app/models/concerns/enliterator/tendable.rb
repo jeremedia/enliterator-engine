@@ -103,6 +103,20 @@ module Enliterator
       end
     end
 
+    # Retract a host-asserted claim (v0.17): tombstone the live claim for
+    # `key` in the given scope — `status: "superseded"` with no successor,
+    # exactly the loop's own DELETE shape, so trajectory/state reconstruction
+    # reads it correctly. The missing inverse of assert_claim!: a condition
+    # survey that asserts source_status when a record fails must be able to
+    # withdraw the note when the record recovers. No-op (nil) when no live
+    # claim exists.
+    def retract_claim!(key:, context: nil)
+      claim = enliterator_claims.live.find_by(key: key, context_id: context&.id)
+      return nil if claim.nil?
+      claim.update!(status: "superseded")
+      claim
+    end
+
     class_methods do
       def enliterator_tendable? = true
     end
