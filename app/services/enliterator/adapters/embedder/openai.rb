@@ -73,7 +73,10 @@ module Enliterator
 
           # Pass base_url only when set so we inherit the gem's default
           # (https://api.openai.com/v1) when the host hasn't pointed us at a gateway.
-          opts = { api_key: @api_key || ENV["OPENAI_API_KEY"] }
+          # v0.23: bounded calls — same discipline as the LLM gateway client.
+          opts = { api_key: @api_key || ENV["OPENAI_API_KEY"],
+                   timeout: Enliterator.configuration.gateway_timeout,
+                   max_retries: Enliterator.configuration.gateway_max_retries }
           opts[:base_url] = @base_url if @base_url
           ::OpenAI::Client.new(**opts)
         end

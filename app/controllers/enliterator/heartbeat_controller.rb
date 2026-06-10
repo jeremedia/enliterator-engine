@@ -12,6 +12,10 @@ module Enliterator
     STALL_AFTER = 5.minutes
 
     def index
+      # v0.23: the page heals on view — orphaned rows (process died
+      # mid-cycle) get their honest ending stamped before anything renders.
+      Enliterator::Heartbeat.reap_orphans!
+
       # The blocking predicate IS the lock's predicate (unfinished AND inside
       # the overlap window). An open row OLDER than the window is crash
       # evidence — it renders in the recent table, not as a live monitor that
@@ -65,13 +69,21 @@ module Enliterator
           tendable: "#{v.tendable_type}/#{v.tendable_id}", tier: v.tier,
           confidence: v.confidence, status: v.status, applied: v.applied,
           reason: v.reason, tokens: v.tokens.is_a?(Hash) ? v.tokens["total"].to_i : 0,
-          at: v.created_at.iso8601
+          at: v.created_at.iso8601,
+          # v0.23: pre-formatted in the APP zone — the browser's system zone
+          # may differ (the launchd Central-vs-Pacific gotcha reached the
+          # ticker: header 09:33, rows "11:41").
+          at_label: v.created_at.strftime("%H:%M:%S")
         }
       end
 
       payload = {
         id: row.id, mode: row.mode, started_at: row.started_at.iso8601,
         finished: row.finished?, error: row.error,
+        # v0.23: the actual phase + liveness — the monitor can say "running
+        # audit…" and the stall banner fires in phases that produce no visits.
+        phase: row.phase,
+        pulse_at: row.pulse_at&.iso8601,
         planned_count: row.planned_count,
         planned_by_reason: row.planned.dig("counts") || {},
         done_by_reason: done_by_reason,
@@ -79,7 +91,8 @@ module Enliterator
         tokens_total: visits.sum { |v| v.tokens.is_a?(Hash) ? v.tokens["total"].to_i : 0 },
         budget_tokens: row.budget_tokens,
         last_visit_at: visits.maximum(:created_at)&.iso8601,
-        stalled: !row.finished? && (visits.maximum(:created_at) || row.started_at) < STALL_AFTER.ago,
+        stalled: !row.finished? &&
+                 (row.pulse_at || visits.maximum(:created_at) || row.started_at) < STALL_AFTER.ago,
         last_visits: last_visits
       }
       if row.finished?

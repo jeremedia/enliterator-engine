@@ -12,11 +12,22 @@ module Enliterator
     # A cycle whose first items ALL fail is a misconfiguration, not a workload —
     # abort before burning the budget on it.
     EARLY_FAILURE_LIMIT = 5
+    # v0.23: an unfinished row whose last sign of life (pulse_at) is older
+    # than this is an ORPHAN — its process died (restart, kill) without a
+    # chance to stamp the ledger. Generous against the slowest legitimate
+    # gap (one quality-tier call under the configured gateway timeout).
+    REAP_AFTER = 15.minutes
 
     # Raised when an unfinished cycle younger than the window exists. Loud by
     # design: doubled spend through the budget instrument is the one failure
     # the instrument exists to prevent. Pass force: true to override.
     class Overlap < StandardError; end
+
+    # v0.23: raised inside a cycle's own loops when its row has been reaped
+    # by another process — the zombie case: a gracefully-draining old server
+    # process whose thread keeps tending after a reaper declared it dead.
+    # Standing down stops the spend; the row already ended honestly.
+    class StoodDown < StandardError; end
 
     has_many :visits, class_name: "Enliterator::Visit", dependent: :nullify
 
@@ -62,6 +73,10 @@ module Enliterator
       transaction do
         connection.execute("SELECT pg_advisory_xact_lock(hashtext('enliterator_heartbeat'))")
 
+        # v0.23: bury the dead first — an orphaned row (process killed
+        # mid-cycle) must not block a new beat for the rest of the window.
+        reap_orphans!
+
         open = unfinished.where("started_at > ?", OVERLAP_WINDOW.ago).order(:started_at).last
         if open && !force
           raise Overlap, "heartbeat ##{open.id} is still open (started #{open.started_at.iso8601}) — " \
@@ -79,6 +94,40 @@ module Enliterator
         )
         [ row, the_plan ]
       end
+    end
+
+    # v0.23: stamp every orphaned row — unfinished, with no sign of life for
+    # REAP_AFTER. The COALESCE covers pre-v0.23 rows (no pulse_at; updated_at
+    # = their last phase stamp). Returns the reaped rows. Called from open!
+    # (a dead row must not block the next beat) and the monitor page (the UI
+    # heals on view).
+    def self.reap_orphans!
+      unfinished.where("COALESCE(pulse_at, updated_at, started_at) < ?", REAP_AFTER.ago)
+                .order(:id).map(&:reap!)
+    end
+
+    # The honest ending for a cycle whose process died: finished_at = the
+    # last sign of life, the death phase named, and `executed` RECONSTRUCTED
+    # from the visit record — the ledger heals from its own provenance.
+    def reap!
+      last_life  = pulse_at || updated_at || started_at
+      died_in    = phase.presence || "unknown (pre-v0.23 row)"
+      reconstructed = Hash.new { |h, k| h[k] = { "succeeded" => 0, "failed" => 0, "skipped" => 0, "enqueued" => 0 } }
+      visits.group(:reason, :status).count.each do |(reason, status), n|
+        reconstructed[reason || "unknown"][status] = n if reconstructed[reason || "unknown"].key?(status)
+      end
+      update!(
+        finished_at:  last_life,
+        phase:        nil,
+        executed:     reconstructed,
+        tokens_spent: mode == "sync" ? actual_tokens
+                                     : { "note" => "enqueue mode — derive via Visit.where(heartbeat_id: #{id})" },
+        error:        "orphaned in phase '#{died_in}' — the process ended mid-cycle " \
+                      "(last sign of life #{last_life.iso8601}); executed counts reconstructed from visits"
+      )
+      log("reaped: orphaned in '#{died_in}', last life #{last_life.iso8601}, " \
+          "#{visits.count} visit(s) on the record")
+      self
     end
 
     def self.config_snapshot
@@ -110,12 +159,18 @@ module Enliterator
       run_warnings = []
 
       begin
-        survey_phase!(run_warnings)
-        work_items!(plan, counts, run_warnings)
-        consider!(run_warnings) unless skip_consider
-        conserve! unless skip_consider
-        audit_phase!(run_warnings)
+        pulse!("survey")      ; survey_phase!(run_warnings)
+        pulse!("work")        ; work_items!(plan, counts, run_warnings)
+        pulse!("considerer")  ; consider!(run_warnings) unless skip_consider
+        pulse!("conservator") ; conserve! unless skip_consider
+        pulse!("audit")       ; audit_phase!(run_warnings)
+        pulse!("finalize")
         drain_deficit_check!(run_warnings) if mode == "enqueue"
+      rescue StoodDown => e
+        # The row was reaped by another process — it already ended honestly;
+        # stamping anything now would overwrite the reaper's record.
+        log("standing down: #{e.message}")
+        raise
       rescue => e
         finalize!(counts, run_warnings, error_message: "#{e.class}: #{e.message}")
         raise
@@ -170,6 +225,7 @@ module Enliterator
       stats = { "surveyed" => 0, "untendable" => 0, "degraded" => 0 }
 
       loop do
+        pulse!("survey")
         elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round
         break if elapsed_ms >= budget_ms
         batch = Enliterator::Condition.survey_due(limit: 2_000)
@@ -187,6 +243,7 @@ module Enliterator
       update!(survey: stats)
       log("survey: #{stats.map { |k, v| "#{k}=#{v}" }.join(' ')}")
     rescue => e
+      raise if e.is_a?(StoodDown)   # a reaped row stands down, never continues
       # The survey must never kill the tending cycle — record and continue.
       run_warnings << "survey phase failed: #{e.class}: #{e.message}"
       log(run_warnings.last)
@@ -195,6 +252,8 @@ module Enliterator
     def work_items!(plan, counts, run_warnings)
       total_failed = 0
       plan.items.each_with_index do |item, i|
+        stand_down_check!
+        pulse!("work")
         if mode == "sync" && actual_tokens_spent >= budget_tokens
           left = plan.items.size - i
           run_warnings << "budget reached on actuals after #{i} item(s) — #{left} left for the next cycle"
@@ -261,6 +320,8 @@ module Enliterator
 
       outcomes = {}
       scopes.each do |ctx_id|
+        stand_down_check!
+        pulse!("considerer")
         ctx = ctx_id && Enliterator::Context.find_by(id: ctx_id)
         key = ctx&.key || "root"
         outcomes[key] = Enliterator::Considerer.new(context: ctx).consider!
@@ -287,9 +348,28 @@ module Enliterator
       log(run_warnings.last)
     end
 
+    # v0.23: every phase boundary and every loop iteration touches the row —
+    # pulse_at is the liveness signal the reaper and the stall banner read,
+    # in phases that produce visits and phases that don't alike.
+    # update_columns: no callbacks, no updated_at churn, one cheap UPDATE.
+    def pulse!(phase_name)
+      update_columns(pulse_at: Time.current, phase: phase_name)
+    end
+
+    # v0.23: the zombie check — if another process reaped this row (stamped
+    # error), this thread is a ghost of a dead cycle and must stop spending.
+    # One indexed pick per LLM call; trivial next to the call itself.
+    def stand_down_check!
+      reaped = self.class.where(id: id).pick(:error)
+      return unless reaped
+      raise StoodDown, "cycle ##{id} was reaped by another process (#{reaped[0, 80]}) — standing down"
+    end
+
     def finalize!(counts, run_warnings, error_message: nil)
       update!(
         finished_at:  Time.current,
+        pulse_at:     Time.current,
+        phase:        nil,
         executed:     counts,
         tokens_spent: mode == "sync" ? actual_tokens
                                      : { "note" => "enqueue mode — derive via Visit.where(heartbeat_id: #{id})" },
@@ -334,6 +414,8 @@ module Enliterator
       examiner = Enliterator::Audit::Examiner.new
       stats = Hash.new(0)
       sample[:claims].each do |claim|
+        stand_down_check!
+        pulse!("audit")
         outcome = begin
           examiner.examine!(claim, heartbeat: self)
         rescue => e
@@ -357,6 +439,7 @@ module Enliterator
       end
       log("audit: #{payload.map { |k, v| "#{k}=#{v}" }.join(' ')}")
     rescue => e
+      raise if e.is_a?(StoodDown)   # a reaped row stands down, never continues
       run_warnings << "audit phase failed: #{e.class}: #{e.message}"
       log(run_warnings.last)
     end

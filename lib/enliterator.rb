@@ -148,6 +148,14 @@ module Enliterator
     # kept and the meta says so (an honest cap, never a silent one).
     attr_accessor :atlas_node_cap
 
+    # ---- v0.23 Bounded gateway calls ----------------------------------------
+
+    # Per-request timeout (seconds) and retry count for the gateway + embedder
+    # clients. The openai gem's defaults (600s × retries) let one wedged call
+    # stall a heartbeat phase for tens of minutes with no sign of life; a
+    # bounded call becomes a COUNTED failure instead of a hung cycle.
+    attr_accessor :gateway_timeout, :gateway_max_retries
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -189,6 +197,8 @@ module Enliterator
       @audit_tier = nil
       @audit_source_chars = 24_000
       @atlas_node_cap = 1_500
+      @gateway_timeout = 180
+      @gateway_max_retries = 1
     end
 
     def logger
