@@ -315,3 +315,36 @@ namespace :enliterator do
          "#{data[:meta][:edge_count]} connection(s), #{(File.size(path) / 1024.0).round} KB)"
   end
 end
+
+namespace :enliterator do
+  # v0.22: portability — move the enliteration between deployments instead of
+  # re-buying the inference. Export everything learned (claims + provenance,
+  # vocabulary, audits, embeddings; the condition register stays home by
+  # design) into ONE archive; import it on a fresh deployment.
+  #
+  #   bin/rails enliterator:export FILE=tmp/enliteration.tar
+  #   MEASURES=1 bin/rails enliterator:export        # include the condition register
+  #   bin/rails enliterator:import FILE=tmp/enliteration.tar
+  #   FORCE=1 bin/rails enliterator:import ...       # truncate + replace a non-empty target
+  desc "Export the enliteration to one archive. FILE= MEASURES=1"
+  task export: :environment do
+    path = ENV["FILE"].presence || "tmp/enliteration.tar"
+    FileUtils.mkdir_p(File.dirname(path))
+    manifest = Enliterator::Portability.export(path, measures: ENV["MEASURES"].present?)
+    rows = manifest["tables"].values.sum { |t| t["rows"] }
+    puts "enliteration → #{path} (#{manifest['tables'].size} tables, #{rows} rows, " \
+         "#{(File.size(path) / 1024.0 / 1024).round(1)} MB)"
+  end
+
+  desc "Import an enliteration archive. FILE= FORCE=1"
+  task import: :environment do
+    path = ENV["FILE"].presence || "tmp/enliteration.tar"
+    abort "no archive at #{path} (FILE=...)" unless File.exist?(path)
+    manifest = Enliterator::Portability.import(path, force: ENV["FORCE"].present?)
+    puts "imported #{manifest['tables'].size} tables from #{manifest['host']} " \
+         "(exported #{manifest['generated_at']})"
+    unless manifest["tables"].key?("enliterator_measures")
+      puts "condition register not imported (by design) — run: bin/rails enliterator:survey"
+    end
+  end
+end

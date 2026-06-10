@@ -298,6 +298,20 @@ unchanged for hosts that prefer it. The job is `retry_on StandardError`
 (polynomial backoff, 3 attempts) and `discard_on
 ActiveJob::DeserializationError` (the record was deleted between enqueue and run).
 
+### Portability (v0.22 — move the enliteration, don't re-buy it)
+
+Everything the engine has learned is spent inference and curation; a fresh
+deployment should inherit it. `rake enliterator:export FILE=enliteration.tar`
+writes one archive (manifest + per-table PostgreSQL binary COPY streams —
+claims with their provenance chains, visits, the ratified vocabulary, audits,
+embeddings). On the target: `rake enliterator:import FILE=...` (refuses a
+non-empty target; `FORCE=1` replaces), ids preserved, sequences continuing
+after the imported history. The condition register deliberately stays home —
+it must describe the *target's* files; run `enliterator:survey` there.
+Deploying a host app for the first time? The checklist: push/bundle the engine
+version the initializer expects, wrap the mount in auth, set the gateway key,
+adopt a scheduler for the heartbeat, then import the enliteration.
+
 ## Staffing & Routing
 
 Routing is not a config knob — it is a first-class **org chart**. A tending
