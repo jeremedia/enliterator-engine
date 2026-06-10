@@ -1,0 +1,42 @@
+<%# The standalone Atlas export (v0.21) — ONE self-contained file, no server,
+    no dependencies: open it in any browser. Rendered by `rake
+    enliterator:atlas[FILE]` with the data embedded; record click-through is
+    disabled (there is nothing to click through to). %>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas — <%= @title %></title>
+  <style>
+    :root { --line: #1e293b; }
+    body { margin: 0; background: #0b0f1a; color: #cbd5e1;
+           font-family: system-ui, -apple-system, sans-serif; }
+    header.atlas-head { padding: 1rem 1.2rem .6rem; }
+    header.atlas-head h1 { margin: 0; font-size: 1.15rem; color: #f1f5f9; }
+    header.atlas-head p  { margin: .3rem 0 0; font-size: .85rem; color: #64748b; max-width: 70rem; }
+    main { padding: 0 1.2rem 1.2rem; }
+    footer.atlas-foot { padding: .6rem 1.2rem 1.2rem; font-size: .78rem; color: #475569; }
+    .atlas-stage canvas { height: 80vh !important; }
+  </style>
+</head>
+<body>
+  <header class="atlas-head">
+    <h1>Atlas — <%= @title %></h1>
+    <p>
+      The enliterated collection, drawn. Records are nodes; claims that name things are typed
+      edges; the edge types are the controlled vocabulary. Hover an edge for its provenance —
+      who asserted it, when, at what confidence, and the audit verdict where one exists. Press
+      replay to watch the collection learn.
+    </p>
+  </header>
+  <main>
+    <%= render "enliterator/atlas/viewer", atlas: @atlas, embedded: true %>
+  </main>
+  <footer class="atlas-foot">
+    Prepared <%= Time.current.strftime("%Y-%m-%d %H:%M") %> ·
+    <%= @atlas[:meta][:records] %> records · <%= @atlas[:meta][:claims_considered] %> claims considered ·
+    Enliterator (the collection, tended) — every edge carries its provenance.
+  </footer>
+</body>
+</html>

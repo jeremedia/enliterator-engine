@@ -103,7 +103,15 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   Synopsis.build + Condition.report serve from Rails.cache keyed by latest heartbeat id +
   5-min TTL (Solid Cache in HSDL dev; null store recomputes — and the memory-store spec caught
   Report.summary returning an unmarshalable default-proc hash, fixed at source);
-  ProposedTerm.refresh!'s per-key resurged COUNT batched to one JOIN. **431 examples.**
+  ProposedTerm.refresh!'s per-key resurged COUNT batched to one JOIN. v0.21 = the Atlas
+  (ninth surface, /enliterator/atlas): the claim store drawn as a labeled property graph —
+  records as nodes, entity-bearing claims as typed edges (the vocabulary IS the legend),
+  every edge carrying tier/conf/asserted-at/audit-verdict, time slider replays the collection
+  learning; `Enliterator::Atlas` is host-generic (adaptive entity-bearing keys; resolution via
+  IDENTIFIER-pattern claim values + titles — attribute claims must never enter the index or
+  they self-resolve into silence, spec-pinned); inline vanilla-JS canvas force sim (no D3 —
+  hard rule 2); `rake enliterator:atlas FILE=` exports ONE self-contained HTML (the shareable
+  artifact for AWS/HSDL staff). **448 examples.**
   **The pacemaker is LIVE and VERIFIED**: launchd `app.domt.hsdl-ai-enliterator-heartbeat` beats
   HSDL nightly; first unattended cycle (2026-06-10) ran clean — 53/53, 173K/200K actual tokens,
   all phases on the ledger, zero warnings. Gotcha: launchd fires on the SYSTEM clock (Central,

@@ -1,0 +1,405 @@
+<%# The Atlas viewer (v0.21) — dark-canvas force-directed graph, 100% inline
+    (hard rule 2: no D3, no CDN; the engine owns its ~300-line simulation).
+    Dual-mode: rendered live inside the engine layout, or standalone in the
+    exported file (locals: atlas:, embedded:). Records click through to the
+    status drill-down in live mode only. %>
+<style>
+  .atlas-wrap { background:#0b0f1a; border:1px solid var(--line, #ddd); border-radius:10px;
+                overflow:hidden; color:#cbd5e1; }
+  .atlas-bar  { display:flex; gap:.8rem; align-items:center; flex-wrap:wrap;
+                padding:.5rem .8rem; background:#0e1422; border-bottom:1px solid #1e293b;
+                font-size:.85rem; }
+  .atlas-bar input[type="search"] { font:inherit; background:#0b0f1a; color:#e2e8f0;
+                border:1px solid #1e293b; border-radius:6px; padding:.25rem .5rem; width:14rem; }
+  .atlas-bar input[type="range"]  { width:16rem; accent-color:#ec6aa0; }
+  .atlas-bar button { font:inherit; background:#1e293b; color:#e2e8f0; border:none;
+                border-radius:6px; padding:.2rem .7rem; cursor:pointer; }
+  .atlas-bar .atlas-date { font-variant-numeric:tabular-nums; color:#94a3b8; min-width:6.5rem; }
+  .atlas-stats { margin-left:auto; color:#64748b; font-size:.8rem; }
+  .atlas-stage { position:relative; }
+  .atlas-stage canvas { display:block; width:100%; height:74vh; cursor:grab; }
+  .atlas-stage canvas.dragging { cursor:grabbing; }
+  .atlas-tip  { position:absolute; pointer-events:none; background:#0e1422ee; color:#e2e8f0;
+                border:1px solid #1e293b; border-radius:8px; padding:.45rem .6rem;
+                font-size:.78rem; max-width:24rem; display:none; line-height:1.45; z-index:5; }
+  .atlas-tip .t-kind { color:#64748b; }
+  .atlas-tip .t-prov { color:#94a3b8; }
+  .atlas-legend { display:flex; gap:.35rem .9rem; flex-wrap:wrap; padding:.55rem .8rem;
+                background:#0e1422; border-top:1px solid #1e293b; font-size:.78rem; }
+  .atlas-legend .lg { display:inline-flex; align-items:center; gap:.35rem; cursor:pointer;
+                color:#cbd5e1; user-select:none; }
+  .atlas-legend .lg.off { opacity:.32; }
+  .atlas-legend .sw { width:.7rem; height:.7rem; border-radius:50%; display:inline-block; }
+  .atlas-legend .sw.diamond { border-radius:2px; transform:rotate(45deg); width:.6rem; height:.6rem; }
+  .atlas-legend .lg-sep { color:#334155; align-self:center; }
+  .atlas-warn { padding:.4rem .8rem; background:#0e1422; color:#fbbf24; font-size:.78rem;
+                border-top:1px solid #1e293b; }
+  .atlas-empty { padding:3rem 1rem; text-align:center; color:#64748b; }
+</style>
+
+<div class="atlas-wrap">
+  <div class="atlas-bar">
+    <input type="search" id="atlas-search" placeholder="find a record or entity…" autocomplete="off">
+    <button id="atlas-play" title="replay the collection learning">▶ replay</button>
+    <input type="range" id="atlas-time" min="0" max="1000" value="1000">
+    <span class="atlas-date" id="atlas-date"></span>
+    <span class="atlas-stats" id="atlas-stats"></span>
+  </div>
+  <div class="atlas-stage">
+    <canvas id="atlas-canvas"></canvas>
+    <div class="atlas-tip" id="atlas-tip"></div>
+  </div>
+  <div class="atlas-legend" id="atlas-legend"></div>
+  <div class="atlas-warn" id="atlas-warn" style="display:none"></div>
+</div>
+
+<script>
+  window.ATLAS_DATA = <%= raw ERB::Util.json_escape(atlas.to_json) %>;
+  window.ATLAS_EMBEDDED = <%= embedded ? "true" : "false" %>;
+</script>
+<script>
+(function () {
+  "use strict";
+  const data = window.ATLAS_DATA, embedded = window.ATLAS_EMBEDDED;
+  const stage = document.querySelector(".atlas-stage");
+  if (!data.nodes.length) {
+    stage.innerHTML = '<div class="atlas-empty">Nothing tended yet — the atlas draws itself as the heartbeat reads the collection.</div>';
+    document.getElementById("atlas-stats").textContent = "0 nodes";
+    return;
+  }
+
+  // ---- palette: record groups (contexts) take the vivid hues, entity groups follow
+  const PALETTE = ["#34d399","#60a5fa","#fbbf24","#f87171","#a78bfa","#22d3ee","#fb923c","#e879f9","#4ade80","#38bdf8","#facc15","#fda4af"];
+  const CONTEXT_COLOR = "#ec6aa0", ENTITY_DIM = "#7c8aa0";
+  const recGroups = [...new Set(data.nodes.filter(n => n.kind === "record").map(n => n.group))].sort();
+  const entGroups = [...new Set(data.nodes.filter(n => n.kind === "entity").map(n => n.group))].sort();
+  const color = {};
+  recGroups.forEach((g, i) => color["r:" + g] = PALETTE[i % PALETTE.length]);
+  entGroups.forEach((g, i) => color["e:" + g] = PALETTE[(recGroups.length + i) % PALETTE.length]);
+  const nodeColor = n => n.kind === "context" ? CONTEXT_COLOR
+                       : n.kind === "record"  ? color["r:" + n.group]
+                       : color["e:" + n.group] || ENTITY_DIM;
+
+  // ---- graph setup
+  const nodes = data.nodes.map(n => Object.assign({ x: 0, y: 0, vx: 0, vy: 0 }, n));
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const edges = data.edges.map(e => Object.assign({}, e, { a: byId.get(e.s), b: byId.get(e.t) }))
+                          .filter(e => e.a && e.b);
+  const degree = new Map();
+  edges.forEach(e => { degree.set(e.s, (degree.get(e.s) || 0) + 1); degree.set(e.t, (degree.get(e.t) || 0) + 1); });
+  const radius = n => n.kind === "context" ? 14
+                    : n.kind === "record"  ? Math.min(4 + Math.sqrt(n.size) * 1.8, 13)
+                    : Math.min(2.5 + Math.sqrt(degree.get(n.id) || 1) * 1.2, 9);
+  nodes.forEach(n => { n.r = radius(n); n.m = 1 + n.r * 0.35; });
+
+  // initial positions: context hubs on a ring; members near their hub; entities near a source
+  const ctxNodes = nodes.filter(n => n.kind === "context");
+  ctxNodes.forEach((c, i) => {
+    const a = (i / Math.max(ctxNodes.length, 1)) * Math.PI * 2;
+    c.x = Math.cos(a) * 320; c.y = Math.sin(a) * 320;
+  });
+  const hubOf = new Map();
+  edges.forEach(e => { if (e.key === "in-context") hubOf.set(e.s, e.b); });
+  nodes.forEach(n => {
+    if (n.kind === "context") return;
+    const hub = hubOf.get(n.id);
+    const cx = hub ? hub.x : 0, cy = hub ? hub.y : 0;
+    n.x = cx + (Math.random() - 0.5) * 280; n.y = cy + (Math.random() - 0.5) * 280;
+  });
+  edges.forEach(e => { if (e.b.kind === "entity" && e.b.x === 0 && e.b.y === 0) { e.b.x = e.a.x + (Math.random() - 0.5) * 90; e.b.y = e.a.y + (Math.random() - 0.5) * 90; } });
+
+  // ---- state
+  const hiddenGroups = new Set();
+  const tr = data.meta.time_range || [0, 1];
+  let tCur = tr[1], alpha = 1, settled = false, needsDraw = true;
+  let searchTerm = "", hover = null, hoverEdge = null;
+  let view = { x: 0, y: 0, k: 1 };
+
+  const groupKey = n => n.kind === "context" ? "__ctx__" : (n.kind === "entity" ? "e:" : "r:") + n.group;
+  const nodeVisible = n => n.at <= tCur && !hiddenGroups.has(groupKey(n));
+  const edgeVisible = e => e.at <= tCur && nodeVisible(e.a) && nodeVisible(e.b);
+
+  // ---- simulation (grid-bucketed repulsion + springs + hub gravity)
+  function tick() {
+    const cell = 95, grid = new Map();
+    const vis = nodes.filter(nodeVisible);
+    vis.forEach(n => {
+      const k = Math.floor(n.x / cell) + ":" + Math.floor(n.y / cell);
+      (grid.get(k) || grid.set(k, []).get(k)).push(n);
+    });
+    vis.forEach(n => {
+      let fx = -n.x * 0.0035, fy = -n.y * 0.0035;          // centering
+      const gx = Math.floor(n.x / cell), gy = Math.floor(n.y / cell);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const bucket = grid.get((gx + dx) + ":" + (gy + dy));
+        if (!bucket) continue;
+        for (const o of bucket) {
+          if (o === n) continue;
+          let ddx = n.x - o.x, ddy = n.y - o.y;
+          let d2 = ddx * ddx + ddy * ddy;
+          if (d2 < 1) { ddx = Math.random() - 0.5; ddy = Math.random() - 0.5; d2 = 1; }
+          if (d2 > cell * cell * 2.6) continue;
+          const f = 340 / d2;
+          fx += ddx * f; fy += ddy * f;
+        }
+      }
+      n.fx = fx; n.fy = fy;
+    });
+    edges.forEach(e => {
+      if (!edgeVisible(e)) return;
+      const rest = e.key === "in-context" ? 130 : (e.b.kind === "record" ? 95 : 55);
+      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const f = (d - rest) * 0.05;
+      const ux = dx / d, uy = dy / d;
+      e.a.fx += ux * f; e.a.fy += uy * f;
+      e.b.fx -= ux * f; e.b.fy -= uy * f;
+    });
+    let energy = 0;
+    vis.forEach(n => {
+      if (n.pinned) { n.vx = n.vy = 0; return; }
+      n.vx = (n.vx + (n.fx || 0) / n.m) * 0.55;
+      n.vy = (n.vy + (n.fy || 0) / n.m) * 0.55;
+      n.x += n.vx * alpha * 1.6; n.y += n.vy * alpha * 1.6;
+      energy += Math.abs(n.vx) + Math.abs(n.vy);
+    });
+    alpha *= 0.995;
+    if (alpha < 0.03 || energy / Math.max(vis.length, 1) < 0.02) settled = true;
+    needsDraw = true;
+  }
+  function reheat(a) { alpha = Math.max(alpha, a); settled = false; }
+
+  // ---- rendering
+  const canvas = document.getElementById("atlas-canvas");
+  const ctx = canvas.getContext("2d");
+  let W = 0, H = 0;   // CSS-pixel canvas size, cached (rect reads per frame thrash layout)
+  function resize() {
+    const dpr = window.devicePixelRatio || 1, rect = canvas.getBoundingClientRect();
+    W = rect.width; H = rect.height;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    needsDraw = true;
+  }
+  window.addEventListener("resize", resize);
+
+  const sx = x => (x + view.x) * view.k + W / 2;
+  const sy = y => (y + view.y) * view.k + H / 2;
+  const wx = px => (px - W / 2) / view.k - view.x;
+  const wy = py => (py - H / 2) / view.k - view.y;
+
+  const matches = n => searchTerm && n.label.toLowerCase().includes(searchTerm);
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#0b0f1a"; ctx.fillRect(0, 0, W, H);
+    const neighbors = new Set();
+    if (hover) { neighbors.add(hover.id); edges.forEach(e => { if (e.s === hover.id) neighbors.add(e.t); if (e.t === hover.id) neighbors.add(e.s); }); }
+
+    edges.forEach(e => {
+      if (!edgeVisible(e)) return;
+      const x1 = sx(e.a.x), y1 = sy(e.a.y), x2 = sx(e.b.x), y2 = sy(e.b.y);
+      const recRec = e.b.kind === "record" && e.key !== "in-context";
+      const dimmed = (hover && !(neighbors.has(e.s) && neighbors.has(e.t))) ||
+                     (searchTerm && !(matches(e.a) || matches(e.b)));
+      let stroke = e.key === "in-context" ? "rgba(100,116,139,0.10)"
+                 : recRec ? "rgba(248,113,113,0.55)" : "rgba(148,163,184,0.20)";
+      if (e === hoverEdge) stroke = "rgba(226,232,240,0.9)";
+      ctx.strokeStyle = stroke;
+      ctx.globalAlpha = dimmed ? 0.12 : 1;
+      ctx.lineWidth = e.key === "in-context" ? 0.6 : 0.7 + (e.w || 0.5) * 1.1;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      if (recRec && view.k > 0.55) {                       // arrowhead: directed edges
+        const ang = Math.atan2(y2 - y1, x2 - x1), ar = e.b.r * view.k + 4;
+        const ax = x2 - Math.cos(ang) * ar, ay = y2 - Math.sin(ang) * ar;
+        ctx.fillStyle = stroke;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - Math.cos(ang - 0.45) * 7, ay - Math.sin(ang - 0.45) * 7);
+        ctx.lineTo(ax - Math.cos(ang + 0.45) * 7, ay - Math.sin(ang + 0.45) * 7);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    });
+
+    nodes.forEach(n => {
+      if (!nodeVisible(n)) return;
+      const x = sx(n.x), y = sy(n.y), r = n.r * Math.max(view.k, 0.5);
+      const dimmed = (hover && !neighbors.has(n.id)) || (searchTerm && !matches(n));
+      ctx.globalAlpha = dimmed ? 0.18 : 1;
+      ctx.fillStyle = nodeColor(n);
+      if (n.kind === "context") {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4);
+        ctx.fillRect(-r, -r, r * 2, r * 2); ctx.restore();
+      } else {
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      if (matches(n) || n === hover) {
+        ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke();
+      }
+      const label = n.kind === "context" || n === hover || matches(n) ||
+                    (n.kind === "record" && (view.k > 1.6 || n.r >= 11)) ||
+                    (n.kind === "entity" && view.k > 2.6);
+      if (label && !dimmed) {
+        ctx.font = (n.kind === "context" ? "600 12.5px" : "11px") + " system-ui, sans-serif";
+        ctx.fillStyle = n.kind === "context" ? "#f1f5f9" : "#94a3b8";
+        const text = n.label.length > 34 ? n.label.slice(0, 33) + "…" : n.label;
+        ctx.fillText(text, x + r + 4, y + 3.5);
+      }
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  function loop() {
+    if (!settled) tick();
+    if (needsDraw) { draw(); needsDraw = false; }
+    requestAnimationFrame(loop);
+  }
+
+  // ---- interactions: zoom / pan / drag / hover / click
+  let drag = null, panning = false, moved = 0, last = null;
+  canvas.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+    const wxx = wx(mx), wyy = wy(my);
+    view.k *= ev.deltaY < 0 ? 1.12 : 0.89;
+    view.k = Math.min(Math.max(view.k, 0.12), 8);
+    view.x = (mx - W / 2) / view.k - wxx;
+    view.y = (my - H / 2) / view.k - wyy;
+    needsDraw = true;
+  }, { passive: false });
+
+  function nodeAt(mx, my) {
+    let best = null, bd = 1e9;
+    nodes.forEach(n => {
+      if (!nodeVisible(n)) return;
+      const dx = sx(n.x) - mx, dy = sy(n.y) - my;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < Math.max(n.r * view.k, 5) + 3 && d < bd) { best = n; bd = d; }
+    });
+    return best;
+  }
+  function edgeAt(mx, my) {
+    let best = null, bd = 6;
+    edges.forEach(e => {
+      if (!edgeVisible(e) || e.key === "in-context") return;
+      const x1 = sx(e.a.x), y1 = sy(e.a.y), x2 = sx(e.b.x), y2 = sy(e.b.y);
+      const L2 = (x2 - x1) ** 2 + (y2 - y1) ** 2; if (L2 < 1) return;
+      let t = ((mx - x1) * (x2 - x1) + (my - y1) * (y2 - y1)) / L2;
+      t = Math.max(0.05, Math.min(0.95, t));
+      const d = Math.hypot(mx - (x1 + t * (x2 - x1)), my - (y1 + t * (y2 - y1)));
+      if (d < bd) { best = e; bd = d; }
+    });
+    return best;
+  }
+
+  const tip = document.getElementById("atlas-tip");
+  const fmtDate = at => new Date(at * 1000).toISOString().slice(0, 10);
+  function showTip(html, mx, my) {
+    tip.innerHTML = html; tip.style.display = "block";
+    tip.style.left = Math.min(mx + 14, W - 300) + "px";
+    tip.style.top = (my + 14) + "px";
+  }
+  canvas.addEventListener("mousemove", ev => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+    if (drag) {
+      drag.x = wx(mx); drag.y = wy(my); drag.vx = drag.vy = 0;
+      moved += 1; reheat(0.12); return;
+    }
+    if (panning) {
+      view.x += (mx - last[0]) / view.k; view.y += (my - last[1]) / view.k;
+      last = [mx, my]; moved += 1; needsDraw = true; return;
+    }
+    const n = nodeAt(mx, my);
+    hoverEdge = n ? null : edgeAt(mx, my);
+    if (n !== hover) { hover = n; needsDraw = true; }
+    if (n) {
+      const deg = degree.get(n.id) || 0;
+      let html = "<strong>" + escapeHtml(n.label) + "</strong><br>";
+      if (n.kind === "record") html += '<span class="t-kind">' + escapeHtml(n.group) + " · " + n.size + " claim(s)</span>" + (embedded ? "" : '<br><span class="t-prov">click to open the record</span>');
+      if (n.kind === "entity") html += '<span class="t-kind">named by <code>' + escapeHtml(n.group) + "</code> · " + deg + " connection(s)</span>";
+      if (n.kind === "context") html += '<span class="t-kind">context · ' + n.size + " record(s)</span>";
+      showTip(html, mx, my);
+    } else if (hoverEdge) {
+      const e = hoverEdge;
+      let html = "<strong><code>" + escapeHtml(e.key) + "</code></strong><br>" +
+        '<span class="t-prov">' + escapeHtml(e.a.label.slice(0, 40)) + " → " + escapeHtml(e.b.label.slice(0, 40)) + "</span><br>" +
+        '<span class="t-prov">asserted ' + fmtDate(e.at) + (e.tier ? " · " + escapeHtml(e.tier) : "") +
+        (e.w ? " · conf " + e.w.toFixed(2) : "") + (e.verdict ? " · audited: " + escapeHtml(e.verdict) : "") + "</span>";
+      showTip(html, mx, my); needsDraw = true;
+    } else { tip.style.display = "none"; }
+  });
+  canvas.addEventListener("mousedown", ev => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+    moved = 0;
+    const n = nodeAt(mx, my);
+    if (n) { drag = n; n.pinned = true; }
+    else { panning = true; last = [mx, my]; canvas.classList.add("dragging"); }
+  });
+  window.addEventListener("mouseup", () => {
+    if (drag) { drag.pinned = false; reheat(0.1); }
+    if (!drag && !panning) return;
+    const clicked = drag; drag = null; panning = false; canvas.classList.remove("dragging");
+    if (clicked && moved < 4 && clicked.kind === "record" && clicked.path && !embedded) {
+      const base = window.location.pathname.replace(/\/atlas\/?$/, "");
+      window.location.href = base + "/" + clicked.path;
+    }
+  });
+  canvas.addEventListener("mouseleave", () => { hover = null; hoverEdge = null; tip.style.display = "none"; needsDraw = true; });
+
+  // ---- search, time, legend, stats
+  function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+  document.getElementById("atlas-search").addEventListener("input", ev => {
+    searchTerm = ev.target.value.toLowerCase().trim(); needsDraw = true;
+  });
+
+  const slider = document.getElementById("atlas-time"), dateEl = document.getElementById("atlas-date");
+  function setT(frac) {
+    tCur = tr[0] + (tr[1] - tr[0]) * frac;
+    dateEl.textContent = fmtDate(tCur);
+    reheat(0.08);
+  }
+  slider.addEventListener("input", ev => setT(ev.target.value / 1000));
+  let playing = null;
+  document.getElementById("atlas-play").addEventListener("click", ev => {
+    if (playing) { clearInterval(playing); playing = null; ev.target.textContent = "▶ replay"; return; }
+    let f = 0; slider.value = 0; setT(0);
+    ev.target.textContent = "❚❚";
+    playing = setInterval(() => {
+      f += 0.008; slider.value = Math.round(f * 1000); setT(Math.min(f, 1));
+      if (f >= 1) { clearInterval(playing); playing = null; document.getElementById("atlas-play").textContent = "▶ replay"; }
+    }, 80);
+  });
+  dateEl.textContent = fmtDate(tr[1]);
+
+  const legend = document.getElementById("atlas-legend");
+  function legendItem(key, label, col, diamond) {
+    const el = document.createElement("span");
+    el.className = "lg";
+    el.innerHTML = '<span class="sw' + (diamond ? " diamond" : "") + '" style="background:' + col + '"></span>' + escapeHtml(label);
+    el.addEventListener("click", () => {
+      if (hiddenGroups.has(key)) hiddenGroups.delete(key); else hiddenGroups.add(key);
+      el.classList.toggle("off"); reheat(0.08);
+    });
+    legend.appendChild(el);
+  }
+  if (ctxNodes.length) legendItem("__ctx__", "contexts", CONTEXT_COLOR, true);
+  if (ctxNodes.length && (recGroups.length || entGroups.length)) legend.insertAdjacentHTML("beforeend", '<span class="lg-sep">·</span>');
+  recGroups.forEach(g => legendItem("r:" + g, g, color["r:" + g]));
+  if (recGroups.length && entGroups.length) legend.insertAdjacentHTML("beforeend", '<span class="lg-sep">·</span>');
+  entGroups.forEach(g => legendItem("e:" + g, g, color["e:" + g]));
+
+  const m = data.meta;
+  document.getElementById("atlas-stats").textContent =
+    m.records + " records · " + m.entities + " entities · " + m.edge_count +
+    " connections · from " + m.claims_considered + " claims · as of " + m.generated_at.slice(0, 16).replace("T", " ");
+  if (m.warnings && m.warnings.length) {
+    const w = document.getElementById("atlas-warn");
+    w.textContent = m.warnings.join(" · "); w.style.display = "block";
+  }
+
+  resize(); loop();
+})();
+</script>

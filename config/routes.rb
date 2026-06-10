@@ -22,6 +22,13 @@ Enliterator::Engine.routes.draw do
   get  "chat",        to: "conversation#index",  as: :conversation
   post "chat/stream", to: "conversation#stream", as: :conversation_stream
 
+  # The atlas (v0.21): the enliterated collection drawn as a graph — records,
+  # the entities their claims name, and the contexts that hold them; every
+  # edge carries its provenance. The exported standalone file embeds the same
+  # data this page does.
+  get "atlas",      to: "atlas#index", as: :atlas
+  get "atlas/data", to: "atlas#data",  as: :atlas_data
+
   # The pulse monitor (v0.16): trigger a heartbeat cycle and watch it live.
   # `beat` opens + runs a cycle in a background thread; `pulse` is the JSON
   # the monitor polls — BY ROW ID, never "latest" (a forced second cycle must

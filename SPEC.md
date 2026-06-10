@@ -1419,3 +1419,67 @@ HSDL, on every GET). Now one JOIN against the per-key verdict cutoffs; values id
 - Measured on HSDL after restart: Status 18s → sub-second warm; Heartbeat 13s → instant;
   Requests 0.55s → ~0.1s. (Recorded below the commit.)
 - SPEC, README, About colophon, CLAUDE.md.
+
+# v0.21 — The Atlas (the enliterated collection, drawn)
+
+AWS checked in on the Bedrock grant; HSDL staff are following; FEDLINK is five weeks out.
+Jeremy wanted a shareable graph visualization (infoguana's force-directed look as the
+reference) and named the framing question himself: Enliterator goes beyond "knowledge graph
+as generally considered, but it can be expressed as one?" Yes — and the expression is the
+argument:
+
+- **The claim store IS a labeled property graph.** Records are nodes; a claim whose value
+  names things (an advisor, an agency, a superseded order, a related report) is a typed edge.
+- **The edge taxonomy is the controlled vocabulary** — the librarian's syndetic structure,
+  visualized. The legend draws itself from the keys actually present.
+- **Every edge carries provenance**: tier, confidence, asserted-at, and the audit verdict
+  where one exists (hover a line: "asserted Jun 8 · cheap · conf 0.82 · audited: supported").
+  A generic KG has edges; this one has edges that can answer for themselves.
+- **The graph grows nightly.** Every edge is stamped with its claim's created_at; the time
+  slider replays the collection learning — compounding attention made visible.
+
+## 1. `Enliterator::Atlas` (host-generic builder — no per-host configuration)
+- Claims in scope: live, engine-derived OR `human:*` (curator corrections) — the condition
+  reconciler's locked flags ("condition-survey") and host seeds are NOT understanding.
+  Context-scoped by the v0.13 cumulative read.
+- A key is ENTITY-BEARING adaptively (median extracted term ≤ 90 chars) — prose keys fall
+  out with no denylist. Extraction tolerates the shapes claims actually hold (string / array /
+  array of {type:, designation:} hashes).
+- **Resolution**: an index of unique IDENTIFIER claim values (keys named like control
+  numbers — `eo_number`, `report_number`) plus record titles. `supersedes: ["13129"]` finds
+  the record whose eo_number is "13129" → a directed record→record edge. Identifier claims
+  self-resolve and draw nothing; attribute claims (advisor, cluster) never enter the index
+  (the first cut indexed every short value and attribute claims self-resolved into SILENCE —
+  caught by spec). Collisions drop out of the index: a string two records share can't name one.
+- Unresolved strings become entity nodes deduped by exact normalized string — "DHS" and
+  "Department of Homeland Security (DHS)" are two nodes until vocabulary governance merges
+  them; the atlas makes authority-control work VISIBLE, and cited-but-untended works appear
+  as small dots: the frontier.
+- Context diamonds + membership edges give the layout its gravity wells. `atlas_node_cap`
+  (default 1,500) keeps the most-connected and says so in meta.warnings. Cached with the
+  v0.20 idiom (heartbeat-keyed + 5-min TTL).
+
+## 2. The surface + the export
+- `/enliterator/atlas` (nav: Atlas, after Contexts) + `/atlas/data` JSON. The page EMBEDS its
+  data — the same `_viewer` partial renders live in the engine and standalone in the export.
+- The viewer is ~300 lines of inline vanilla JS on `<canvas>` (hard rule 2: no D3, no CDN):
+  grid-bucketed repulsion + springs + hub gravity, settles and freezes; zoom/pan/drag; node
+  and EDGE hover tooltips (the provenance line); click-through to the status drill-down
+  (live mode only); legend toggles per group; search-highlight; the time slider + replay.
+- `rake enliterator:atlas` (FILE= CONTEXT= TITLE=) → ONE self-contained HTML file — opens in
+  any browser, no server: the emailable artifact for AWS/HSDL staff, footer-stamped with its
+  preparation date (finding-aid honesty).
+
+## Honesty notes
+- Entity identity is exact-string; merging is vocabulary governance's job, not the renderer's.
+- Identifier keys are recognized by NAME PATTERN (number/id/code/doi/isbn/issn) — a host with
+  eccentric identifier names gets entity nodes instead of resolved edges (degraded, never wrong).
+- The export is a snapshot (assembled fresh, not cached) and says when it was prepared.
+- The graph draws TENDED understanding only — 511 of HSDL's 315K records today. The sparse
+  atlas IS the honest picture; the heartbeat fills it in nightly.
+
+## Done = all of:
+- Builder + surface + export + 17 new examples; **448 green**.
+- Live on HSDL: EO supersession renders directed; advisor/agency/cluster hubs form; the
+  replay shows four days of learning; election-security scopes to its neighborhood.
+- README (nine surfaces), About colophon, CLAUDE.md.
