@@ -142,6 +142,12 @@ module Enliterator
     # "unsupported" for deep-grounded claims. Truncation is stamped on the row.
     attr_accessor :audit_source_chars
 
+    # ---- v0.21 The Atlas ---------------------------------------------------
+
+    # Node ceiling for the atlas graph. Over it, the most-connected nodes are
+    # kept and the meta says so (an honest cap, never a silent one).
+    attr_accessor :atlas_node_cap
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -182,6 +188,7 @@ module Enliterator
       @heartbeat_audit_sample = 0
       @audit_tier = nil
       @audit_source_chars = 24_000
+      @atlas_node_cap = 1_500
     end
 
     def logger

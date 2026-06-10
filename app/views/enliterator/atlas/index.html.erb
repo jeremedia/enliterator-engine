@@ -1,0 +1,18 @@
+<h2>Atlas <span class="subtitle">— the enliterated collection, drawn</span></h2>
+
+<p class="muted" style="max-width:62rem">
+  Every record the heartbeat has read is a node; every claim that names something — an advisor,
+  an agency, a superseded order, a related report — is a typed edge. The edge types ARE the
+  controlled vocabulary, and every edge carries its provenance: hover a line to see who asserted
+  it, when, at what confidence, and the audit verdict where one exists. Drag the time slider (or
+  press replay) to watch the collection learn.
+</p>
+
+<%= render "viewer", atlas: @atlas, embedded: false %>
+
+<p class="muted samples" style="margin-top:.6rem">
+  Entities are deduped by exact string — "DHS" and "Department of Homeland Security (DHS)" are
+  two nodes until vocabulary governance merges them; the atlas makes that authority-control work
+  visible. Gray-ish dots include works the collection cites but has not yet tended: the frontier.
+  Export a standalone copy with <code>rake enliterator:atlas[FILE]</code>.
+</p>

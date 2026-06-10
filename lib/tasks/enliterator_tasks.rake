@@ -286,3 +286,32 @@ namespace :enliterator do
     end
   end
 end
+
+namespace :enliterator do
+  # v0.21: export the atlas as ONE self-contained HTML file — open it in any
+  # browser, no server, no dependencies. The shareable artifact.
+  #
+  #   bin/rails enliterator:atlas                          # tmp/enliterator-atlas.html
+  #   FILE=tmp/hsdl-atlas.html bin/rails enliterator:atlas
+  #   CONTEXT=election-security bin/rails enliterator:atlas  # one context's neighborhood
+  #   TITLE="HSDL — the federation" bin/rails enliterator:atlas
+  desc "Export the atlas as a self-contained HTML file. FILE= CONTEXT= TITLE="
+  task atlas: :environment do
+    context = ENV["CONTEXT"].present? ? Enliterator::Context.find_by_key!(ENV["CONTEXT"]) : nil
+    data    = Enliterator::Atlas.assemble(context: context)   # fresh — an export is a snapshot
+    title   = ENV["TITLE"].presence ||
+              [ Rails.application.class.module_parent_name,
+                context ? context.name : "the whole collection" ].join(" — ")
+
+    html = Enliterator::AtlasController.render(
+      template: "enliterator/atlas/export", layout: false,
+      assigns: { atlas: data, title: title }
+    )
+
+    path = ENV["FILE"].presence || "tmp/enliterator-atlas.html"
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, html)
+    puts "atlas → #{path} (#{data[:meta][:records]} record(s), #{data[:meta][:entities]} entit(ies), " \
+         "#{data[:meta][:edge_count]} connection(s), #{(File.size(path) / 1024.0).round} KB)"
+  end
+end
