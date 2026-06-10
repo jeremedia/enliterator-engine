@@ -1298,3 +1298,54 @@ nightly at 3:30 — the heartbeat's own adoption, a separate trust decision from
 - HSDL: initializer sets heartbeat_audit_sample 10; `enliterator:audit N=25` supervised with
   rationales read raw; one real claim corrected end-to-end on /review.
 - README, About (living doc), CLAUDE.md.
+
+# v0.19 — The Component Standard (one quiet system)
+
+Jeremy's directive, reviewing the Requests queue: the verdict UI read as clutter, the content
+columns truncated mid-sentence, and styling had drifted page-by-page. "We don't want to add a
+style system dependency but we should standardize our approach to components and style to
+ensure long term success." Also: the context switcher belonged NEXT TO the things it scopes.
+
+## 1. The inventory (what six versions of page-local styling drifted into)
+~6 unrelated button treatments; the accent "live" badge hand-inlined in 4 places; warn chips
+inlining a raw `#fdeceb` literal in 3; every select/input repeating the same inline rules;
+the `h2 — subtitle` pattern re-styled on every page; three bespoke summary strips.
+
+## 2. The standard (inline, dependency-free — hard rule 2 untouched)
+- **Tokens** (`:root` in the layout): color (`--warn-soft` kills the literal), an 8px spacing
+  rhythm, radii, type scale.
+- **Components, defined once in the layout `<style>`**: `.btn` + affirmative/primary/
+  destructive/sm (hover, `:focus-visible`, disabled); `.field`; `.chip` + `.chip.warn` +
+  `.chip.tier`; `.badge-live`; `.subtitle`; `.strip`; the quiet table and `.card`.
+- **The rule, documented IN the style block where it can't drift**: new pages compose from
+  these; a page's own `<style>` is for page-specific layout only; reach for a token, never an
+  inline color.
+- Existing class names were only ADDED to, never renamed — the inline JS hooks
+  (`#ctx-switch`, Chat's thread/bubble/provenance, Heartbeat's pulse monitor) are load-bearing.
+
+## 3. The nav (scope precedes what it scopes)
+Brand tagline removed; `#ctx-switch` moved LEFT, into a `.nav-scope` group between the brand
+and the context-scoped destinations (Status · Chat · Requests …), fenced by a hairline that
+renders only when a switcher exists. The selector now visually governs the items whose content
+it changes. Settings/About push right.
+
+## 4. Requests, redesigned (the queue is a decision, not a table)
+The 6-column pending table became per-term cards: key + facet + pressure as the header line;
+rationale / example / considerer verdict given room (display caps 120→220, 70→140, 90→160 —
+copy untouched); actions right-aligned as one coherent group — Approve (affirmative) / Map
+(field + button) / Reject (destructive). Collapses to one column under 640px. Every form post,
+param, and label byte-identical.
+
+## Honesty notes
+- Chat and the pulse monitor stay page-local by design: their classes are live JS hooks and
+  their layouts are bespoke; both consume the shared tokens so they read as one system.
+- The flat-install spec caught a real leak: putting `#ctx-switch` in the always-rendered style
+  block surfaced the string on hosts with no context tree. The selector is styled via its
+  parent group; the id exists only on the conditional element. (The spec suite as UI guard.)
+- AA contrast verified on every token pairing (tightest: muted-on-chip 4.69); 390px checked.
+
+## Done = all of:
+- Layout token/component layer + 7 pages swept; before/after sets in `tmp/ui-pass/`.
+- Suite green (no copy changes — the page-text pins held).
+- SPEC, README (the surface list had drifted: eight surfaces, Review was missing), About
+  colophon.

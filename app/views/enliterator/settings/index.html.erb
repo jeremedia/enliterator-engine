@@ -8,7 +8,7 @@
   vocabulary — is governed on <%= link_to "Requests", suggestions_path %>.
 </p>
 
-<h2>Facets <span class="muted" style="font-weight:400">— roles, and the capability assigned to each</span></h2>
+<h2>Facets <span class="subtitle">— roles, and the capability assigned to each</span></h2>
 <div class="card">
   <% if @facets.any? %>
     <table>
@@ -37,9 +37,9 @@
   <% end %>
 </div>
 
-<h2>Vocabulary <span class="muted" style="font-weight:400">— the controlled vocabulary per facet, code + what's accrued</span></h2>
+<h2>Vocabulary <span class="subtitle">— the controlled vocabulary per facet, code + what's accrued</span></h2>
 <% if @approved_live.positive? %>
-  <p class="muted samples"><strong><%= @approved_live %></strong> curator-authorized term<%= "s" if @approved_live != 1 %> are <span class="chip" style="background:var(--accent-soft); color:var(--accent)">live</span> across these facets — in force in the vocabulary the model sees, but not yet codified in the policy. Codify them from <%= link_to "Requests", suggestions_path %>.</p>
+  <p class="muted samples"><strong><%= @approved_live %></strong> curator-authorized term<%= "s" if @approved_live != 1 %> are <span class="badge-live">live</span> across these facets — in force in the vocabulary the model sees, but not yet codified in the policy. Codify them from <%= link_to "Requests", suggestions_path %>.</p>
 <% end %>
 <div class="row">
   <% @contracts.each do |c| %>
@@ -49,7 +49,7 @@
       <table style="margin-top:.5rem">
         <% c[:terms].each do |k| %>
           <tr>
-            <td style="width:40%"><code><%= k[:term] %></code><% if k[:approved] %> <span class="chip" style="background:var(--accent-soft); color:var(--accent)" title="curator-approved; live but not codified">live</span><% end %></td>
+            <td style="width:40%"><code><%= k[:term] %></code><% if k[:approved] %> <span class="badge-live" title="curator-approved; live but not codified">live</span><% end %></td>
             <td class="samples"><%= k[:description] %></td>
           </tr>
         <% end %>
@@ -79,7 +79,7 @@
   </table>
 </div>
 
-<h2>Vocabulary governance <span class="muted" style="font-weight:400">— how the considerer decides</span></h2>
+<h2>Vocabulary governance <span class="subtitle">— how the considerer decides</span></h2>
 <div class="card">
   <table>
     <tr><th style="width:34%">setting</th><th>value</th></tr>
@@ -110,7 +110,7 @@
   </table>
 </div>
 
-<h2>Heartbeat <span class="muted" style="font-weight:400">— the event-driven tending cycle (v0.15)</span></h2>
+<h2>Heartbeat <span class="subtitle">— the event-driven tending cycle (v0.15)</span></h2>
 <div class="card">
   <table>
     <tr><th style="width:34%">setting</th><th>value</th></tr>

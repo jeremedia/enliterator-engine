@@ -6,13 +6,13 @@
   .pulse-fill  { height: 100%; width: 0%; background: var(--accent); border-radius: 6px; transition: width .6s ease; }
   .pulse-stats { display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: baseline; }
   .pulse-banner { padding: .5rem .8rem; border-radius: 8px; margin-top: .6rem; font-size: .9rem; display: none; }
-  .pulse-banner.warn-bg { background: #fdeceb; color: var(--warn); display: block; }
+  .pulse-banner.warn-bg { background: var(--warn-soft); color: var(--warn); display: block; }
   .ticker { list-style: none; margin: .6rem 0 0; padding: 0; font-size: .82rem; max-height: 16rem; overflow-y: auto; }
   .ticker li { padding: .25rem 0; border-top: 1px solid var(--line); }
   .ticker li:first-child { border-top: none; }
 </style>
 
-<h1>Heartbeat <span class="muted" style="font-weight:400; font-size:.95rem">— one metabolic cycle: plan → tend → consider → ledger</span></h1>
+<h1>Heartbeat <span class="subtitle">— one metabolic cycle: plan → tend → consider → ledger</span></h1>
 <p class="muted">
   The heartbeat tends the <strong>whole collection — every context, one budget</strong>; the context
   selector scopes the other surfaces, never this one. Each cycle works the untended frontier first,
@@ -22,7 +22,7 @@
 <% if @running %>
   <%# ── monitor mode — a cycle is live; poll it ─────────────────────────── %>
   <h2>Cycle #<%= @running.id %> <span class="chip tier">running</span>
-      <span class="muted" style="font-weight:400">— started <%= @running.started_at.strftime("%H:%M:%S") %>, budget <%= number_with_delimiter(@running.budget_tokens) %> tokens</span></h2>
+      <span class="subtitle">— started <%= @running.started_at.strftime("%H:%M:%S") %>, budget <%= number_with_delimiter(@running.budget_tokens) %> tokens</span></h2>
   <div class="card" id="monitor"
        data-pulse-url="<%= heartbeat_pulse_path(@running.id) %>"
        data-planned="<%= @running.planned_count %>"
@@ -41,7 +41,7 @@
 
 <% else %>
   <%# ── plan + trigger mode ─────────────────────────────────────────────── %>
-  <h2>Next cycle <span class="muted" style="font-weight:400">— what one beat would do right now</span></h2>
+  <h2>Next cycle <span class="subtitle">— what one beat would do right now</span></h2>
   <div class="card">
     <% if @plan.items.any? %>
       <div>
@@ -77,13 +77,9 @@
                         onsubmit: "var b=document.getElementById('beat-btn'); setTimeout(function(){ b.disabled=true; b.textContent='planning…'; }, 0); return true;" } do |f| %>
     <div class="card" style="display:flex; gap:.8rem; align-items:center; flex-wrap:wrap">
       <label class="muted" for="budget">Token budget for this cycle</label>
-      <input type="number" name="budget" id="budget" min="1"
-             value="<%= @default_budget %>"
-             style="font:inherit; padding:.3rem .5rem; border:1px solid var(--line); border-radius:6px; width:9rem">
-      <button type="submit" id="beat-btn"
-              style="font:inherit; font-weight:600; padding:.4rem 1rem; border:none; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer">
-        Beat now
-      </button>
+      <input type="number" name="budget" id="budget" min="1" class="field"
+             value="<%= @default_budget %>" style="width:9rem">
+      <button type="submit" id="beat-btn" class="btn btn-primary">Beat now</button>
       <span class="muted samples">sync — runs server-side, enforced on actual tokens; watch it here</span>
     </div>
   <% end %>
@@ -196,7 +192,7 @@
         '<form method="post" action="<%= heartbeat_beat_path %>" style="display:inline">' +
         '<input type="hidden" name="authenticity_token" value="' + ((document.querySelector('meta[name=csrf-token]') || {}).content || "") + '">' +
         '<input type="hidden" name="force" value="1">' +
-        '<button type="submit" style="font:inherit">Force new cycle</button></form>';
+        '<button type="submit" class="btn btn-sm">Force new cycle</button></form>';
     } else {
       phase.textContent = "";
     }
