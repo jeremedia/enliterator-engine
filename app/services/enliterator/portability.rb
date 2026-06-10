@@ -77,7 +77,7 @@ module Enliterator
       assert_importable!(conn, force: force)
 
       manifest["tables"].keys.sort_by { |t| [ TABLE_ORDER.index(t) || 99, t ] }.each do |t|
-        import_table(path, t, skip_guard: true)
+        import_table(path, t, columns: manifest.dig("tables", t, "columns"), skip_guard: true)
       end
       log "import: complete — #{summary_line(manifest)}"
       unless manifest["tables"].key?("enliterator_measures")
@@ -92,18 +92,29 @@ module Enliterator
     # One table — the maintenance-task entry point (the task iterates the
     # manifest's tables so its UI shows per-table progress). The empty-target
     # guard is the CALLER's job when importing piecemeal (skip_guard).
-    def import_table(path, table, skip_guard: false)
+    #
+    # `columns:` is the MANIFEST's list for this table — the COPY column list
+    # on both export and import. Binary COPY is positional, and the physical
+    # column order of a migration-built database differs from a
+    # schema.rb-built one (the dry run caught this on real data): an explicit
+    # column list makes the archive order-independent.
+    def import_table(path, table, columns: nil, skip_guard: false)
       conn = ActiveRecord::Base.connection
       unless skip_guard
         manifest = read_manifest(path)
         assert_compatible!(conn, manifest)
+        columns ||= manifest.dig("tables", table, "columns")
       end
+      columns ||= read_manifest(path).dig("tables", table, "columns")
+      raise ArgumentError, "#{table}: not in the archive manifest" unless columns
+
       rows = 0
       each_entry(path) do |entry|
         next unless entry.full_name == "#{table}.bin.gz"
         gz = Zlib::GzipReader.new(StringIO.new(entry.read))
         rc = conn.raw_connection
-        rc.copy_data("COPY #{conn.quote_table_name(table)} FROM STDIN (FORMAT binary)") do
+        cols = columns.map { |c| conn.quote_column_name(c) }.join(", ")
+        rc.copy_data("COPY #{conn.quote_table_name(table)} (#{cols}) FROM STDIN (FORMAT binary)") do
           while (chunk = gz.read(65_536))
             rc.put_copy_data(chunk)
           end
@@ -127,9 +138,11 @@ module Enliterator
 
     # ---- guards ------------------------------------------------------------
 
-    # The archive's column lists must MATCH the target's exactly — binary COPY
-    # is positional, and a schema-version skew must abort by name, never load
-    # crooked data.
+    # The archive's column SET must match the target's — COPY carries an
+    # explicit column list, so physical ORDER is free to differ (a
+    # schema.rb-built database orders columns differently than a
+    # migration-built one), but a missing/extra column is version skew and
+    # must abort by name, never load crooked data.
     def assert_compatible!(conn, manifest)
       manifest["tables"].each do |t, info|
         unless conn.table_exists?(t)
@@ -137,9 +150,9 @@ module Enliterator
                                "engine version skew (run the engine migrations first)"
         end
         target = conn.columns(t).map(&:name)
-        next if target == info["columns"]
+        next if target.sort == info["columns"].sort
         raise ArgumentError, "#{t}: column mismatch between archive and this database " \
-                             "(archive: #{info['columns'].join(',')} | here: #{target.join(',')}) — " \
+                             "(archive: #{info['columns'].sort.join(',')} | here: #{target.sort.join(',')}) — " \
                              "engine version skew"
       end
     end
@@ -174,10 +187,11 @@ module Enliterator
     end
 
     def dump_table(conn, table)
-      out = StringIO.new
-      gz  = Zlib::GzipWriter.new(out)
-      rc  = conn.raw_connection
-      rc.copy_data("COPY #{conn.quote_table_name(table)} TO STDOUT (FORMAT binary)") do
+      out  = StringIO.new
+      gz   = Zlib::GzipWriter.new(out)
+      rc   = conn.raw_connection
+      cols = conn.columns(table).map { |c| conn.quote_column_name(c.name) }.join(", ")
+      rc.copy_data("COPY #{conn.quote_table_name(table)} (#{cols}) TO STDOUT (FORMAT binary)") do
         while (chunk = rc.get_copy_data)
           gz.write(chunk)
         end

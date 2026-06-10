@@ -1504,8 +1504,10 @@ inference and loses nothing-but-money; the understanding itself is portable.
   visit→heartbeat link survives — then resets sequences so the target's next cycle numbers
   AFTER the imported history. `import_table` is the per-table entry point (built for a host
   maintenance-task UI to show per-table progress).
-- **The compatibility guard is the column list**: binary COPY is positional, so the manifest
-  carries each table's columns and import aborts on any mismatch, naming the skew — a
+- **The compatibility guard is the column list**: COPY carries an EXPLICIT column list on both
+  sides (the dry run on real data caught that a migration-built database and a schema.rb-built
+  one order columns differently — bare binary COPY would have loaded same-typed columns
+  crosswise), so physical order is free to differ; a missing/extra column aborts by name — a
   version-skewed archive must never load crooked data.
 - **The condition register stays home by design** (excluded unless measures:): it is free to
   re-derive (no LLM) and must describe the TARGET's files — a record's url_status on prod is
