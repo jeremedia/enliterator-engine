@@ -35,7 +35,7 @@
     <% plan = @heartbeat_plan %>
     <div>
       <span class="muted samples">next cycle:</span>
-      <% if plan.items.any? %>
+      <% if plan.work? %>
         <% plan.counts.sort.each do |reason, n| %>
           <span class="chip"><%= reason %> <strong><%= n %></strong></span>
         <% end %>
@@ -45,6 +45,12 @@
       <% end %>
     </div>
     <div class="muted" style="margin-top:.35rem"><%= plan.horizon_line %></div>
+    <%# v0.20: the prepared finding aid — the revision date, not a live census. %>
+    <% if plan.as_of %>
+      <div class="muted samples" style="margin-top:.25rem">
+        plan as of cycle #<%= plan.as_of.first %>, <%= plan.as_of.last.strftime("%Y-%m-%d %H:%M") %> — the beat re-plans when it starts
+      </div>
+    <% end %>
     <% if plan.warnings.any? %>
       <details style="margin-top:.35rem"><summary class="muted samples"><%= plan.warnings.size %> planner note(s)</summary>
         <ul class="muted samples" style="margin:.3rem 0 0 1rem">

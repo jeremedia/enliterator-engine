@@ -62,6 +62,9 @@ module Enliterator
         %i[status adapter_mix tier_mix confidence].each { |k| b[k] = b[k].to_h }
       end
 
+      # Drop the autovivifying proc before returning: a default proc can't be
+      # marshaled, and the summary rides inside the cached synopsis (v0.20).
+      data.default_proc = nil
       data
     end
 

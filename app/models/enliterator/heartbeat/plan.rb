@@ -35,6 +35,11 @@ module Enliterator
         @horizon_tokens     = horizon_tokens
       end
 
+      # v0.20: the polymorphic preview interface shared with PreparedPlan —
+      # views ask work?/as_of and never branch on the plan's source.
+      def work? = items.any?
+      def as_of = nil
+
       def counts
         items.group_by(&:reason).transform_values(&:size)
       end

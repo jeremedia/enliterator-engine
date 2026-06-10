@@ -87,18 +87,24 @@ RSpec.describe "Enliterator status browser", type: :request do
       expect(response.body).not_to include("next cycle:")   # the nav link exists (v0.16); the preview section must not
     end
 
-    it "renders the next-cycle counts, horizon, and the last cycle once adopted" do
-      Enliterator::Heartbeat.create!(
+    it "renders the PREPARED next-cycle counts, horizon, and the last cycle once adopted (v0.20: from the ledger, never a live census)" do
+      hb = Enliterator::Heartbeat.create!(
         started_at: 1.day.ago, finished_at: 1.day.ago + 10.minutes, mode: "sync",
-        budget_tokens: 30_000, executed: { "frontier" => { "succeeded" => 4, "failed" => 0, "skipped" => 0, "enqueued" => 0 } },
+        budget_tokens: 30_000,
+        planned: { "counts" => { "frontier" => 4 }, "est_total" => 2_000,
+                   "frontier_total" => 9, "horizon_cycles" => 1,
+                   "lanes" => { "root/summary" => { "frontier" => 4 } }, "warnings" => [] },
+        executed: { "frontier" => { "succeeded" => 4, "failed" => 0, "skipped" => 0, "enqueued" => 0 } },
         tokens_spent: { "input" => 200, "output" => 200, "total" => 400 }
       )
-      Widget.create!(title: "untended", body: "b")   # something on the frontier
+      Widget.create!(title: "untended", body: "b")   # on the frontier — must NOT be censused
 
+      expect(Enliterator::Heartbeat).not_to receive(:plan)   # the page reads the ledger
       get "/enliterator/status"
       expect(response.body).to include("Heartbeat")
         .and include("next cycle:")
         .and include("frontier:")          # the horizon line
+        .and include("plan as of cycle ##{hb.id}")
         .and include("last cycle:")
         .and include("400 tokens")
     end
