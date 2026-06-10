@@ -165,6 +165,16 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   wave via trajectory. Then: the frontier conversation (bound root lanes vs raise budget) and
   the auth wrap before staging (FEDLINK 2026-07-14). UI rule going forward (v0.19): new pages
   compose from the layout's tokens/components; page `<style>` is page-specific layout only.
+- **v0.23 — every cycle ends on the ledger**: heartbeat rows pulse liveness + phase
+  (`pulse_at`/`phase`, stamped per phase AND per LLM-loop iteration); `Heartbeat.reap_orphans!`
+  (run by open! and the monitor page) stamps process-death orphans — finished_at = last sign
+  of life, death phase named, executed RECONSTRUCTED from visits; zombie threads of reaped
+  rows raise `StoodDown` at their next loop check (the phase rescues re-raise it explicitly —
+  don't let a new rescue swallow it); gateway+embedder clients are bounded
+  (`gateway_timeout` 180s / `gateway_max_retries` 1 — the gem default was 600s×retries).
+  Restarting the dev server mid-cycle is now SELF-HEALING (the row is reaped within 15 min) —
+  but still avoid it during a supervised run you care about. Ticker times come as app-zone
+  `at_label` strings (the Mac's system zone is Central; never let JS toLocale* render times).
 - **The staging deploy checklist (v0.22 — gate EVERY HSDL staging/prod deploy on this)**:
   (1) PUSH THE ENGINE FIRST — HSDL's initializer sets v0.18+ config; bundling v0.17 from
   GitHub crashes at boot, and engine migrations load from the gem's paths; (2) wrap

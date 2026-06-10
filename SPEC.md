@@ -1540,3 +1540,61 @@ inference and loses nothing-but-money; the understanding itself is portable.
   scratch database built from schema.rb, counts verified.
 - HSDL: Maintenance::ImportEnliterationTask on the gated branch.
 - SPEC, README (the checklist), CLAUDE.md, About colophon.
+
+# v0.23 — Every Cycle Ends on the Ledger (failure states, managed)
+
+The patient: cycle #12 (a Beat-now), orphaned by a server restart. The old process drained
+gracefully — its thread kept tending for minutes, stamped the considerer and conservator
+summaries, then died MID-AUDIT. The row read "running" forever; the monitor said "running
+considerer…" with no stall path once items hit 56/56; the ticker showed Central-clock times
+two hours off the header. Jeremy: "here's a good moment to ensure failure states are managed
+correctly." No Ruby rescue catches SIGTERM — the ledger needed a different discipline.
+
+## 1. The row always knows where it is (`pulse_at` + `phase`)
+`pulse!(name)` — one `update_columns` — fires at every phase boundary AND inside every LLM
+loop (per item, per scope, per claim, per survey batch). Liveness exists in phases that
+produce no visits, which is exactly where #12 died invisible.
+
+## 2. The reaper (`Heartbeat.reap_orphans!`)
+Unfinished + no sign of life for REAP_AFTER (15 min; generous against one quality call under
+the new gateway timeout) → stamped: `finished_at` = the last sign of life, the death phase
+named in `error`, and **`executed` RECONSTRUCTED from the visit record** — the ledger heals
+from its own provenance. `COALESCE(pulse_at, updated_at, started_at)` covers pre-v0.23 rows.
+Runs FIRST in `open!` (a dead row no longer blocks the next beat for the rest of the 6h
+window) and on the monitor page (the UI heals on view).
+
+## 3. The zombie stands down
+Today's exact case: a draining old process whose thread keeps spending after its row is
+declared dead. Every loop iteration checks `pick(:error)` (one indexed read per LLM call) and
+raises `StoodDown` — caught above the generic rescue so the reaper's stamp is never
+overwritten. The phase rescues that warn-and-continue (survey, audit) re-raise it explicitly.
+
+## 4. The monitor tells the truth
+The stall check now comes FIRST and keys off `pulse_at` — it fires in every phase, including
+at items 100% (the gap that hid #12). The label names the actual phase ("running audit…").
+Ticker rows render `at_label` — app-zone times from the server — so the header and the ticker
+finally agree (the browser's system zone is Central; the app's is Pacific — the launchd clock
+gotcha had reached the UI).
+
+## 5. Bounded gateway calls
+`gateway_timeout` (180s) + `gateway_max_retries` (1) passed to both OpenAI clients (LLM +
+embedder). The gem's defaults — 600s × retries — let one wedged call stall a phase for tens
+of minutes with no sign of life. A deliberate default change, both knobs configurable.
+
+## Honesty notes
+- The reaper can end a WEDGED-BUT-ALIVE cycle; stand-down stops further spend at the next
+  loop check, but tokens already in flight are spent. Named, accepted.
+- REAP_AFTER is a constant (15 min). A host whose single calls legitimately exceed it would
+  reap live cycles — derive from gateway_timeout if that host ever exists.
+- Reconstructed `executed` counts only what VISITS prove; skipped items (no visit row) are
+  not recoverable post-hoc and aren't invented.
+- Pre-v0.23 rows reap via updated_at = their last phase stamp — coarser than a pulse, honest
+  about it ("unknown (pre-v0.23 row)" when phase was never stamped).
+
+## Done = all of:
+- Migration (pulse_at, phase) on dummy + HSDL; pulse!/reaper/stand-down/monitor/timeouts;
+  9 new examples. **463 green.**
+- The patient healed: cycle #12 reaped on the live HSDL page — executed reconstructed from
+  its 61 visits, death phase named, monitor freed; its considerer's 18 approve-recommendations
+  were already waiting on /requests.
+- SPEC, README, CLAUDE.md, About colophon.

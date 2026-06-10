@@ -163,7 +163,7 @@
       var li = seen[v.id];
       var fresh = !li;
       if (fresh) { li = document.createElement("li"); seen[v.id] = li; }
-      li.innerHTML = '<span class="muted samples">' + new Date(v.at).toLocaleTimeString() + '</span> ' +
+      li.innerHTML = '<span class="muted samples">' + (v.at_label || new Date(v.at).toLocaleTimeString()) + '</span> ' +
         '<span class="chip">' + v.reason + '</span> ' +
         '<strong>' + v.facet + '</strong>' +
         '<span class="muted">@' + v.context_key + '</span> ' +
@@ -190,16 +190,25 @@
       return;
     }
 
-    if (planned > 0 && p.items_done >= planned) {
-      phase.textContent = "running considerer…";   // governance closes the cycle
-    } else if (p.stalled) {
+    // v0.23: the STALL CHECK COMES FIRST and fires in every phase — keyed to
+    // the row's pulse_at, not visit recency. (Cycle #12 sat at items 56/56
+    // saying "running considerer…" forever after a restart killed it
+    // mid-audit: the old order could never reach the banner once items were
+    // done, and the label couldn't name the phase it died in.)
+    if (p.stalled) {
       banner.className = "pulse-banner warn-bg";
-      banner.innerHTML = "No activity for several minutes — the cycle may have crashed (server restart?). " +
-        "It will show as crash evidence below; force a new cycle: " +
+      banner.innerHTML = "No sign of life for several minutes" +
+        (p.phase ? " (last seen in the " + p.phase + " phase)" : "") +
+        " — the cycle may have crashed (server restart?). " +
+        "The reaper will stamp it as an orphan; force a new cycle: " +
         '<form method="post" action="<%= heartbeat_beat_path %>" style="display:inline">' +
         '<input type="hidden" name="authenticity_token" value="' + ((document.querySelector('meta[name=csrf-token]') || {}).content || "") + '">' +
         '<input type="hidden" name="force" value="1">' +
         '<button type="submit" class="btn btn-sm">Force new cycle</button></form>';
+    } else if (p.phase && p.phase !== "work") {
+      phase.textContent = "running " + p.phase + "…";   // the row names its own phase
+    } else if (planned > 0 && p.items_done >= planned) {
+      phase.textContent = "running considerer…";        // pre-v0.23 rows have no phase
     } else {
       phase.textContent = "";
     }

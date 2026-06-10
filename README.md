@@ -298,6 +298,13 @@ unchanged for hosts that prefer it. The job is `retry_on StandardError`
 (polynomial backoff, 3 attempts) and `discard_on
 ActiveJob::DeserializationError` (the record was deleted between enqueue and run).
 
+Failure states are managed (v0.23): every cycle ends on the ledger. The row
+pulses liveness + its current phase through every loop; a cycle whose process
+dies (server restart mid-cycle) is **reaped** — finished_at set to its last
+sign of life, the death phase named, `executed` reconstructed from the visit
+record — and a zombie thread of a reaped cycle stands down instead of
+double-spending. Gateway calls are bounded (`gateway_timeout`, default 180s).
+
 ### Portability (v0.22 — move the enliteration, don't re-buy it)
 
 Everything the engine has learned is spent inference and curation; a fresh

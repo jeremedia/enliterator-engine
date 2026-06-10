@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_10_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_10_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -471,7 +471,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_010000) do
     t.jsonb "executed", default: {}
     t.datetime "finished_at"
     t.string "mode", default: "sync", null: false
+    t.string "phase"
     t.jsonb "planned", default: {}
+    t.datetime "pulse_at"
     t.datetime "started_at", null: false
     t.jsonb "survey", default: {}
     t.jsonb "tokens_spent", default: {}

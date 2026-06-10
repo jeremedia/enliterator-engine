@@ -210,7 +210,13 @@ module Enliterator
                   "(#{e.message})"
           end
 
-          ::OpenAI::Client.new(api_key: @api_key, base_url: @base_url)
+          # v0.23: bounded calls — the gem's defaults (600s timeout × retries)
+          # let one wedged request stall a heartbeat phase for tens of minutes.
+          ::OpenAI::Client.new(
+            api_key: @api_key, base_url: @base_url,
+            timeout:     Enliterator.configuration.gateway_timeout,
+            max_retries: Enliterator.configuration.gateway_max_retries
+          )
         end
 
         # Pull the forced tool call's arguments (a JSON string) out of the chat
