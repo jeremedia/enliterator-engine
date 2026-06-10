@@ -127,6 +127,39 @@
   </div>
 <% end %>
 
+<%# v0.18: accuracy, measured — adoption-gated on any audit row. %>
+<% if @audit_adopted %>
+  <h2>Accuracy <span class="muted" style="font-weight:400">— the claim store, audited against its sources</span></h2>
+  <div class="card">
+    <% if @examiner_down %>
+      <div class="warn" style="margin-bottom:.5rem">Examiner unavailable on the last cycle (Null adapter) — no new verdicts.</div>
+    <% end %>
+    <table>
+      <tr><th>facet</th><th>tier</th><th>audited</th><th>supported rate</th><th>contradicted</th><th>unverifiable</th></tr>
+      <% @audit_accuracy.each do |c| %>
+        <tr>
+          <td><%= c[:facet] %></td><td><%= c[:tier] %></td><td><%= c[:audited] %></td>
+          <td><strong><%= c[:supported_rate] ? "#{(c[:supported_rate] * 100).round}%" : "—" %></strong></td>
+          <td><%= c[:contradicted] %></td><td class="muted"><%= c[:unverifiable] %></td>
+        </tr>
+      <% end %>
+    </table>
+    <div class="muted samples" style="margin-top:.5rem">
+      <% if @audit_agreement[:rate] %>
+        examiner–human agreement <strong><%= (@audit_agreement[:rate] * 100).round %>%</strong> on <%= @audit_agreement[:overlaps] %> overlap(s)
+      <% elsif @audit_agreement[:overlaps].positive? %>
+        examiner–human: agreeing on <%= @audit_agreement[:agreements] %> of <%= @audit_agreement[:overlaps] %> — collecting
+      <% else %>
+        no human anchor yet — review verdicts on <%= link_to "Review", review_path %>
+      <% end %>
+      <% if @audit_agreement[:examiner_supported].to_i.positive? %>
+        · humans overruled examiner-supported <%= @audit_agreement[:overruled_supported] %> of <%= @audit_agreement[:examiner_supported] %>
+      <% end %>
+      · <%= @audit_corrected %> claim(s) corrected
+    </div>
+  </div>
+<% end %>
+
 <h2>Facets</h2>
 <div class="row">
   <% s[:facets].each do |st| %>

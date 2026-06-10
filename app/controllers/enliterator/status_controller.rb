@@ -13,6 +13,14 @@ module Enliterator
       @last_heartbeat = Enliterator::Heartbeat.order(:started_at).last
       @heartbeat_plan = @last_heartbeat ? Enliterator::Heartbeat.plan : nil
 
+      # v0.18: the accuracy panel — gated on any audit existing.
+      if (@audit_adopted = Enliterator::Audit.exists?)
+        @audit_accuracy  = Enliterator::Audit.accuracy
+        @audit_agreement = Enliterator::Audit.anchor_agreement
+        @audit_corrected = Enliterator::Audit.corrected_count
+        @examiner_down   = @last_heartbeat&.audits&.key?("skipped_null_adapter")
+      end
+
       # v0.17: the conservation report — gated the same way (any survey ever).
       if (@condition_adopted = Enliterator::Condition.adopted?)
         @condition = {

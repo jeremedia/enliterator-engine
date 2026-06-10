@@ -1,0 +1,135 @@
+<h1>Review <span class="muted" style="font-weight:400; font-size:.95rem">— quality review: the human anchor for the claim audit</span></h1>
+<p class="muted" style="max-width:72ch">
+  The examiner verifies sampled claims against their sources; your verdicts here are the
+  instrument's only independent ground truth. <strong>Corpus-wide</strong> — accuracy is measured over the
+  whole catalog, in every context. About a third of the queue is claims the examiner judged
+  <em>supported</em>: confirming or overruling those is what calibrates the examiner itself.
+</p>
+
+<div class="card" style="padding:.6rem 1.1rem">
+  <span class="chip">claims examined <strong><%= @audited %></strong></span>
+  <span class="chip">human-reviewed <strong><%= @reviewed %></strong></span>
+  <span class="chip">corrected <strong><%= @corrected %></strong></span>
+  <% if @agreement[:overlaps].positive? %>
+    <span class="muted">examiner–human agreement:
+      <% if @agreement[:rate] %>
+        <strong><%= (@agreement[:rate] * 100).round %>%</strong> on <%= @agreement[:overlaps] %> overlap(s)
+      <% else %>
+        agreeing on <%= @agreement[:agreements] %> of <%= @agreement[:overlaps] %> — collecting (rate shown at <%= Enliterator::Audit::MIN_AGREEMENT_OVERLAPS %>)
+      <% end %>
+      <% if @agreement[:examiner_supported].positive? %>
+        · humans overruled examiner-supported: <strong><%= @agreement[:overruled_supported] %></strong> of <%= @agreement[:examiner_supported] %>
+      <% end %>
+    </span>
+  <% end %>
+</div>
+
+<h2>Awaiting review</h2>
+<% if @queue.empty? %>
+  <div class="card"><span class="muted">
+    Nothing awaiting review<%= Enliterator::Audit.none? ? " — no claims have been examined yet (run the audit: N=25 bin/rails enliterator:audit, or set heartbeat_audit_sample)" : " — every examined claim has a human verdict" %>.
+  </span></div>
+<% end %>
+<% @queue.each do |row| %>
+  <% audit = row[:audit]; claim = row[:claim] %>
+  <div class="card">
+    <div>
+      <strong><%= claim.key %></strong>
+      <span class="chip"><%= audit.claim.visit&.facet %></span>
+      <span class="muted">@<%= claim.context&.key || "root" %></span>
+      <span class="mono muted samples"><%= claim.tendable_type %>/<%= claim.tendable_id %></span>
+      <span class="chip <%= 'tier' if audit.verdict == 'supported' %>"
+            <% if audit.defective? %>style="background:#fdeceb; color:var(--warn)"<% end %>>
+        examiner: <%= audit.verdict %></span>
+      <% if audit.source_truncated %><span class="muted samples">(source truncated at examination)</span><% end %>
+      <% if row[:source_changed] %>
+        <span class="warn samples">source changed since examination — re-read before ruling</span>
+      <% end %>
+    </div>
+    <table style="margin-top:.5rem">
+      <tr><th style="width:12%">claim</th>
+          <td><%= claim.value.is_a?(String) ? claim.value : claim.value.to_json %></td></tr>
+      <tr><th>examiner</th>
+          <td><%= audit.rationale %>
+            <% if audit.corrected_value.present? && audit.corrected_value != {} %>
+              <div class="muted samples">proposes: <%= audit.corrected_value.is_a?(String) ? audit.corrected_value : audit.corrected_value.to_json %></div>
+            <% end %></td></tr>
+      <tr><th>source</th>
+          <td class="muted samples"><%= row[:snippet] %>…</td></tr>
+    </table>
+
+    <% if row[:live] %>
+      <div style="display:flex; gap:.6rem; flex-wrap:wrap; margin-top:.6rem; align-items:flex-start">
+        <%= form_with url: review_verdict_path, method: :post do %>
+          <input type="hidden" name="audit_id" value="<%= audit.id %>">
+          <input type="hidden" name="decision" value="confirm">
+          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--accent-soft); color:var(--accent); cursor:pointer">Confirm <%= audit.verdict %></button>
+        <% end %>
+        <%= form_with url: review_verdict_path, method: :post, html: { style: "display:flex; gap:.3rem" } do %>
+          <input type="hidden" name="audit_id" value="<%= audit.id %>">
+          <input type="hidden" name="decision" value="overrule">
+          <select name="verdict" style="font:inherit; padding:.25rem; border:1px solid var(--line); border-radius:6px">
+            <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
+              <option value="<%= v %>"><%= v %></option>
+            <% end %>
+          </select>
+          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--panel); cursor:pointer">Overrule</button>
+        <% end %>
+        <%= form_with url: review_verdict_path, method: :post, html: { style: "display:flex; gap:.3rem; flex:1; min-width:18rem" } do %>
+          <input type="hidden" name="audit_id" value="<%= audit.id %>">
+          <input type="hidden" name="decision" value="correct">
+          <input type="text" name="value" placeholder="the corrected value"
+                 value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>"
+                 style="font:inherit; flex:1; padding:.3rem .5rem; border:1px solid var(--line); border-radius:6px">
+          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:none; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer">Correct</button>
+        <% end %>
+      </div>
+    <% else %>
+      <div class="muted samples" style="margin-top:.5rem">
+        This claim was re-tended after examination — its successor carries the current value.
+        Confirm/overrule still records your judgment of the examined claim; correction applies to the successor.
+      </div>
+      <div style="display:flex; gap:.6rem; margin-top:.4rem">
+        <%= form_with url: review_verdict_path, method: :post do %>
+          <input type="hidden" name="audit_id" value="<%= audit.id %>">
+          <input type="hidden" name="decision" value="confirm">
+          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--accent-soft); color:var(--accent); cursor:pointer">Confirm <%= audit.verdict %></button>
+        <% end %>
+        <%= form_with url: review_verdict_path, method: :post, html: { style: "display:flex; gap:.3rem" } do %>
+          <input type="hidden" name="audit_id" value="<%= audit.id %>">
+          <input type="hidden" name="decision" value="overrule">
+          <select name="verdict" style="font:inherit; padding:.25rem; border:1px solid var(--line); border-radius:6px">
+            <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
+              <option value="<%= v %>"><%= v %></option>
+            <% end %>
+          </select>
+          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--panel); cursor:pointer">Overrule</button>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<h2>Accuracy <span class="muted" style="font-weight:400">— the process rate, per facet × tier</span></h2>
+<div class="card">
+  <% if @accuracy.any? %>
+    <table>
+      <tr><th>facet</th><th>tier</th><th>audited</th><th>supported</th><th>unsupported</th><th>contradicted</th><th>unverifiable</th><th>still live</th><th>supported rate</th></tr>
+      <% @accuracy.each do |c| %>
+        <tr>
+          <td><%= c[:facet] %></td><td><%= c[:tier] %></td>
+          <td><%= c[:audited] %></td><td><%= c[:supported] %></td>
+          <td><%= c[:unsupported] %></td><td><%= c[:contradicted] %></td>
+          <td class="muted"><%= c[:unverifiable] %></td><td class="muted"><%= c[:live] %></td>
+          <td><strong><%= c[:supported_rate] ? "#{(c[:supported_rate] * 100).round}%" : "—" %></strong></td>
+        </tr>
+      <% end %>
+    </table>
+    <p class="muted samples" style="margin:.5rem 0 0">
+      Audits never age out: a superseded claim's verdict stays on the books (re-tending cannot
+      launder the rate). The human verdict outranks the examiner's wherever both exist.
+    </p>
+  <% else %>
+    <span class="muted">No claims examined yet.</span>
+  <% end %>
+</div>
