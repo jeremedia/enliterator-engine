@@ -48,14 +48,17 @@ module Enliterator
                   .count
         return { claims: [], allocation: {} } if cells.empty?
 
-        # Round-robin allocation across cells (sorted for a stable walk),
-        # capped by each cell's population.
+        # Round-robin allocation across cells, capped by each cell's
+        # population. Ties break RANDOMLY: with n below the cell count, an
+        # alphabetical tie-break would deterministically starve the last
+        # cells every cycle (caught on the first unattended morning ledger —
+        # significance/* never sampled at n=10 across 12 cells).
         remaining = cells.transform_values(&:to_i)
         alloc = Hash.new(0)
         n.times do
-          open = remaining.select { |_, c| c.positive? }.keys.sort
+          open = remaining.select { |_, c| c.positive? }.keys
           break if open.empty?
-          cell = open.min_by { |k| [ alloc[k], k ] }
+          cell = open.shuffle.min_by { |k| alloc[k] }
           alloc[cell] += 1
           remaining[cell] -= 1
         end
