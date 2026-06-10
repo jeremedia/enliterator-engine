@@ -1222,3 +1222,79 @@ condition, repeatedly read, zero derived claims) is its reading.
 - HSDL probes (availability ← url_status; integrity ← docling_status; legibility ← text
   presence) + supervised `enliterator:survey` + a beat with the survey phase live.
 - README, About ("the conservation report" — living-doc rule), CLAUDE.md.
+
+# v0.18 — The Audit (accuracy, measured)
+
+Since v0.5 the cheap tier's claims have routinely carried confidence 1.0, and nobody had ever
+checked whether they were TRUE. Before the heartbeat's budget scales, accuracy must be measured.
+LIS frame: **quality review** (revision of cataloging) — a distinct librarian function from
+Requests' authority control, with its own surface and write path. The instrument MEASURES; the
+only acting is human. (This version also carried **Phase 0**: the launchd plist that beats HSDL
+nightly at 3:30 — the heartbeat's own adoption, a separate trust decision from the audit's.)
+
+## 1. The register + the examiner
+- `enliterator_audits`: one row per examination of one claim (examiner or human; multiple per
+  claim is the point). Verdicts: supported / unsupported / contradicted / **unverifiable** (the
+  honest exit for neighbor-grounded claims — excluded from the accuracy denominator). Rows carry
+  the source digest/chars/truncated they were rendered against, the examiner's corrected_value
+  PROPOSAL, and corrected_claim_id once a human mints the fix. Claim FK cascades (an audit
+  without its claim is uninterpretable; destroying host records shifts the rate — named).
+  `Claim.review_state` (unused since v0.1) deliberately NOT repurposed.
+- `Audit.sample(n)`: stratified uniform-random per **facet × tier** (tier NULL → "unknown";
+  strata global, context is a drill-down label) over the anti-join: live, engine-derived
+  (`visit_id IS NOT NULL` — host claims aren't the model's accuracy), unlocked, never audited.
+- `Audit::Examiner`: one quality-tier decide per claim, BLIND to tier/confidence/attribution/
+  siblings, grounded in the SAME full `enliterator_text(facet:)` the tend read
+  (`audit_source_chars` ceiling, default 24K, truncation stamped — a snippet-bound examiner
+  yields false "unsupported" for deep-grounded claims, the inverse of the failure this version
+  exists to catch). The term's controlled meaning resolves in the claim's OWN context. Verdict
+  definitions verbatim in the prompt; phrasing/style are never grounds for unsupported.
+
+## 2. The rates
+- `Audit.accuracy` — per facet × tier. **Headline = the PROCESS rate: audits never age out**
+  when their claim is superseded. The censoring argument: every heartbeat cycle replaces audited
+  claims with new unaudited ones from the same tier, so a live-only rate "improves" with zero
+  new evidence — re-tending must not be a way to launder the number. `live` is the secondary
+  stock count. Where a claim has both verdicts, the **human wins** (the anchor is the only
+  independent ground truth).
+- `Audit.anchor_agreement` — BINARY (supported vs defective; unverifiable pairs excluded);
+  no % below 10 overlaps; and the load-bearing line: **humans overruled examiner-supported x of
+  n** — the false-supported rate that bounds trust in the whole headline.
+
+## 3. The ride-along, the on-ramp, the surfaces
+- `audit_phase!` after the conservator. **`heartbeat_audit_sample` DEFAULT 0 = OFF** — setting
+  it non-zero IS the adoption act (quality-tier spend must never start on a gem upgrade; the
+  spec pins byte-identical at the default). Survey-style failure semantics; a Null examiner is
+  a VISIBLE skip (ledger + warning + the panel says "examiner unavailable"). Audit spend is
+  OUTSIDE the tending token budget — the v0.15 guarantee covers tending only.
+- `rake enliterator:audit N=` — every loop gets a hand-crank before it rides; prints each
+  verdict + rationale so the examiner's judgment is READ first.
+- **/review** (nav: Review): the human anchor's queue — ~1/3 examiner-supported by design (the
+  false-supported detector), doubted first; per row the source snippet with a digest-driven
+  "source changed since examination" flag; actions confirm / overrule (chosen, never imputed) /
+  **correct** → `Tendable#correct_claim!` — NOT assert_claim! (in-place mutation would rot the
+  audit under its own verdict): a NEW locked verified human-attributed claim in the SAME
+  context, derived from the one it corrects, then superseded; reconcile NOOPs it forever and
+  literacy_state feeds the fix back. `Claim::AlreadySuperseded` guards the race with a re-tend.
+- Status: the Accuracy panel (adoption-gated).
+
+## Honesty notes
+- The examiner shares the tender's worldview — correlated errors (quality-on-quality is the
+  model family grading itself). The human anchor is the only independent ground truth.
+- Verdicts are rendered against the CURRENT source; a changed source can flip a once-faithful
+  claim — a true catalog defect, not necessarily a tender error (the digest distinguishes).
+- Headline = process rate; the live-only stock rate is censored by supersession.
+- Small n: at 10/cycle expect weeks to n≈30 per cell — the panel shows counts and withholds
+  rates honestly while collecting.
+- Human-corrected (visit-NULL) claims are invisible to the residue discriminator and trajectory
+  facet timelines (named, not fixed).
+- Audit spend is untracked by the token budget (no usage surface on decide — same as the
+  considerer and conservator).
+
+## Done = all of (this phase):
+- Phase 0: the pacemaker plist loaded (first unattended beat 3:30 AM); supervised week of
+  morning ledgers — a SEPARATE trust decision from the audit instrument's.
+- Register + examiner + rates + ride-along + rake + Review + panel. 28 new examples; **422 green**.
+- HSDL: initializer sets heartbeat_audit_sample 10; `enliterator:audit N=25` supervised with
+  rationales read raw; one real claim corrected end-to-end on /review.
+- README, About (living doc), CLAUDE.md.

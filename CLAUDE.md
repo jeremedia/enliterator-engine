@@ -92,9 +92,11 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, released through **v0.14**; **v0.15 (the
-  heartbeat) + v0.16 (the pulse monitor + chat scope banner) + v0.17 (Condition: probes/survey/
-  gate, the Conservator, the conservation report) built locally** — push gated on Jeremy's word.
+- Remote: github.com/jeremedia/enliterator-engine, released through **v0.17**; **v0.18 (the
+  Audit: examiner + human anchor + /review + accuracy panel) built locally** — push gated.
+  **The pacemaker is LIVE**: launchd `app.domt.hsdl-ai-enliterator-heartbeat` beats HSDL nightly
+  at 3:30 AM (supervised week of morning ledgers in progress — log:
+  ~/Library/Logs/hsdl-ai-enliterator-heartbeat.log).
 - HSDL dev: the federation is seated as a context tree (chds-theses 1,327 / crs-reports 35,020 /
   executive-orders 1,026 / election-security 82); divergence validated (EO supersession graph,
   CRS issue_for_congress); the `keywords` term ratified live as the convergence proof. HSDL-side
@@ -126,9 +128,19 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   Conservator (Considerer pattern, positional ids, remediation-as-ground-truth, delta gate) →
   `enliterator_treatments` (no status machine — resolution is measured); conservation report on
   Status. `Measures.register` raises on the condition namespace. `Tendable#retract_claim!`.
-- **NEXT**: HSDL probes in the initializer + supervised `enliterator:survey` → first beats with
-  the survey phase live → host launchd adoption on Jeremy's word; vocabulary trigger is
-  UNMEASURED (v0.14 tested neighbor-change only) — watch its first real wave via trajectory.
+- **v0.18 — the Audit** (SPEC.md v0.18): `Audit.sample` (stratified facet×tier over live,
+  engine-derived, unlocked, unaudited claims), `Audit::Examiner` (full-text grounded — snippet
+  bounds yield false 'unsupported'; blind; unverifiable verdict; digest stamped),
+  `Audit.accuracy` (PROCESS rate — audits never age out, re-tending can't launder it; human
+  verdict outranks examiner), `anchor_agreement` (binary, min n=10, overruled-supported line),
+  `audit_phase!` (default 0 = OFF; adoption = setting heartbeat_audit_sample), `rake
+  enliterator:audit N=`, `/review` (confirm/overrule/correct → `Tendable#correct_claim!`, NOT
+  assert_claim! — locked human supersession; `Claim::AlreadySuperseded` race guard), Status
+  accuracy panel.
+- **NEXT**: read morning ledgers for the supervised week; accumulate audit cells toward n≈30;
+  human-anchor sessions on /review; vocabulary trigger still UNMEASURED — watch its first real
+  wave via trajectory. Then: the frontier conversation (bound root lanes vs raise budget) and
+  the auth wrap before staging (FEDLINK 2026-07-14).
 - Known open gaps: no claim-accuracy golden set (cheap-tier conf=1.0 unexamined); `/enliterator`
   mount is auth-less (dev only — wrap in CHDS Pulse auth before staging); considerer LLM tokens
   have no usage surface (ledger records outcomes only). Trajectory caveat: clean A/B isolation

@@ -546,6 +546,15 @@
       the condition report becomes a work queue for people, and when a record is repaired, the next
       survey simply notices. Resolution is measured, never asserted.
     </p>
+    <p>
+      And the catalog <strong>audits itself</strong>. Each cycle, an examiner re-reads a random sample of
+      claims against their sources and renders a verdict — supported, unsupported, contradicted — with
+      humans confirming or overruling on the <%= link_to "Review", review_path %> page. The accuracy of
+      the whole claim store is <strong>published, per facet and per tier</strong>, alongside the examiner's own
+      calibration against its human reviewers. Verdicts never age out when a claim is replaced, so
+      re-reading can never launder the number; and when a person corrects a wrong claim, the correction
+      is locked — the model can never quietly overwrite a librarian.
+    </p>
 
     <h2 id="the-conscience-is-human">The conscience is human</h2>
     <p>
@@ -606,9 +615,9 @@
     </div>
 
     <p class="about-colophon">
-      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.17 — condition:
-      the collection shelf-reads itself, and a conservator writes the treatment proposals; v0.16 made
-      the pulse pressable; v0.15 the heartbeat; v0.13 contexts; v0.12 spoke the library's language).
+      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.18 — the audit:
+      the catalog measures its own accuracy, humans anchor the examiner; v0.17 condition; v0.16 the
+      pressable pulse; v0.15 the heartbeat; v0.13 contexts; v0.12 spoke the library's language).
       Not searchability conferred once — <strong>attention that compounds</strong>.
     </p>
 
