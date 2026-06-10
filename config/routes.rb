@@ -30,6 +30,11 @@ Enliterator::Engine.routes.draw do
   post "heartbeat/beat",      to: "heartbeat#beat",  as: :heartbeat_beat
   get  "heartbeat/pulse/:id", to: "heartbeat#pulse", as: :heartbeat_pulse
 
+  # Quality review (v0.18): the human anchor for the audit instrument —
+  # confirm/overrule/correct the examiner's verdicts on sampled claims.
+  get  "review",         to: "review#index",   as: :review
+  post "review/verdict", to: "review#verdict", as: :review_verdict
+
   # Suggestion review (v0.7): the governed-vocabulary queue. Verdicts
   # (approve / map / reject) act per proposed_key.
   get  "suggestions",          to: "suggestions#index",    as: :suggestions
