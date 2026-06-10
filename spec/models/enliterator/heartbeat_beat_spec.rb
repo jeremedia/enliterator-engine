@@ -229,4 +229,70 @@ RSpec.describe "Enliterator::Heartbeat.beat! (v0.15)" do
       expect(second.warnings.join).to include("##{first.id}")
     end
   end
+  describe "the audit phase (v0.18 ride-along)" do
+    def seed_auditable!
+      w = widget!("auditable")
+      v = w.enliterator_visits.create!(facet: "policy_analysis", context: crs, status: "succeeded",
+                                       applied: true, tier: "cheap", tokens: { "total" => 100 },
+                                       created_at: 40.days.ago, started_at: 40.days.ago)
+      w.enliterator_claims.create!(key: "issue_for_congress", value: "a take", status: "draft",
+                                   tier: "cheap", visit: v)
+      w
+    end
+
+    it "is OFF at the default 0 — byte-identical, no audit rows, empty ledger entry" do
+      configure!(BeatStubLLM.new)
+      seed_history!
+      seed_auditable!
+
+      row = Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true)
+      expect(row.audits).to eq({})
+      expect(Enliterator::Audit.count).to eq(0)
+    end
+
+    it "examines the sample when adopted and books the outcome on the ledger" do
+      llm = BeatStubLLM.new
+      def llm.decide(messages:, schema:, tool_name:, tags: [])
+        { "verdict" => "supported", "rationale" => "the source says so", "confidence" => 0.9 }
+      end
+      configure!(llm)
+      Enliterator.configuration.heartbeat_audit_sample = 5
+      seed_history!
+      seed_auditable!
+
+      row = Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true)
+      expect(row.audits["examined"]).to be >= 1
+      expect(row.audits["supported"]).to be >= 1
+      expect(row.audits["allocation"]).to be_a(Hash)
+      expect(Enliterator::Audit.examiner.count).to eq(row.audits["examined"])
+      expect(Enliterator::Audit.first.heartbeat_id).to eq(row.id)
+    end
+
+    it "a Null examiner is a VISIBLE skip, never a quiet one" do
+      configure!(BeatStubLLM.new)
+      Enliterator.configuration.heartbeat_audit_sample = 3
+      seed_history!
+      seed_auditable!
+      # The tend stub answers tier "cheap"; the examiner resolves the ladder top
+      # ("cheap" too) — override its resolution to the Null adapter.
+      allow_any_instance_of(Enliterator::Audit::Examiner).to receive(:resolve_llm)
+        .and_return(Enliterator::Adapters::LLM::Null.new)
+
+      row = Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true)
+      expect(row.audits["skipped_null_adapter"]).to eq(1)
+      expect(row.warnings.join).to include("examiner unavailable")
+    end
+
+    it "a phase failure warns and the cycle still finishes" do
+      configure!(BeatStubLLM.new)
+      Enliterator.configuration.heartbeat_audit_sample = 2
+      seed_history!
+      allow(Enliterator::Audit).to receive(:sample).and_raise("sampler exploded")
+
+      row = Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true)
+      expect(row.warnings.join).to include("audit phase failed")
+      expect(row.error).to be_nil
+      expect(row).to be_finished
+    end
+  end
 end

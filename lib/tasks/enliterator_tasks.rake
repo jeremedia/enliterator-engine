@@ -189,6 +189,45 @@ namespace :enliterator do
              "#{Enliterator::Condition.untendable_count} untendable")
   end
 
+  # The quality-review on-ramp (v0.18): examine N claims by hand before the
+  # ride-along ever runs unattended — every loop gets a hand-crank first.
+  # Prints each verdict + rationale so the examiner's judgment is READ, not
+  # assumed (are its 'unsupported' calls real silence, or artifacts?).
+  #
+  #   N=25 bin/rails enliterator:audit
+  desc "Examine a stratified sample of claims against their sources (quality review). N=count"
+  task audit: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:audit] #{msg}") : puts(msg) }
+    n = (ENV["N"] || 10).to_i
+
+    sample = Enliterator::Audit.sample(n)
+    abort "[enliterator:audit] no unaudited claims in the pool" if sample[:claims].empty?
+    log.call("sampling #{sample[:claims].size} claim(s): #{sample[:allocation].map { |k, v| "#{k}=#{v}" }.join('  ')}")
+
+    examiner = Enliterator::Audit::Examiner.new
+    sample[:claims].each_with_index do |claim, i|
+      outcome = examiner.examine!(claim)
+      case outcome
+      when Enliterator::Audit
+        log.call("[#{i + 1}/#{sample[:claims].size}] #{outcome.verdict.upcase.ljust(13)} " \
+                 "#{claim.visit&.facet}/#{claim.key} #{claim.tendable_type}/#{claim.tendable_id}" \
+                 "#{outcome.source_truncated ? ' (source truncated)' : ''}")
+        log.call("    claim: #{claim.value.is_a?(String) ? claim.value[0, 140] : claim.value.to_json[0, 140]}")
+        log.call("    examiner: #{outcome.rationale[0, 200]}")
+      when :unavailable
+        abort "[enliterator:audit] examiner unavailable (Null adapter) — configure the gateway"
+      else
+        log.call("[#{i + 1}/#{sample[:claims].size}] skipped (#{outcome}) #{claim.tendable_type}/#{claim.tendable_id}")
+      end
+    end
+
+    Enliterator::Audit.accuracy.each do |c|
+      log.call("#{c[:facet]}/#{c[:tier]}: audited #{c[:audited]} — supported #{c[:supported]}, " \
+               "unsupported #{c[:unsupported]}, contradicted #{c[:contradicted]}, unverifiable #{c[:unverifiable]}")
+    end
+  end
+
   # Run the considerer over the open vocabulary requests: refresh pressure, ask the
   # agent across the whole field, auto-apply the safe verdicts (maps + confident
   # rejects), hold approves for ratification. Wire this AFTER enliterator:tend in

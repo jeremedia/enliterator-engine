@@ -114,6 +114,7 @@ module Enliterator
         work_items!(plan, counts, run_warnings)
         consider!(run_warnings) unless skip_consider
         conserve! unless skip_consider
+        audit_phase!(run_warnings)
         drain_deficit_check!(run_warnings) if mode == "enqueue"
       rescue => e
         finalize!(counts, run_warnings, error_message: "#{e.class}: #{e.message}")
@@ -309,6 +310,55 @@ module Enliterator
       outcome = Enliterator::Conservator.new.assess!
       update!(considerer: (considerer || {}).merge("conservator" => outcome))
       log("conservator: #{outcome.map { |k, v| "#{k}=#{v}" }.join(' ')}")
+    end
+
+    # v0.18: the quality-review ride-along — examine a stratified sample of
+    # claims each cycle. DEFAULT 0 = OFF (setting heartbeat_audit_sample
+    # non-zero IS the adoption act; quality-tier spend must never start on a
+    # gem upgrade). Count-bounded; audit spend is OUTSIDE the tending token
+    # budget (named in SPEC — the budget guarantee covers tending only).
+    # Failure semantics mirror the survey: a phase failure warns and the
+    # cycle continues; a per-claim failure is counted and the claim re-enters
+    # the pool next cycle. A Null adapter is a VISIBLE skip — a standing
+    # instrument must never go quiet (the v0.5 lesson).
+    def audit_phase!(run_warnings)
+      n = Enliterator.configuration.heartbeat_audit_sample.to_i
+      return if n <= 0
+
+      sample = Enliterator::Audit.sample(n)
+      if sample[:claims].empty?
+        update!(audits: { "examined" => 0, "note" => "no unaudited claims in the pool" })
+        return
+      end
+
+      examiner = Enliterator::Audit::Examiner.new
+      stats = Hash.new(0)
+      sample[:claims].each do |claim|
+        outcome = begin
+          examiner.examine!(claim, heartbeat: self)
+        rescue => e
+          log("audit of claim ##{claim.id} FAILED #{e.class}: #{e.message}")
+          :failed
+        end
+        case outcome
+        when Enliterator::Audit then stats[outcome.verdict] += 1
+        when :unavailable
+          stats["skipped_null_adapter"] += 1
+          break   # every remaining call would skip identically — say it once
+        else stats["skipped_#{outcome}"] += 1
+        end
+      end
+
+      examined = stats.slice(*Enliterator::Audit::VERDICTS).values.sum
+      payload = { "examined" => examined, "allocation" => sample[:allocation] }.merge(stats)
+      update!(audits: payload)
+      if stats["skipped_null_adapter"].positive?
+        run_warnings << "audit phase: examiner unavailable (Null adapter) — no verdicts this cycle"
+      end
+      log("audit: #{payload.map { |k, v| "#{k}=#{v}" }.join(' ')}")
+    rescue => e
+      run_warnings << "audit phase failed: #{e.class}: #{e.message}"
+      log(run_warnings.last)
     end
 
     def condition_untendable?(item)
