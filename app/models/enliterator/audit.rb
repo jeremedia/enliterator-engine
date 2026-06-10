@@ -28,5 +28,129 @@ module Enliterator
     scope :human,    -> { where(source: "human") }
 
     def defective? = DEFECTIVE.include?(verdict)
+
+    MIN_AGREEMENT_OVERLAPS = 10
+
+    class << self
+      # Stratified uniform-random sample for examination: per facet × tier
+      # cell (the report's cell — facet via the claim's visit; tier NULL
+      # buckets as "unknown"; strata are GLOBAL, context is a drill-down
+      # label), round-robin `n` across cells that still have unaudited
+      # claims, ORDER BY random() within each. Candidates: live,
+      # engine-derived (visit_id NOT NULL — host claims aren't the model's
+      # accuracy), unlocked, never audited. Returns {claims:, allocation:}.
+      def sample(n)
+        return { claims: [], allocation: {} } if n <= 0
+
+        cells = candidate_scope
+                  .joins("JOIN enliterator_visits sv ON sv.id = enliterator_claims.visit_id")
+                  .group(Arel.sql("sv.facet"), Arel.sql("COALESCE(enliterator_claims.tier, 'unknown')"))
+                  .count
+        return { claims: [], allocation: {} } if cells.empty?
+
+        # Round-robin allocation across cells (sorted for a stable walk),
+        # capped by each cell's population.
+        remaining = cells.transform_values(&:to_i)
+        alloc = Hash.new(0)
+        n.times do
+          open = remaining.select { |_, c| c.positive? }.keys.sort
+          break if open.empty?
+          cell = open.min_by { |k| [ alloc[k], k ] }
+          alloc[cell] += 1
+          remaining[cell] -= 1
+        end
+
+        claims = alloc.flat_map do |(facet, tier), k|
+          scope = candidate_scope
+                    .joins("JOIN enliterator_visits sv ON sv.id = enliterator_claims.visit_id")
+                    .where("sv.facet = ?", facet)
+                    .where("COALESCE(enliterator_claims.tier, 'unknown') = ?", tier)
+          scope.order(Arel.sql("random()")).limit(k).includes(:visit, :context, :tendable).to_a
+        end
+        { claims: claims, allocation: alloc.transform_keys { |f, t| "#{f}/#{t}" } }
+      end
+
+      def candidate_scope
+        Enliterator::Claim.live.where(locked: false).where.not(visit_id: nil)
+                          .where.not(id: Enliterator::Audit.select(:claim_id))
+      end
+
+      # The accuracy report, per facet × tier cell. The EFFECTIVE verdict per
+      # claim: the latest HUMAN audit wins over any examiner one (the anchor
+      # is the only independent ground truth). HEADLINE = the process rate —
+      # audits never age out when their claim is superseded (a live-only rate
+      # would let re-tending launder the number); `live` is the secondary
+      # stock count. Unverifiable is excluded from the accuracy denominator
+      # and reported as its own count.
+      def accuracy
+        cells = Hash.new { |h, k| h[k] = Hash.new(0) }
+        effective_verdicts.each do |claim, verdict|
+          facet = claim.visit&.facet || "host"
+          tier  = claim.tier.presence || "unknown"
+          cell  = cells[[ facet, tier ]]
+          cell[:audited] += 1
+          cell[verdict.to_sym] += 1
+          cell[:live] += 1 if claim.superseded_by_id.nil? && claim.status != "superseded"
+        end
+
+        cells.map do |(facet, tier), c|
+          decided = c[:supported] + c[:unsupported] + c[:contradicted]
+          {
+            facet: facet, tier: tier, audited: c[:audited], live: c[:live],
+            supported: c[:supported], unsupported: c[:unsupported],
+            contradicted: c[:contradicted], unverifiable: c[:unverifiable],
+            supported_rate: decided.positive? ? (c[:supported].to_f / decided).round(3) : nil
+          }
+        end.sort_by { |c| [ c[:facet], c[:tier] ] }
+      end
+
+      # The examiner's calibration: among claims with BOTH an examiner and a
+      # human audit (unverifiable pairs excluded), BINARY agreement —
+      # supported vs defective. Below MIN_AGREEMENT_OVERLAPS the rate is nil
+      # (counts always available). `overruled_supported` is the load-bearing
+      # line: examiner said supported, the human said defective — the
+      # false-supported rate bounds trust in the whole headline.
+      def anchor_agreement
+        pairs = audit_pairs
+        usable = pairs.reject { |e, h| e.verdict == "unverifiable" || h.verdict == "unverifiable" }
+        agreements = usable.count { |e, h| e.defective? == h.defective? }
+        e_supported = usable.select { |e, _| e.verdict == "supported" }
+        {
+          overlaps:            usable.size,
+          agreements:          agreements,
+          rate:                usable.size >= MIN_AGREEMENT_OVERLAPS ? (agreements.to_f / usable.size).round(3) : nil,
+          examiner_supported:  e_supported.size,
+          overruled_supported: e_supported.count { |_, h| h.defective? },
+          matrix:              usable.group_by { |e, h| [ e.verdict, h.verdict ] }.transform_values(&:size)
+        }
+      end
+
+      def corrected_count
+        where.not(corrected_claim_id: nil).count
+      end
+
+      private
+
+      # {claim => effective_verdict} — latest human, else latest examiner.
+      def effective_verdicts
+        includes(claim: :visit).order(:created_at).each_with_object({}) do |audit, h|
+          current = h[audit.claim]
+          # Walk in created order: later rows replace earlier UNLESS a human
+          # verdict already stands and this one is examiner.
+          next if current&.first == "human" && audit.source == "examiner"
+          h[audit.claim] = [ audit.source, audit.verdict ]
+        end.transform_values(&:last)
+      end
+
+      # [[latest examiner audit, latest human audit], ...] per overlapping claim.
+      def audit_pairs
+        by_claim = order(:created_at).group_by(&:claim_id)
+        by_claim.filter_map do |_, audits|
+          e = audits.select { |a| a.source == "examiner" }.last
+          h = audits.select { |a| a.source == "human" }.last
+          [ e, h ] if e && h
+        end
+      end
+    end
   end
 end
