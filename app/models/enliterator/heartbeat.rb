@@ -106,6 +106,14 @@ module Enliterator
                 .order(:id).map(&:reap!)
     end
 
+    # Unfinished with no sign of life past the threshold — reapable. The
+    # pulse endpoint uses this so a WATCHED monitor self-heals: the poll
+    # that finds the row orphaned stamps it, and the page resolves without
+    # anyone reloading.
+    def orphaned?
+      !finished? && (pulse_at || updated_at || started_at) < REAP_AFTER.ago
+    end
+
     # The honest ending for a cycle whose process died: finished_at = the
     # last sign of life, the death phase named, and `executed` RECONSTRUCTED
     # from the visit record — the ledger heals from its own provenance.
