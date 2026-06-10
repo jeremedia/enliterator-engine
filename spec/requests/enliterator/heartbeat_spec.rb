@@ -24,6 +24,22 @@ RSpec.describe "Enliterator heartbeat page", type: :request do
         .and include("whole collection — every context, one budget")
     end
 
+    it "serves the PREPARED plan from the ledger once a cycle has run (v0.20 — no live census)" do
+      hb = Enliterator::Heartbeat.create!(
+        started_at: 2.hours.ago, finished_at: 2.hours.ago + 5.minutes, mode: "sync",
+        budget_tokens: 1_000,
+        planned: { "counts" => { "frontier" => 3 }, "est_total" => 300, "frontier_total" => 7,
+                   "horizon_cycles" => 3, "lanes" => { "root/summary" => { "frontier" => 3 } },
+                   "warnings" => [] }
+      )
+      Widget.create!(title: "untended", body: "b")   # must NOT be censused
+      expect(Enliterator::Heartbeat).not_to receive(:plan)
+      get "/enliterator/heartbeat"
+      expect(response.body).to include("the prepared plan, from the ledger")
+        .and include("plan as of cycle ##{hb.id}")
+        .and include("Beat now")            # the trigger is still right there
+    end
+
     it "renders monitor mode (no form) while a within-window cycle is open" do
       hb = Enliterator::Heartbeat.create!(started_at: 5.minutes.ago, mode: "sync",
                                           budget_tokens: 1000, planned: { "counts" => { "frontier" => 3 } })

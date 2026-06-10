@@ -92,11 +92,26 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, released through **v0.17**; **v0.18 (the
-  Audit: examiner + human anchor + /review + accuracy panel) built locally** — push gated.
-  **The pacemaker is LIVE**: launchd `app.domt.hsdl-ai-enliterator-heartbeat` beats HSDL nightly
-  at 3:30 AM (supervised week of morning ledgers in progress — log:
-  ~/Library/Logs/hsdl-ai-enliterator-heartbeat.log).
+- Remote: github.com/jeremedia/enliterator-engine, released through **v0.17**; **v0.18–v0.20
+  built locally** — push gated. v0.19 = the component standard (tokens + shared components in
+  the layout style block, ctx-switch left beside what it scopes, Requests queue as per-term
+  cards). v0.20 = the prepared finding aid: Status/Heartbeat previews read the last ledger
+  row's `planned` jsonb via `Heartbeat::PreparedPlan` (live census only on a host with zero
+  cycles; `open!` re-plans at beat) — the pages went 18s/13s → sub-second; frontier_fetch's
+  failure-backoff is a hashed `NOT IN` SubPlan (correlated NOT EXISTS + the uuid→text cast's
+  missing stats made PG nested-loop 314K probes — 8,980ms → 384ms, EXPLAIN-verified);
+  Synopsis.build + Condition.report serve from Rails.cache keyed by latest heartbeat id +
+  5-min TTL (Solid Cache in HSDL dev; null store recomputes — and the memory-store spec caught
+  Report.summary returning an unmarshalable default-proc hash, fixed at source);
+  ProposedTerm.refresh!'s per-key resurged COUNT batched to one JOIN. **431 examples.**
+  **The pacemaker is LIVE and VERIFIED**: launchd `app.domt.hsdl-ai-enliterator-heartbeat` beats
+  HSDL nightly; first unattended cycle (2026-06-10) ran clean — 53/53, 173K/200K actual tokens,
+  all phases on the ledger, zero warnings. Gotcha: launchd fires on the SYSTEM clock (Central,
+  -0500) while the app zone is Pacific — "3:30" in the plist is 1:30 PT on the ledger; the 2 AM
+  sync rides the same clock so ordering holds. Supervised week of morning ledgers in progress
+  (log: ~/Library/Logs/hsdl-ai-enliterator-heartbeat.log; the cycle's narrative is in
+  development.log — stdout gets only boot warnings). Morning review day 1 caught + fixed the
+  audit sampler's alphabetical tie-break starving the last cells at n < cell-count.
 - HSDL dev: the federation is seated as a context tree (chds-theses 1,327 / crs-reports 35,020 /
   executive-orders 1,026 / election-security 82); divergence validated (EO supersession graph,
   CRS issue_for_congress); the `keywords` term ratified live as the convergence proof. HSDL-side
@@ -140,7 +155,8 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
 - **NEXT**: read morning ledgers for the supervised week; accumulate audit cells toward n≈30;
   human-anchor sessions on /review; vocabulary trigger still UNMEASURED — watch its first real
   wave via trajectory. Then: the frontier conversation (bound root lanes vs raise budget) and
-  the auth wrap before staging (FEDLINK 2026-07-14).
+  the auth wrap before staging (FEDLINK 2026-07-14). UI rule going forward (v0.19): new pages
+  compose from the layout's tokens/components; page `<style>` is page-specific layout only.
 - Known open gaps: no claim-accuracy golden set (cheap-tier conf=1.0 unexamined); `/enliterator`
   mount is auth-less (dev only — wrap in CHDS Pulse auth before staging); considerer LLM tokens
   have no usage surface (ledger records outcomes only). Trajectory caveat: clean A/B isolation

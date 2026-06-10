@@ -41,9 +41,9 @@
 
 <% else %>
   <%# ── plan + trigger mode ─────────────────────────────────────────────── %>
-  <h2>Next cycle <span class="subtitle">— what one beat would do right now</span></h2>
+  <h2>Next cycle <span class="subtitle">— <%= @plan.as_of ? "the prepared plan, from the ledger" : "what one beat would do right now" %></span></h2>
   <div class="card">
-    <% if @plan.items.any? %>
+    <% if @plan.work? %>
       <div>
         <% @plan.counts.sort.each do |reason, n| %>
           <span class="chip"><%= reason %> <strong><%= n %></strong></span>
@@ -61,6 +61,12 @@
       <span class="muted">Nothing to do — the collection is current.</span>
     <% end %>
     <div class="muted" style="margin-top:.5rem"><%= @plan.horizon_line %></div>
+    <%# v0.20: the prepared finding aid — the revision date, not a live census. %>
+    <% if @plan.as_of %>
+      <div class="muted samples" style="margin-top:.25rem">
+        plan as of cycle #<%= @plan.as_of.first %>, <%= @plan.as_of.last.strftime("%Y-%m-%d %H:%M") %> — the beat re-plans when it starts
+      </div>
+    <% end %>
     <% if @plan.warnings.any? %>
       <details style="margin-top:.4rem"><summary class="muted samples"><%= @plan.warnings.size %> planner note(s)</summary>
         <ul class="muted samples" style="margin:.3rem 0 0 1rem">
@@ -70,8 +76,9 @@
     <% end %>
   </div>
 
-  <%# The POST holds the plan scan (seconds) — the disable makes the pause read
-      as work. setTimeout so the disabled button's submission still completes. %>
+  <%# The POST holds the re-plan (a couple of seconds since the v0.20 hashed-
+      subplan rewrite) — the disable makes the pause read as work. setTimeout
+      so the disabled button's submission still completes. %>
   <%= form_with url: heartbeat_beat_path, method: :post,
                 html: { style: "margin-top:.8rem",
                         onsubmit: "var b=document.getElementById('beat-btn'); setTimeout(function(){ b.disabled=true; b.textContent='planning…'; }, 0); return true;" } do |f| %>

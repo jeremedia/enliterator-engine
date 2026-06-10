@@ -19,8 +19,19 @@ module Enliterator
       @running = Enliterator::Heartbeat.unfinished
                    .where("started_at > ?", Enliterator::Heartbeat::OVERLAP_WINDOW.ago)
                    .order(:started_at).last
-      @plan    = @running ? nil : Enliterator::Heartbeat.plan
-      @recent  = Enliterator::Heartbeat.order(started_at: :desc).limit(10)
+      @recent  = Enliterator::Heartbeat.order(started_at: :desc).limit(10).to_a
+      # v0.20: PREPARED when any cycle has ever run — the last ledger row's
+      # `planned` jsonb, with its as-of stamp. The live census runs only on a
+      # host with NO preparation to read (first-run: the page must still show
+      # what the first beat would do). open! re-plans authoritatively at beat.
+      @plan =
+        if @running
+          nil
+        elsif (last = @recent.first)
+          Enliterator::Heartbeat::PreparedPlan.new(last)
+        else
+          Enliterator::Heartbeat.plan
+        end
       @default_budget = Enliterator.configuration.heartbeat_budget_tokens
     end
 

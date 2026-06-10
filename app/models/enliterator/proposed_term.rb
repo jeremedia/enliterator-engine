@@ -42,11 +42,23 @@ module Enliterator
       samples = sugg.select("DISTINCT ON (proposed_key) proposed_key, rationale, example_value")
                     .order(:proposed_key, :id)
                     .each_with_object({}) { |s, h| h[s.proposed_key] = [ s.rationale, s.example_value ] }
+      # resurged = pending proposals created after the key's most recent verdict.
+      # ONE join against the per-key cutoffs — a per-key COUNT in the loop below
+      # was the /requests page's N+1 (one query per resolved key, ~300 on HSDL).
+      resurged_counts = sugg.pending
+                            .joins(<<~SQL)
+                              JOIN (SELECT proposed_key, MAX(updated_at) AS cut
+                                    FROM enliterator_suggestions
+                                    WHERE status <> 'pending'
+                                    GROUP BY proposed_key) verdicts
+                                ON verdicts.proposed_key = enliterator_suggestions.proposed_key
+                               AND enliterator_suggestions.created_at > verdicts.cut
+                            SQL
+                            .group(:proposed_key).count
 
       now = Time.current
       rows = keys.map do |key|
-        # resurged = pending proposals created after this key's most recent verdict
-        resurged = (cut = resolved_at[key]) ? sugg.pending.where(proposed_key: key).where("created_at > ?", cut).count : 0
+        resurged = resolved_at[key] ? resurged_counts[key].to_i : 0
         rationale, example = samples[key]
         {
           proposed_key:     key,

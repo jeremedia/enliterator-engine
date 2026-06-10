@@ -201,6 +201,29 @@ module Enliterator
       Enliterator::Measure.where(name: ROLLUP).count
     end
 
+    # v0.20: the conservation report's numbers, PREPARED — cached in the
+    # host's Rails.cache (Solid Cache, Redis, whatever the host runs; a
+    # null store just recomputes). The key carries the latest heartbeat id,
+    # so every cycle's survey republishes the report; the short TTL covers
+    # manual surveys between cycles. Counting a million measure rows per
+    # page view is a census, not a finding aid. Treatments are deliberately
+    # NOT cached — the conservator and the curator write them and must see
+    # them immediately (the controller merges those live).
+    ROLLUP_TTL = 5.minutes
+
+    def report
+      key = "enliterator/condition_report/hb#{Enliterator::Heartbeat.maximum(:id) || 0}"
+      Rails.cache.fetch(key, expires_in: ROLLUP_TTL) do
+        {
+          surveyed:      surveyed_count,
+          total:         tendable_models.sum(&:count),
+          untendable:    untendable_count,
+          piles:         piles,
+          residue_count: residue_count
+        }
+      end
+    end
+
     # ---- rung 4: the residue ---------------------------------------------------
 
     # Records the engine READ (≥ min_visits succeeded applied visits), whose

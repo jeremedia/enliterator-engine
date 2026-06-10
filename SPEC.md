@@ -1349,3 +1349,73 @@ param, and label byte-identical.
 - Suite green (no copy changes — the page-text pins held).
 - SPEC, README (the surface list had drifted: eight surfaces, Review was missing), About
   colophon.
+
+# v0.20 — The Prepared Finding Aid (pages stop censusing the stacks)
+
+Jeremy, navigating: "second per page." Measured: worse — Status ~18s, Heartbeat ~13s, 97%+ of
+it SQL. The diagnosis (EXPLAIN ANALYZE, live HSDL): both pages ran `Heartbeat.plan` — the full
+planner — synchronously on every view, and the planner's frontier fetch carried a query-shape
+trap. Requests carried a 331-query N+1. The principle that fixes it is the field's own:
+**a finding aid is a prepared document with a revision date** — nobody re-inventories the
+stacks each time the binder opens.
+
+## 1. The query trap (and the 23× fix)
+`doc_meta.id` is a uuid; `visits.tendable_id` is a string — the frontier anti-join casts
+`id::text`, an expression Postgres has no statistics on. PG estimated 1 row would survive the
+first anti-join (actual: 314,559) and planned the failure-backoff `NOT EXISTS` as a correlated
+nested loop: 314K index probes, 24.5M buffer reads, ~9s per root lane. The fix: the backoff
+exclusion became a NON-CORRELATED `NOT IN` subquery — a **hashed SubPlan**, built once and
+hash-probed per row, immune to the misestimate. Measured 8,980ms → 384ms. (Safe:
+tendable_type/tendable_id are NOT NULL, so NOT IN's null-poisoning can't bite. The membership
+branch uses the row-constructor form.) This still matters after §2: `open!` re-plans every
+real beat, and the nightly cycle pays the census where it belongs — at 1:30 AM.
+
+## 2. The previews read the ledger
+- `Heartbeat::PreparedPlan` — a ledger row's `planned` jsonb behind the same interface the
+  views render (`counts/lane_counts/est_total/budget/warnings/horizon_line`), plus `work?` and
+  `as_of` (the revision date). `Plan` gains `work?`/`as_of(nil)` — the views are polymorphic
+  over the plan's source and never branch on it. Spec-pinned round trip: a PreparedPlan built
+  from `Plan#to_ledger` renders identically to the live plan it was written from.
+- Status: the preview wraps the LAST ledger row — never a live census (spec:
+  `Heartbeat.plan` is not received). The "plan as of cycle #N, <time>" line is the honesty.
+  Also fixes v0.15's unguarded plan-while-a-cycle-runs case.
+- Heartbeat page: prepared when any cycle has ever run; the LIVE census remains only for a
+  host with no preparation to read (first-run — the page must still show what the first beat
+  would do). `open!` re-plans authoritatively at beat; `rake enliterator:heartbeat PLAN=1`
+  stays the on-demand inventory.
+
+## 3. The rollups come prepared too (Rails.cache — Jeremy: "Solid Cache usage is viable")
+- `Synopsis.build` serves from the host's `Rails.cache` (Solid Cache on HSDL dev, Redis in its
+  prod, memory or null anywhere else — a null store recomputes, byte-identical); `assemble` is
+  the uncached computation. Key carries the latest heartbeat id (every cycle republishes the
+  portrait) + 5-minute TTL (covers manual tends between cycles). The chat grounding reads
+  through the same cache.
+- `Condition.report` — the conservation numbers (surveyed/total/untendable/piles/residue),
+  same key discipline. **Treatments are deliberately NOT cached** — the conservator's and the
+  curator's writes must show immediately; the controller merges them live.
+- Kept LIVE deliberately: the accuracy panel (cheap; /review verdicts must reflect at once).
+- The memory-store spec caught a real serialization-boundary bug on first run:
+  `Report.summary` returned its outer hash with an autovivifying default proc — unmarshalable.
+  Fixed at the source (`default_proc = nil` before return). The null store had hidden it
+  forever; the first real store found it in seconds.
+
+## 4. The Requests N+1
+`ProposedTerm.refresh!` was batched except `resurged` — one COUNT per resolved key (~300 on
+HSDL, on every GET). Now one JOIN against the per-key verdict cutoffs; values identical
+(the v0.9 reproposal pins are the proof).
+
+## Honesty notes
+- The preview is as-of-last-cycle and says so. Between cycles it can drift from reality; the
+  beat re-plans at start, so nothing incorrect can execute — only the PREVIEW ages.
+- Cached rollups can lag manual tends by up to the TTL; each heartbeat republishes via the key.
+- A large fresh host (no ledger rows) still pays one live census on the Heartbeat page —
+  ~2–3s post-§1 — until its first beat.
+- Audit/considerer/conservator spend remains untracked by the token budget (unchanged).
+
+## Done = all of:
+- §1–4 + specs (PreparedPlan round trip; ledger-sourced previews pinned with
+  `not_to receive(:plan)`; cache hit + heartbeat-key bust on a memory store; resurged values
+  identical). **431 examples, 0 failures.**
+- Measured on HSDL after restart: Status 18s → sub-second warm; Heartbeat 13s → instant;
+  Requests 0.55s → ~0.1s. (Recorded below the commit.)
+- SPEC, README, About colophon, CLAUDE.md.

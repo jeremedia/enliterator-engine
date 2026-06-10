@@ -390,6 +390,15 @@ module Enliterator
       # Anti-join: members/rows with NO succeeded applied visit in the lane,
       # minus records in failure backoff. Never the in-memory done-set
       # (tend_context) or the NOT IN id-array (enliterator:tend) — wrong at 35K.
+      #
+      # The backoff exclusion is a NON-CORRELATED `NOT IN` subquery, not a
+      # correlated NOT EXISTS: Postgres has no statistics on the CAST(pk AS
+      # TEXT) join expression, so it estimates ~1 row survives the first
+      # anti-join and plans a correlated probe as a 300K-iteration nested
+      # loop (~9s/lane on HSDL). A non-correlated subquery becomes a hashed
+      # SubPlan — built once, hash-probed per row — immune to the misestimate
+      # (measured 8,980ms → 384ms). tendable_type/tendable_id are NOT NULL,
+      # so NOT IN's null-poisoning semantics can't bite.
       def frontier_fetch(lane, limit:, offset: 0)
         if lane.model
           pk   = "t.#{lane.model.connection.quote_column_name(lane.model.primary_key)}"
@@ -401,9 +410,9 @@ module Enliterator
               ON v.tendable_type = #{type} AND v.tendable_id = CAST(#{pk} AS TEXT)
              AND v.context_id IS NULL AND v.facet = ? AND v.status = 'succeeded' AND v.applied
             WHERE v.id IS NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM enliterator_visits f
-                WHERE f.tendable_type = #{type} AND f.tendable_id = CAST(#{pk} AS TEXT)
+              AND CAST(#{pk} AS TEXT) NOT IN (
+                SELECT f.tendable_id FROM enliterator_visits f
+                WHERE f.tendable_type = #{type}
                   AND f.context_id IS NULL AND f.facet = ?
                   AND f.status = 'failed' AND f.created_at > ?)
               #{cond_pred(type, "CAST(#{pk} AS TEXT)")}
@@ -419,10 +428,9 @@ module Enliterator
               ON v.tendable_type = m.member_type AND v.tendable_id = m.member_id
              AND v.context_id = ? AND v.facet = ? AND v.status = 'succeeded' AND v.applied
             WHERE m.context_id = ? AND v.id IS NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM enliterator_visits f
-                WHERE f.tendable_type = m.member_type AND f.tendable_id = m.member_id
-                  AND f.context_id = ? AND f.facet = ?
+              AND (m.member_type, m.member_id) NOT IN (
+                SELECT f.tendable_type, f.tendable_id FROM enliterator_visits f
+                WHERE f.context_id = ? AND f.facet = ?
                   AND f.status = 'failed' AND f.created_at > ?)
               #{cond_pred('m.member_type', 'm.member_id')}
             ORDER BY m.created_at, m.id

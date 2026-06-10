@@ -28,9 +28,25 @@ module Enliterator
     # A claim KEY that names a cross-record link (fallback when no connection facet).
     CONNECTION_KEY_RX    = /\A(related_|connected_|cites|references)|(_cluster|_network|thematic)/i
 
-    # Build the self-portrait. `sample_cap` / `value_chars` bound the prompt size so
-    # to_prompt stays small regardless of corpus size.
+    # v0.20: the portrait is PREPARED — served from the host's Rails.cache
+    # (Solid Cache, Redis, memory; a null store recomputes, byte-identical
+    # behavior). The key carries the latest heartbeat id so each cycle
+    # republishes the portrait; the short TTL covers manual tends between
+    # cycles. `generated_at` inside the cached value is the honest prepared-at
+    # stamp. Status AND the chat grounding both read through this.
+    ROLLUP_TTL = 5.minutes
+
     def build(host: nil, since: nil, context: nil, sample_cap: 3, value_chars: 80)
+      key = [ "enliterator/synopsis", context&.key || "root", host.respond_to?(:name) ? host.name : host,
+              since, sample_cap, value_chars, "hb#{Enliterator::Heartbeat.maximum(:id) || 0}" ].join("/")
+      Rails.cache.fetch(key, expires_in: ROLLUP_TTL) do
+        assemble(host: host, since: since, context: context, sample_cap: sample_cap, value_chars: value_chars)
+      end
+    end
+
+    # Build the self-portrait (uncached). `sample_cap` / `value_chars` bound the
+    # prompt size so to_prompt stays small regardless of corpus size.
+    def assemble(host: nil, since: nil, context: nil, sample_cap: 3, value_chars: 80)
       policy = Enliterator.staffing
       names  = facet_names(policy, context)
 

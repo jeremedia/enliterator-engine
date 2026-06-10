@@ -8,10 +8,13 @@ module Enliterator
       @children = current_context ? current_context.children.order(:name) : Enliterator::Context.roots.order(:name)
 
       # v0.15: the next-cycle preview — GATED behind adoption (any ledger row).
-      # The planner's count queries must not slow a host's Status page that has
-      # never run a heartbeat: absent, the page is byte-identical to v0.14.
+      # v0.20: PREPARED, not censused — the preview reads the last cycle's
+      # `planned` jsonb (with its as-of stamp) instead of re-walking 300K host
+      # rows per page view. The live plan still runs where it is authoritative:
+      # open! re-plans when a beat starts. Absent any ledger row, the page
+      # stays byte-identical to v0.14.
       @last_heartbeat = Enliterator::Heartbeat.order(:started_at).last
-      @heartbeat_plan = @last_heartbeat ? Enliterator::Heartbeat.plan : nil
+      @heartbeat_plan = @last_heartbeat ? Enliterator::Heartbeat::PreparedPlan.new(@last_heartbeat) : nil
 
       # v0.18: the accuracy panel — gated on any audit existing.
       if (@audit_adopted = Enliterator::Audit.exists?)
@@ -22,15 +25,12 @@ module Enliterator
       end
 
       # v0.17: the conservation report — gated the same way (any survey ever).
+      # v0.20: the numbers come PREPARED (Condition.report, cached against the
+      # latest cycle); treatments merge in LIVE — a curator's writes show at once.
       if (@condition_adopted = Enliterator::Condition.adopted?)
-        @condition = {
-          surveyed:      Enliterator::Condition.surveyed_count,
-          total:         Enliterator::Condition.tendable_models.sum(&:count),
-          untendable:    Enliterator::Condition.untendable_count,
-          piles:         Enliterator::Condition.piles,
-          residue_count: Enliterator::Condition.residue_count,
-          treatments:    Enliterator::Treatment.all.index_by(&:signature)
-        }
+        @condition = Enliterator::Condition.report.merge(
+          treatments: Enliterator::Treatment.all.index_by(&:signature)
+        )
       end
     end
 
