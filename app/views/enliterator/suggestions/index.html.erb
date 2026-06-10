@@ -1,4 +1,30 @@
-<h1>Authority control <span class="muted" style="font-weight:400; font-size:.95rem">— the controlled vocabulary, reviewing itself</span></h1>
+<%# Page-specific layout for the pending-request cards. Each proposed term is a
+    card: a header line (key + pressure + provenance), then evidence given room
+    to breathe (rationale, example, the considerer's verdict), then the action
+    group aligned right (Approve · Map · Reject). Components (.card, .chip,
+    .badge-live, .btn*, .field, .verdict) come from the layout. %>
+<style>
+  .request { display: grid; grid-template-columns: 1fr auto; gap: var(--s2) var(--s4); align-items: start; }
+  .request .req-head { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); }
+  .request .req-key { font-size: 1.02rem; }
+  .request .req-pressure { margin-left: auto; display: flex; align-items: baseline; gap: var(--s2); }
+  .request .req-pressure .big { font-size: 1.25rem; line-height: 1; }
+  .request .req-evidence { min-width: 0; }
+  .request .req-evidence .considerer { margin-top: var(--s3); }
+  .request .req-evidence .considerer-rationale { margin-top: var(--s1); }
+  .request .req-actions { display: flex; flex-direction: column; gap: var(--s2); align-items: stretch;
+    min-width: 12.5rem; }
+  .request .req-actions .verdict-map { display: flex; gap: var(--s1); }
+  .request .req-actions .verdict-map .field { flex: 1; min-width: 0; }
+  .request .req-actions form { display: flex; margin: 0; }
+  .request .req-actions form .btn { flex: 1; justify-content: center; }
+  @media (max-width: 640px) {
+    .request { grid-template-columns: 1fr; }
+    .request .req-actions { min-width: 0; }
+  }
+</style>
+
+<h1>Authority control <span class="subtitle">— the controlled vocabulary, reviewing itself</span></h1>
 <p class="muted">
   When the established vocabulary can't express something, the model <em>proposes a term</em> rather than
   inventing one off-list — and a term earns its place by recurring across records (literary warrant). The
@@ -7,65 +33,68 @@
   <strong><%= @pending %></strong> pending · <%= @resolved %> resolved.
 </p>
 
-<div style="margin:1rem 0">
-  <%= button_to "Consider all requests →", suggestions_consider_path, class: "v-approve",
+<div class="strip" style="margin:1rem 0">
+  <%= button_to "Consider all requests →", suggestions_consider_path, class: "btn btn-affirmative",
         data: { turbo: false } %>
-  <span class="muted" style="font-size:.85rem">Runs the agent across all <%= @terms.size %> open key<%= "s" if @terms.size != 1 %>.</span>
+  <span class="samples">Runs the agent across all <%= @terms.size %> open key<%= "s" if @terms.size != 1 %>.</span>
 </div>
 
 <% if @terms.any? %>
   <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure</h2>
-  <div class="card">
-    <table>
-      <tr><th>proposed key</th><th>pressure</th><th>from</th><th>rationale</th><th>considerer</th><th>verdict</th></tr>
-      <% @terms.each do |t| %>
-        <% key = t.proposed_key %>
-        <tr>
-          <td>
-            <code><%= key %></code>
-            <% if t.resurged_count.to_i.positive? %><br><span class="warn" title="re-proposed after a verdict">⚠ resurged <%= t.resurged_count %></span><% end %>
-          </td>
-          <td><span class="big" style="font-size:1.1rem"><%= t.pressure %></span><br><span class="muted" style="font-size:.75rem"><%= t.distinct_records %> rec</span></td>
-          <td class="samples"><%= t.by_facet.keys.join(", ") %></td>
-          <td class="samples">
-            <%= truncate(t.sample_rationale.to_s, length: 120) %>
-            <% if t.sample_example.present? %><br><em><%= truncate(t.sample_example.is_a?(String) ? t.sample_example : t.sample_example.to_json, length: 70) %></em><% end %>
-          </td>
-          <td class="samples">
-            <% if t.recommended_decision.present? %>
-              <span class="chip" style="background:var(--accent-soft); color:var(--accent)">
-                <%= t.recommended_decision %><%= " → #{t.recommended_map_to}" if t.recommended_map_to.present? %>
-                <%= "· #{(t.recommended_confidence.to_f * 100).round}%" if t.recommended_confidence %>
-              </span>
-              <br><%= truncate(t.recommended_rationale.to_s, length: 90) %>
-            <% else %>
-              <span class="muted">—</span>
-            <% end %>
-          </td>
-          <td>
-            <div class="verdict">
-              <%= button_to "Approve", suggestions_verdict_path,
-                    params: { proposed_key: key, decision: "approve" }, class: "v-approve" %>
-              <%= form_with url: suggestions_verdict_path, method: :post do |f| %>
-                <%= f.hidden_field :proposed_key, value: key %>
-                <%= f.hidden_field :decision, value: "map" %>
-                <%= f.select :mapped_to, @canonical, { selected: t.recommended_map_to, include_blank: "map onto…" } %>
-                <%= f.submit "Map" %>
-              <% end %>
-              <%= button_to "Reject", suggestions_verdict_path,
-                    params: { proposed_key: key, decision: "reject" }, class: "v-reject" %>
-            </div>
-          </td>
-        </tr>
-      <% end %>
-    </table>
-  </div>
+  <% @terms.each do |t| %>
+    <% key = t.proposed_key %>
+    <div class="card request">
+      <div class="req-head">
+        <code class="req-key"><%= key %></code>
+        <% if t.resurged_count.to_i.positive? %>
+          <span class="chip warn" title="re-proposed after a verdict">⚠ resurged <%= t.resurged_count %></span>
+        <% end %>
+        <span class="samples"><%= t.by_facet.keys.join(", ") %></span>
+        <span class="req-pressure">
+          <span class="samples">pressure</span>
+          <span class="big"><%= t.pressure %></span>
+          <span class="samples"><%= t.distinct_records %> rec</span>
+        </span>
+      </div>
+
+      <div class="req-evidence">
+        <div><%= truncate(t.sample_rationale.to_s, length: 220) %></div>
+        <% if t.sample_example.present? %>
+          <div class="samples" style="margin-top:.2rem"><em><%= truncate(t.sample_example.is_a?(String) ? t.sample_example : t.sample_example.to_json, length: 140) %></em></div>
+        <% end %>
+        <div class="considerer">
+          <% if t.recommended_decision.present? %>
+            <span class="badge-live">
+              <%= t.recommended_decision %><%= " → #{t.recommended_map_to}" if t.recommended_map_to.present? %>
+              <%= "· #{(t.recommended_confidence.to_f * 100).round}%" if t.recommended_confidence %>
+            </span>
+            <span class="samples considerer-rationale"><%= truncate(t.recommended_rationale.to_s, length: 160) %></span>
+          <% else %>
+            <span class="samples">considerer: <span class="muted">—</span></span>
+          <% end %>
+        </div>
+      </div>
+
+      <div class="req-actions verdict">
+        <%= button_to "Approve", suggestions_verdict_path,
+              params: { proposed_key: key, decision: "approve" }, class: "btn btn-affirmative" %>
+        <%= form_with url: suggestions_verdict_path, method: :post, html: { class: "verdict-map" } do |f| %>
+          <%= f.hidden_field :proposed_key, value: key %>
+          <%= f.hidden_field :decision, value: "map" %>
+          <%= f.select :mapped_to, @canonical, { selected: t.recommended_map_to, include_blank: "map onto…" }, class: "field" %>
+          <%= f.submit "Map", class: "btn" %>
+        <% end %>
+        <%= button_to "Reject", suggestions_verdict_path,
+              params: { proposed_key: key, decision: "reject" }, class: "btn btn-destructive" %>
+      </div>
+    </div>
+  <% end %>
 <% else %>
   <p class="muted">No pending requests — the vocabulary is fully tended.</p>
 <% end %>
 
 <% if @reproposed.any? %>
-  <h2>Re-proposed after a verdict <span class="muted" style="font-weight:400">— the model is overruling you</span></h2>
+  <h2>Re-proposed after a verdict <span class="subtitle">— the model is overruling you</span></h2>
   <p class="muted">
     These keys got a verdict, but the model keeps asking for them on later tends. Each re-ask is
     <strong>suppressed</strong> (it doesn't re-flood the queue) and counted here. High counts mean the
@@ -89,7 +118,7 @@
               <span class="muted">resolved</span>
             <% end %>
           </td>
-          <td><span class="big" style="font-size:1.1rem"><%= t.post_verdict_attempts %></span></td>
+          <td><span class="big" style="font-size:1.15rem"><%= t.post_verdict_attempts %></span></td>
         </tr>
       <% end %>
     </table>
@@ -112,7 +141,7 @@
 <% end %>
 
 <% if @synonyms.any? %>
-  <h2>USE references <span class="muted" style="font-weight:400">— synonyms folded onto a preferred term</span></h2>
+  <h2>USE references <span class="subtitle">— synonyms folded onto a preferred term</span></h2>
   <div class="card">
     <table>
       <tr><th>variant (UF)</th><th>USE →</th><th>facet</th></tr>

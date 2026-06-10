@@ -13,51 +13,151 @@
       engine stylesheet. Do NOT add stylesheet_link_tag here — a Sprockets host
       raises AssetNotPrecompiledError for an engine asset it didn't declare. %>
   <style>
+    /* ════════════════════════════════════════════════════════════════════════
+       ENLITERATOR — SHARED COMPONENT SYSTEM
+       ────────────────────────────────────────────────────────────────────────
+       This block is the single source of truth for the engine's look. It is
+       100% self-contained (no external CSS/JS, no web fonts, no gem) so the UI
+       renders under any host pipeline (Sprockets, Propshaft, or none). Do NOT
+       add stylesheet_link_tag — a Sprockets host raises AssetNotPrecompiledError
+       for an engine asset it didn't declare.
+
+       THE RULE FOR NEW PAGES
+         Compose from the tokens and component classes below. A page's own
+         <style> block is for genuinely page-specific LAYOUT only (grids,
+         scrollspy, the pulse monitor) — never for re-styling a button, chip,
+         table, card, badge, or form control. If you reach for an inline color,
+         border, or radius, use a token instead.
+
+       TOKENS (:root)
+         Color    --bg --panel --ink --muted --line --accent --accent-soft
+                  --warn --warn-soft --chip
+         Space    --s1 .25 · --s2 .5 · --s3 .75 · --s4 1 · --s5 1.5 · --s6 2 rem
+         Radius   --r-sm 6 · --r 10 · --r-pill 999 px
+         Type     --fs-xs .75 · --fs-sm .82 · --fs-base .9 · --fs-lg 1.05 rem
+
+       COMPONENTS (defined once, here)
+         .card / .panel        bordered surface; .row wraps cards into columns
+         .section-head (h2)    section heading; <small> inside = quiet subtitle
+         table                 quiet catalog table (th muted, hairline rows)
+         .chip                 neutral pill; .chip.tier = accent; .chip.warn = alert
+         .badge-live           the "curator-approved, live" accent badge
+         .btn                  base button; modifiers:
+                                 .btn-affirmative (approve/confirm — accent outline)
+                                 .btn-primary     (filled accent — the main action)
+                                 .btn-destructive (reject — warn)
+                                 .btn-sm          (compact)
+         .field                input / select / textarea (shared form control)
+         .strip                summary/metric strip (a .card laid out as a chip row)
+         .muted .samples .mono .warn .big   typographic utilities
+
+       Page-specific styles still in their views (by design): About (TOC +
+       prose grid + stats-strip), Chat (.thread/.bubble/.prompts/.ask — also JS
+       hooks), Heartbeat (.pulse-* monitor — also JS hooks).
+       ════════════════════════════════════════════════════════════════════════ */
     :root {
       --bg: #f7f7f5; --panel: #fff; --ink: #1c1c1a; --muted: #6b6b66;
       --line: #e3e3df; --accent: #2d6a4f; --accent-soft: #e8f0ec; --warn: #b4231f;
-      --chip: #eef0f2;
+      --warn-soft: #fdeceb; --chip: #eef0f2;
+      /* spacing scale (8px rhythm, expressed in rem) */
+      --s1: .25rem; --s2: .5rem; --s3: .75rem; --s4: 1rem; --s5: 1.5rem; --s6: 2rem;
+      /* radii */
+      --r-sm: 6px; --r: 10px; --r-pill: 999px;
+      /* type scale */
+      --fs-xs: .75rem; --fs-sm: .82rem; --fs-base: .9rem; --fs-lg: 1.05rem;
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--ink);
       font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    nav.enl { display: flex; gap: 1.25rem; align-items: baseline;
+
+    /* ── Navigation ──────────────────────────────────────────────────────── */
+    nav.enl { display: flex; gap: var(--s5); align-items: baseline;
       padding: .8rem 1.25rem; background: var(--panel); border-bottom: 1px solid var(--line); }
     nav.enl .brand { font-weight: 700; letter-spacing: .02em; }
-    nav.enl .brand small { color: var(--muted); font-weight: 400; margin-left: .4rem; }
+    /* brand → scope selector → scoped destinations. The hairline separator
+       after the scope group signals "everything past here is viewed through it". */
+    nav.enl .nav-scope { display: flex; align-items: baseline; gap: var(--s3); }
+    /* only fence the scope group off when a switcher is actually present */
+    nav.enl .nav-scope.has-scope { padding-right: var(--s5); border-right: 1px solid var(--line); }
+    /* the context switcher — styled via the group class, NOT via the element id, so
+       the id literal appears in the response ONLY when the element renders (the
+       flat-install spec greps the whole body for its absence). The id stays on the
+       element itself for the JS onchange hook. */
+    nav.enl .nav-scope select { font: inherit; font-size: var(--fs-sm); padding: .15rem .4rem;
+      border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel);
+      color: var(--accent); max-width: 14rem; }
+    nav.enl .nav-spacer { margin-left: auto; }
+
+    /* ── Page frame & headings ───────────────────────────────────────────── */
     main.enl { max-width: 980px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
     h1 { font-size: 1.45rem; margin: .2rem 0 1rem; }
-    h2 { font-size: 1.05rem; margin: 1.6rem 0 .6rem; }
-    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-      padding: 1rem 1.1rem; margin: .75rem 0; }
-    .row { display: flex; flex-wrap: wrap; gap: .75rem; }
+    h2, .section-head { font-size: var(--fs-lg); margin: 1.6rem 0 .6rem; font-weight: 600; }
+    /* a quiet subtitle that rides alongside a heading */
+    h2 small, .section-head small, .subtitle {
+      font-weight: 400; font-size: .95rem; color: var(--muted); }
+
+    /* ── Card / panel ────────────────────────────────────────────────────── */
+    .card, .panel { background: var(--panel); border: 1px solid var(--line);
+      border-radius: var(--r); padding: 1rem 1.1rem; margin: .75rem 0; }
+    .row { display: flex; flex-wrap: wrap; gap: var(--s3); }
     .row .card { flex: 1 1 280px; }
-    .chip { display: inline-block; background: var(--chip); border-radius: 999px;
+
+    /* ── Chips & badges ──────────────────────────────────────────────────── */
+    .chip { display: inline-block; background: var(--chip); border-radius: var(--r-pill);
       padding: .1rem .55rem; font-size: .8rem; color: var(--muted); }
     .chip.tier { background: var(--accent-soft); color: var(--accent); }
+    .chip.warn { background: var(--warn-soft); color: var(--warn); }
+    /* the "curator-approved; live but not codified" badge — was repeated inline */
+    .badge-live { display: inline-block; background: var(--accent-soft); color: var(--accent);
+      border-radius: var(--r-pill); padding: .1rem .55rem; font-size: .8rem; }
+
+    /* ── Typographic utilities ───────────────────────────────────────────── */
     .muted { color: var(--muted); }
+    .samples { color: var(--muted); font-size: var(--fs-sm); }
+    .big { font-size: 1.6rem; font-weight: 700; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
+    .warn { color: var(--warn); font-weight: 600; }
+
+    /* ── Tables ──────────────────────────────────────────────────────────── */
     table { border-collapse: collapse; width: 100%; font-size: .9rem; }
     th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid var(--line);
       vertical-align: top; }
     th { color: var(--muted); font-weight: 600; }
-    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
-    .warn { color: var(--warn); font-weight: 600; }
-    tr.warn-row td { background: #fdeceb; }
-    .big { font-size: 1.6rem; font-weight: 700; }
-    .samples { color: var(--muted); font-size: .82rem; }
+    tr.warn-row td { background: var(--warn-soft); }
 
-    /* flash + verdict controls */
+    /* ── Summary / metric strip ──────────────────────────────────────────── */
+    .strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn { font: inherit; font-size: var(--fs-base); padding: .35rem .85rem;
+      border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel);
+      color: var(--ink); cursor: pointer; line-height: 1.3; transition: background .15s, border-color .15s; }
+    .btn:hover { background: var(--chip); }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .btn-sm { font-size: .8rem; padding: .25rem .6rem; }
+    .btn-affirmative { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+    .btn-affirmative:hover { background: #dde9e2; border-color: var(--accent); }
+    .btn-primary { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+    .btn-primary:hover { background: #245741; }
+    .btn-destructive { color: var(--warn); border-color: var(--line); background: var(--panel); }
+    .btn-destructive:hover { background: var(--warn-soft); border-color: var(--warn); }
+
+    /* ── Form controls ───────────────────────────────────────────────────── */
+    .field { font: inherit; font-size: var(--fs-base); padding: .35rem .55rem;
+      border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel);
+      color: var(--ink); }
+    .field:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+    /* ── Flash messages ──────────────────────────────────────────────────── */
     .flash { padding: .55rem .8rem; border-radius: 8px; margin: 0 0 1rem; font-size: .9rem; }
     .flash-notice { background: var(--accent-soft); color: var(--accent); }
-    .flash-alert { background: #fdeceb; color: var(--warn); }
-    .verdict { display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
-    .verdict form { display: inline; margin: 0; }
-    .verdict button, .verdict select { font: inherit; font-size: .8rem; padding: .2rem .5rem;
-      border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }
-    .verdict .v-approve { color: var(--accent); border-color: var(--accent-soft); }
-    .verdict .v-reject { color: var(--warn); }
+    .flash-alert { background: var(--warn-soft); color: var(--warn); }
+
+    /* ── Requests verdict action group (page-specific layout for suggestions) ─ */
+    .verdict { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+    .verdict form { display: inline-flex; margin: 0; gap: var(--s1); align-items: center; }
 
     /* chat */
     .thread { display: flex; flex-direction: column; gap: .6rem; margin: 1rem 0; }
@@ -89,27 +189,30 @@
 </head>
 <body>
   <nav class="enl">
-    <span class="brand">Enliterator<small>the collection, tended</small></span>
+    <%# brand → scope → the scoped destinations. The context switcher scopes the
+        content of every surface that follows it, so it sits with the brand,
+        fenced off by a hairline separator (the .nav-scope group). Flat installs
+        with no tree seeded show only the brand — byte-identical to before. %>
+    <div class="nav-scope<%= " has-scope" if context_switcher_options.any? %>">
+      <span class="brand">Enliterator</span>
+      <% if context_switcher_options.any? %>
+        <select id="ctx-switch" title="View through a context"
+                onchange="location.search='?context='+encodeURIComponent(this.value)">
+          <option value="root" <%= "selected" unless current_context %>>whole collection</option>
+          <% context_switcher_options.each do |label, key| %>
+            <option value="<%= key %>" <%= "selected" if current_context&.key == key %>><%= label %></option>
+          <% end %>
+        </select>
+      <% end %>
+    </div>
     <%= link_to "Status", root_path %>
     <%= link_to "Chat", conversation_path %>
     <%= link_to "Requests", suggestions_path %>
     <%= link_to "Review", review_path %>
     <%= link_to "Contexts", contexts_path %>
     <%= link_to "Heartbeat", heartbeat_path %>
-    <%= link_to "Settings", settings_path, style: "margin-left:auto" %>
+    <%= link_to "Settings", settings_path, class: "nav-spacer" %>
     <%= link_to "About", about_path %>
-    <%# v0.13 context switcher — every surface is viewed THROUGH a context.
-        Hidden entirely when no tree is seeded (flat installs see no change). %>
-    <% if context_switcher_options.any? %>
-      <select id="ctx-switch" title="View through a context"
-              style="font: inherit; font-size: .82rem; padding: .15rem .4rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--accent); max-width: 14rem"
-              onchange="location.search='?context='+encodeURIComponent(this.value)">
-        <option value="root" <%= "selected" unless current_context %>>whole collection</option>
-        <% context_switcher_options.each do |label, key| %>
-          <option value="<%= key %>" <%= "selected" if current_context&.key == key %>><%= label %></option>
-        <% end %>
-      </select>
-    <% end %>
   </nav>
   <main class="enl">
     <% flash.each do |type, msg| %>

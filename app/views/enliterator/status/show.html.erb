@@ -11,7 +11,7 @@
   </p>
 <% end %>
 
-<h2>Live claims <span class="muted" style="font-weight:400">(<%= @claims.size %>)</span></h2>
+<h2>Live claims <span class="subtitle">(<%= @claims.size %>)</span></h2>
 <div class="card">
   <% if @claims.any? %>
     <table>
@@ -33,7 +33,7 @@
 </div>
 
 <% if @trajectories.any? %>
-  <h2>Understanding over time <span class="muted" style="font-weight:400">— the compounding, visible</span></h2>
+  <h2>Understanding over time <span class="subtitle">— the compounding, visible</span></h2>
   <p class="muted samples" style="max-width:64ch">
     Each column is one tending visit; each row a claim. <span style="background:var(--accent-soft); padding:0 .3rem; border-radius:3px">Highlighted</span>
     cells changed from the prior visit — the record's understanding deepening (or not) in place.

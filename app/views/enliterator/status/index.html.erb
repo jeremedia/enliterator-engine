@@ -1,5 +1,5 @@
 <% s = @synopsis %>
-<h1>Status <span class="muted" style="font-weight:400; font-size:.95rem">— the collection's finding aid, maintained for itself</span></h1>
+<h1>Status <span class="subtitle">— the collection's finding aid, maintained for itself</span></h1>
 <p class="muted">
   A self-portrait: scope and content, the controlled vocabulary in use, the connection graph, and the
   health of the tending.
@@ -30,7 +30,7 @@
     Rendered only once a cycle has ever run (adoption-gated: no planner queries
     on hosts that haven't adopted; the page stays byte-identical to v0.14). %>
 <% if @last_heartbeat %>
-  <h2>Heartbeat <span class="muted" style="font-weight:400">— event-driven tending, on the ledger</span></h2>
+  <h2>Heartbeat <span class="subtitle">— event-driven tending, on the ledger</span></h2>
   <div class="card">
     <% plan = @heartbeat_plan %>
     <div>
@@ -72,13 +72,13 @@
 <%# v0.17: the conservation report — what the shelf-read found, and what each
     pile needs. Adoption-gated: absent until a survey has ever run. %>
 <% if @condition_adopted %>
-  <h2>Condition <span class="muted" style="font-weight:400">— the conservation report: what the shelf-read found</span></h2>
+  <h2>Condition <span class="subtitle">— the conservation report: what the shelf-read found</span></h2>
   <div class="card">
     <% c = @condition %>
     <div>
       <span class="chip">surveyed <strong><%= number_with_delimiter(c[:surveyed]) %></strong> of <%= number_with_delimiter(c[:total]) %></span>
       <% if c[:untendable].positive? %>
-        <span class="chip" style="background:#fdeceb; color:var(--warn)">untendable <strong><%= number_with_delimiter(c[:untendable]) %></strong></span>
+        <span class="chip warn">untendable <strong><%= number_with_delimiter(c[:untendable]) %></strong></span>
         <span class="muted samples">— excluded from every tending queue until repaired</span>
       <% end %>
       <% if c[:residue_count].positive? %>
@@ -129,7 +129,7 @@
 
 <%# v0.18: accuracy, measured — adoption-gated on any audit row. %>
 <% if @audit_adopted %>
-  <h2>Accuracy <span class="muted" style="font-weight:400">— the claim store, audited against its sources</span></h2>
+  <h2>Accuracy <span class="subtitle">— the claim store, audited against its sources</span></h2>
   <div class="card">
     <% if @examiner_down %>
       <div class="warn" style="margin-bottom:.5rem">Examiner unavailable on the last cycle (Null adapter) — no new verdicts.</div>
@@ -172,7 +172,7 @@
           <tr><th>term</th><th>live</th><th>e.g.</th></tr>
           <% st[:vocabulary].each do |v| %>
             <tr>
-              <td><code><%= v[:key] %></code><% if v[:approved] %> <span class="chip" style="background:var(--accent-soft); color:var(--accent)" title="curator-approved; live but not yet codified">live</span><% end %></td>
+              <td><code><%= v[:key] %></code><% if v[:approved] %> <span class="badge-live" title="curator-approved; live but not yet codified">live</span><% end %></td>
               <td><%= v[:live_claims] %></td>
               <td class="samples"><%= v[:samples].first %></td>
             </tr>
@@ -185,7 +185,7 @@
   <% end %>
 </div>
 
-<h2>Tending health <span class="muted" style="font-weight:400">— the smoke alarm</span></h2>
+<h2>Tending health <span class="subtitle">— the smoke alarm</span></h2>
 <div class="card">
   <table>
     <tr><th>facet</th><th>visits</th><th>adapters</th><th>escalation</th><th>empty-final</th><th>required-unmet</th></tr>
@@ -219,8 +219,8 @@
 <% end %>
 
 <% if s[:gaps].any? %>
-  <h2>Vocabulary gaps <span class="muted" style="font-weight:400">— proposed, awaiting review</span>
-    <span style="font-weight:400; font-size:.85rem">· <%= link_to "Review all →", suggestions_path %></span></h2>
+  <h2>Vocabulary gaps <span class="subtitle">— proposed, awaiting review</span>
+    <span class="subtitle" style="font-size:.85rem">· <%= link_to "Review all →", suggestions_path %></span></h2>
   <div class="card">
     <table>
       <tr><th>proposed key</th><th>records</th><th>rationale</th></tr>

@@ -1,4 +1,13 @@
-<h1>Review <span class="muted" style="font-weight:400; font-size:.95rem">— quality review: the human anchor for the claim audit</span></h1>
+<%# Page-specific layout: the verdict action row. The .verdict / .btn / .field
+    components come from the layout; this just sizes the row (the correct form
+    grows to fill, so the free-text field has room). %>
+<style>
+  .review-actions { margin-top: var(--s3); align-items: flex-start; }
+  .review-actions .review-correct { flex: 1; min-width: 18rem; }
+  .review-actions .review-correct .field { flex: 1; min-width: 0; }
+</style>
+
+<h1>Review <span class="subtitle">— quality review: the human anchor for the claim audit</span></h1>
 <p class="muted" style="max-width:72ch">
   The examiner verifies sampled claims against their sources; your verdicts here are the
   instrument's only independent ground truth. <strong>Corpus-wide</strong> — accuracy is measured over the
@@ -6,7 +15,7 @@
   <em>supported</em>: confirming or overruling those is what calibrates the examiner itself.
 </p>
 
-<div class="card" style="padding:.6rem 1.1rem">
+<div class="card strip" style="padding:.6rem 1.1rem">
   <span class="chip">claims examined <strong><%= @audited %></strong></span>
   <span class="chip">human-reviewed <strong><%= @reviewed %></strong></span>
   <span class="chip">corrected <strong><%= @corrected %></strong></span>
@@ -38,8 +47,7 @@
       <span class="chip"><%= audit.claim.visit&.facet %></span>
       <span class="muted">@<%= claim.context&.key || "root" %></span>
       <span class="mono muted samples"><%= claim.tendable_type %>/<%= claim.tendable_id %></span>
-      <span class="chip <%= 'tier' if audit.verdict == 'supported' %>"
-            <% if audit.defective? %>style="background:#fdeceb; color:var(--warn)"<% end %>>
+      <span class="chip <%= 'tier' if audit.verdict == 'supported' %><%= ' warn' if audit.defective? %>">
         examiner: <%= audit.verdict %></span>
       <% if audit.source_truncated %><span class="muted samples">(source truncated at examination)</span><% end %>
       <% if row[:source_changed] %>
@@ -59,29 +67,28 @@
     </table>
 
     <% if row[:live] %>
-      <div style="display:flex; gap:.6rem; flex-wrap:wrap; margin-top:.6rem; align-items:flex-start">
+      <div class="verdict review-actions">
         <%= form_with url: review_verdict_path, method: :post do %>
           <input type="hidden" name="audit_id" value="<%= audit.id %>">
           <input type="hidden" name="decision" value="confirm">
-          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--accent-soft); color:var(--accent); cursor:pointer">Confirm <%= audit.verdict %></button>
+          <button type="submit" class="btn btn-affirmative">Confirm <%= audit.verdict %></button>
         <% end %>
-        <%= form_with url: review_verdict_path, method: :post, html: { style: "display:flex; gap:.3rem" } do %>
+        <%= form_with url: review_verdict_path, method: :post do %>
           <input type="hidden" name="audit_id" value="<%= audit.id %>">
           <input type="hidden" name="decision" value="overrule">
-          <select name="verdict" style="font:inherit; padding:.25rem; border:1px solid var(--line); border-radius:6px">
+          <select name="verdict" class="field">
             <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
               <option value="<%= v %>"><%= v %></option>
             <% end %>
           </select>
-          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--panel); cursor:pointer">Overrule</button>
+          <button type="submit" class="btn">Overrule</button>
         <% end %>
-        <%= form_with url: review_verdict_path, method: :post, html: { style: "display:flex; gap:.3rem; flex:1; min-width:18rem" } do %>
+        <%= form_with url: review_verdict_path, method: :post, html: { class: "review-correct" } do %>
           <input type="hidden" name="audit_id" value="<%= audit.id %>">
           <input type="hidden" name="decision" value="correct">
-          <input type="text" name="value" placeholder="the corrected value"
-                 value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>"
-                 style="font:inherit; flex:1; padding:.3rem .5rem; border:1px solid var(--line); border-radius:6px">
-          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:none; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer">Correct</button>
+          <input type="text" name="value" placeholder="the corrected value" class="field"
+                 value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>">
+          <button type="submit" class="btn btn-primary">Correct</button>
         <% end %>
       </div>
     <% else %>
@@ -89,28 +96,28 @@
         This claim was re-tended after examination — its successor carries the current value.
         Confirm/overrule still records your judgment of the examined claim; correction applies to the successor.
       </div>
-      <div style="display:flex; gap:.6rem; margin-top:.4rem">
+      <div class="verdict review-actions">
         <%= form_with url: review_verdict_path, method: :post do %>
           <input type="hidden" name="audit_id" value="<%= audit.id %>">
           <input type="hidden" name="decision" value="confirm">
-          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--accent-soft); color:var(--accent); cursor:pointer">Confirm <%= audit.verdict %></button>
+          <button type="submit" class="btn btn-affirmative">Confirm <%= audit.verdict %></button>
         <% end %>
-        <%= form_with url: review_verdict_path, method: :post, html: { style: "display:flex; gap:.3rem" } do %>
+        <%= form_with url: review_verdict_path, method: :post do %>
           <input type="hidden" name="audit_id" value="<%= audit.id %>">
           <input type="hidden" name="decision" value="overrule">
-          <select name="verdict" style="font:inherit; padding:.25rem; border:1px solid var(--line); border-radius:6px">
+          <select name="verdict" class="field">
             <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
               <option value="<%= v %>"><%= v %></option>
             <% end %>
           </select>
-          <button type="submit" style="font:inherit; padding:.3rem .8rem; border:1px solid var(--line); border-radius:6px; background:var(--panel); cursor:pointer">Overrule</button>
+          <button type="submit" class="btn">Overrule</button>
         <% end %>
       </div>
     <% end %>
   </div>
 <% end %>
 
-<h2>Accuracy <span class="muted" style="font-weight:400">— the process rate, per facet × tier</span></h2>
+<h2>Accuracy <span class="subtitle">— the process rate, per facet × tier</span></h2>
 <div class="card">
   <% if @accuracy.any? %>
     <table>
