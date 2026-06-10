@@ -34,6 +34,9 @@
   .atlas-legend .lg-sep { color:#334155; align-self:center; }
   .atlas-warn { padding:.4rem .8rem; background:#0e1422; color:#fbbf24; font-size:.78rem;
                 border-top:1px solid #1e293b; }
+  .atlas-veil { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                background:#0b0f1a; color:#64748b; font-size:.9rem; z-index:4;
+                font-variant-numeric:tabular-nums; }
   .atlas-empty { padding:3rem 1rem; text-align:center; color:#64748b; }
 </style>
 
@@ -48,6 +51,7 @@
   <div class="atlas-stage">
     <canvas id="atlas-canvas"></canvas>
     <div class="atlas-tip" id="atlas-tip"></div>
+    <div class="atlas-veil" id="atlas-veil">drawing the atlas…</div>
   </div>
   <div class="atlas-legend" id="atlas-legend"></div>
   <div class="atlas-warn" id="atlas-warn" style="display:none"></div>
@@ -202,8 +206,6 @@
   }
   function reheat(a) { alpha = Math.max(alpha, a); settled = false; }
 
-  // Fit the settled layout into the viewport once (and never fight the user after).
-  let fitted = false;
   function fitView() {
     let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
     nodes.forEach(n => { if (!nodeVisible(n)) return;
@@ -318,9 +320,26 @@
     });
   }
 
+  // The simulation computes its layout LIVE. Two phases keep that watchable
+  // instead of janky: a brief VEIL hides the violent early expansion (ticks
+  // run unrendered — they're cheap without drawing), then the camera FOLLOWS
+  // the organizing graph at fitted zoom until it freezes. Any user input
+  // takes the camera over (we never fight the hand on the wheel).
+  const WARMUP = 220;
+  let warmupLeft = WARMUP, following = true;
+  const veil = document.getElementById("atlas-veil");
   function loop() {
-    if (!settled) tick();
-    if (settled && !fitted) { fitted = true; fitView(); }
+    if (warmupLeft > 0) {
+      const burst = Math.min(warmupLeft, 14);
+      for (let i = 0; i < burst && !settled; i++) tick();
+      warmupLeft = settled ? 0 : warmupLeft - burst;
+      veil.textContent = "drawing the atlas… " + Math.round((1 - warmupLeft / WARMUP) * 100) + "%";
+      if (warmupLeft <= 0) { veil.style.display = "none"; fitView(); }
+      requestAnimationFrame(loop);
+      return;
+    }
+    if (!settled) { tick(); if (following) fitView(); }
+    else if (following) { following = false; fitView(); }
     if (needsDraw) { draw(); needsDraw = false; }
     requestAnimationFrame(loop);
   }
@@ -329,6 +348,7 @@
   let drag = null, panning = false, moved = 0, last = null;
   canvas.addEventListener("wheel", ev => {
     ev.preventDefault();
+    following = false;
     const rect = canvas.getBoundingClientRect();
     const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
     const wxx = wx(mx), wyy = wy(my);
@@ -407,6 +427,7 @@
     } else { tip.style.display = "none"; }
   });
   canvas.addEventListener("mousedown", ev => {
+    following = false;
     const rect = canvas.getBoundingClientRect();
     const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
     moved = 0;
