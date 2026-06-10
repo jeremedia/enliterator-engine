@@ -1483,3 +1483,58 @@ argument:
 - Live on HSDL: EO supersession renders directed; advisor/agency/cluster hubs form; the
   replay shows four days of learning; election-security scopes to its neighborhood.
 - README (nine surfaces), About colophon, CLAUDE.md.
+
+# v0.22 — Portability (the enliteration is a movable asset)
+
+Jeremy, looking at staging: "What happens when HSDL is pushed to staging and prod? Can we add
+a /maintenance_task to copy over dev enliteration data — no use wasting inference." Right on
+both counts. Everything the engine has learned — claims with their provenance chains, the
+RATIFIED vocabulary (irreplaceable curation), audits, embeddings (real spend) — lives in
+enliterator_* tables that a fresh deployment creates EMPTY. Re-deriving it re-buys the
+inference and loses nothing-but-money; the understanding itself is portable.
+
+## 1. `Enliterator::Portability`
+- **export(path, measures: false)** → ONE tar archive (stdlib Gem::Package — no new
+  dependency): `manifest.json` (per-table row counts + COLUMN LISTS, generated_at, host) +
+  one gzipped **PostgreSQL binary COPY** stream per table (binary COPY round-trips
+  vector/jsonb exactly; streamed via raw_connection.copy_data — no shelling to pg_dump).
+- **import(path, force: false)** — refuses a non-empty target by name (`force` = ONE
+  multi-table TRUNCATE, never CASCADE: cascading outside engine tables must be impossible);
+  loads in FK-safe order with **ids preserved verbatim** — every supersession chain, every
+  visit→heartbeat link survives — then resets sequences so the target's next cycle numbers
+  AFTER the imported history. `import_table` is the per-table entry point (built for a host
+  maintenance-task UI to show per-table progress).
+- **The compatibility guard is the column list**: binary COPY is positional, so the manifest
+  carries each table's columns and import aborts on any mismatch, naming the skew — a
+  version-skewed archive must never load crooked data.
+- **The condition register stays home by design** (excluded unless measures:): it is free to
+  re-derive (no LLM) and must describe the TARGET's files — a record's url_status on prod is
+  not its url_status on dev. Import says so and points at `enliterator:survey`.
+- Rake: `enliterator:export FILE= [MEASURES=1]`, `enliterator:import FILE= [FORCE=1]`.
+
+## 2. The deploy checklist this version surfaced (HSDL → staging/prod)
+1. **Push the engine first** — HSDL's initializer sets v0.18+ config (heartbeat_audit_sample);
+   a deploy bundling v0.17 from GitHub crashes at boot. Engine migrations also load from the
+   gem's paths (none are copied into the host), so table availability tracks the bundled
+   version.
+2. Wrap `/enliterator` (and confirm `/maintenance_tasks`) in the host's auth.
+3. Server env: ENLITERATOR_LLM_KEY.
+4. The pacemaker is per-host adoption (launchd on the Mac; cron/systemd timer elsewhere).
+5. Seed the data: export on dev → scp → import on the target (the HSDL side wraps this in
+   `Maintenance::ImportEnliterationTask` for the /maintenance_tasks UI).
+
+## Honesty notes
+- Claims for records that exist only on the source become ORPHANS on the target — inert (the
+  planner skips missing records; the atlas labels them by id). A PRUNE option is deferred.
+- The first heartbeat after import may carry a source_change wave (the target's updated_at vs
+  the imported visit anchors) — honest, budget-capped: the target's files may genuinely differ.
+- Binary COPY ties archives to compatible schema versions — the manifest enforces, by name.
+- measures excluded by default is a CORRECTNESS position, not a size optimization (though it
+  is also 535MB of HSDL's 600MB).
+
+## Done = all of:
+- Service + rake + 6 round-trip/guard examples; **454 green**.
+- Real-data dry run on HSDL dev: export (~claims/visits/vocabulary/embeddings), import into a
+  scratch database built from schema.rb, counts verified.
+- HSDL: Maintenance::ImportEnliterationTask on the gated branch.
+- SPEC, README (the checklist), CLAUDE.md, About colophon.

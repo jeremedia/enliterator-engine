@@ -165,6 +165,14 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   wave via trajectory. Then: the frontier conversation (bound root lanes vs raise budget) and
   the auth wrap before staging (FEDLINK 2026-07-14). UI rule going forward (v0.19): new pages
   compose from the layout's tokens/components; page `<style>` is page-specific layout only.
+- **The staging deploy checklist (v0.22 — gate EVERY HSDL staging/prod deploy on this)**:
+  (1) PUSH THE ENGINE FIRST — HSDL's initializer sets v0.18+ config; bundling v0.17 from
+  GitHub crashes at boot, and engine migrations load from the gem's paths; (2) wrap
+  `/enliterator` + confirm `/maintenance_tasks` auth; (3) server env needs
+  ENLITERATOR_LLM_KEY; (4) the pacemaker is per-host adoption (launchd is Mac-only);
+  (5) seed data: dev `enliterator:export FILE=` → scp → target import (HSDL
+  `Maintenance::ImportEnliterationTask`, or `enliterator:import FILE= [FORCE=1]`). The
+  condition register deliberately stays home — run `enliterator:survey` on the target.
 - Known open gaps: no claim-accuracy golden set (cheap-tier conf=1.0 unexamined); `/enliterator`
   mount is auth-less (dev only — wrap in CHDS Pulse auth before staging); considerer LLM tokens
   have no usage surface (ledger records outcomes only). Trajectory caveat: clean A/B isolation
