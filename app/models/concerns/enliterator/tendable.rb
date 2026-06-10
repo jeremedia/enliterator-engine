@@ -103,6 +103,38 @@ module Enliterator
       end
     end
 
+    # Correct a wrong claim with a human verdict (v0.18, the Review surface's
+    # write path). NOT assert_claim! — that updates in place, which would
+    # mutate the audited value under its own audit row and violate the claims
+    # contract ("never edited in place"). This mints a NEW claim — same key,
+    # SAME context (reconcile is context-scoped), locked (curator anchor:
+    # future reconciles NOOP it), verified, human-attributed, derived from the
+    # claim it corrects — then supersedes the old one. literacy_state carries
+    # the correction into every future tend: the fix feeds back.
+    #
+    # Raises Claim::AlreadySuperseded if a re-tend got there first (the
+    # surface should re-check liveness and render the successor instead).
+    def correct_claim!(claim, value:, note: nil)
+      raise ArgumentError, "claim belongs to a different record" unless claim.tendable == self
+      if claim.superseded_by_id.present? || claim.status == "superseded"
+        raise Enliterator::Claim::AlreadySuperseded,
+              "claim ##{claim.id} (#{claim.key}) was superseded after examination"
+      end
+
+      fresh = enliterator_claims.create!(
+        key:           claim.key,
+        context_id:    claim.context_id,
+        value:         value,
+        locked:        true,
+        status:        "verified",
+        visit:         nil,
+        attributed_to: note.present? ? "human:#{note}" : "human",
+        derived_from:  [ { "type" => "claim", "id" => claim.id } ]
+      )
+      claim.supersede!(fresh)
+      fresh
+    end
+
     # Retract a host-asserted claim (v0.17): tombstone the live claim for
     # `key` in the given scope — `status: "superseded"` with no successor,
     # exactly the loop's own DELETE shape, so trajectory/state reconstruction
