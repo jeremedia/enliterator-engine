@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_09_230000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_10_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -382,6 +382,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_230000) do
     t.index ["valid_time_start", "valid_time_end"], name: "index_emanations_on_valid_time_start_and_valid_time_end"
   end
 
+  create_table "enliterator_audits", force: :cascade do |t|
+    t.string "auditor"
+    t.bigint "claim_id", null: false
+    t.float "confidence"
+    t.bigint "corrected_claim_id"
+    t.jsonb "corrected_value", default: {}
+    t.datetime "created_at", null: false
+    t.bigint "heartbeat_id"
+    t.text "rationale"
+    t.string "source", null: false
+    t.integer "source_chars"
+    t.string "source_digest"
+    t.boolean "source_truncated", default: false
+    t.datetime "updated_at", null: false
+    t.string "verdict", null: false
+    t.index ["claim_id"], name: "index_enliterator_audits_on_claim_id"
+    t.index ["corrected_claim_id"], name: "index_enliterator_audits_on_corrected_claim_id"
+    t.index ["heartbeat_id"], name: "index_enliterator_audits_on_heartbeat_id"
+  end
+
   create_table "enliterator_claims", force: :cascade do |t|
     t.string "attributed_to"
     t.float "confidence"
@@ -442,6 +462,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_230000) do
   end
 
   create_table "enliterator_heartbeats", force: :cascade do |t|
+    t.jsonb "audits", default: {}
     t.bigint "budget_tokens"
     t.jsonb "config_snapshot", default: {}
     t.jsonb "considerer", default: {}
@@ -1769,6 +1790,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_230000) do
   add_foreign_key "emanation_relationals", "emanations"
   add_foreign_key "emanation_relationals", "relationals"
   add_foreign_key "emanations", "provenance_and_rights", column: "provenance_and_rights_id"
+  add_foreign_key "enliterator_audits", "enliterator_claims", column: "claim_id", on_delete: :cascade
+  add_foreign_key "enliterator_audits", "enliterator_claims", column: "corrected_claim_id", on_delete: :nullify
+  add_foreign_key "enliterator_audits", "enliterator_heartbeats", column: "heartbeat_id", on_delete: :nullify
   add_foreign_key "enliterator_claims", "enliterator_claims", column: "superseded_by_id", on_delete: :nullify
   add_foreign_key "enliterator_claims", "enliterator_contexts", column: "context_id"
   add_foreign_key "enliterator_claims", "enliterator_visits", column: "visit_id", on_delete: :nullify

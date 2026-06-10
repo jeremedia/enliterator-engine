@@ -13,6 +13,11 @@ module Enliterator
     STATUSES = %w[draft verified superseded].freeze
     REVIEW_STATES = %w[pending approved rejected].freeze
 
+    # v0.18: raised when an action assumes a live claim that has since been
+    # superseded (e.g. a human correction racing a re-tend) — a second
+    # supersede! would corrupt the chain.
+    class AlreadySuperseded < StandardError; end
+
     # The latest claim in a supersession chain.
     scope :current, -> { where(superseded_by_id: nil) }
     # Current AND not tombstoned (a DELETE supersedes without a replacement).

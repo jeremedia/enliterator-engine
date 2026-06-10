@@ -127,6 +127,21 @@ module Enliterator
     # literacy_state/Chat, at a prompt-token cost on every future visit).
     attr_accessor :condition_claim_scope
 
+    # ---- v0.18 Audit (accuracy, measured) ----------------------------------
+
+    # Claims examined per heartbeat cycle. DEFAULT 0 = OFF: setting it non-zero
+    # IS the adoption act (quality-tier spend must never start on a gem
+    # upgrade). Count-bounded; audit spend is outside the tending token budget.
+    attr_accessor :heartbeat_audit_sample
+
+    # Tier the examiner reasons with (nil ⇒ ladder top, else "quality").
+    attr_accessor :audit_tier
+
+    # Ceiling on the source text handed to the examiner. Generous by design:
+    # the tend read the FULL text, and a snippet-bound examiner yields false
+    # "unsupported" for deep-grounded claims. Truncation is stamped on the row.
+    attr_accessor :audit_source_chars
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -164,6 +179,9 @@ module Enliterator
       @heartbeat_source_changed = nil
       @heartbeat_survey_budget_ms = 10_000
       @condition_claim_scope = :untendable
+      @heartbeat_audit_sample = 0
+      @audit_tier = nil
+      @audit_source_chars = 24_000
     end
 
     def logger
