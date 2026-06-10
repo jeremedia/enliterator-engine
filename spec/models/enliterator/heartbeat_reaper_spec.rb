@@ -104,6 +104,18 @@ RSpec.describe "Enliterator::Heartbeat failure states (v0.23)" do
       expect(row.pulse_at).to be_within(5.seconds).of(row.finished_at)
     end
 
+    it "a WATCHED monitor self-heals: the pulse poll reaps its own orphaned row and serves the ending",
+       type: :request do
+      row = orphan!(phase: "work", life_ago: 20.minutes)
+      visit!(row)
+
+      get "/enliterator/heartbeat/pulse/#{row.id}"
+      json = JSON.parse(response.body)
+      expect(json["finished"]).to be(true)
+      expect(json["error"]).to include("orphaned in phase 'work'")
+      expect(row.reload.executed["frontier"]["succeeded"]).to eq(1)
+    end
+
     it "the pulse JSON carries phase, app-zone time labels, and stalls on a stale pulse even at items done",
        type: :request do
       row = orphan!(phase: "audit", life_ago: 6.minutes)   # stale for the banner, fresh for the reaper

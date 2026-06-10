@@ -59,6 +59,10 @@ module Enliterator
     # raw visit count would inflate progress.
     def pulse
       row = Enliterator::Heartbeat.find(params[:id])
+      # v0.23: a watched monitor self-heals — the poll that finds its row
+      # orphaned stamps it, and this same response carries the honest ending
+      # (finished + error), so the JS resolves without anyone reloading.
+      row.reap! if row.orphaned?
       visits = row.visits
 
       done_by_reason = visits.select(:tendable_type, :tendable_id, :facet, :context_id, :reason)
