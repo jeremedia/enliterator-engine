@@ -12,7 +12,10 @@ module Enliterator
       has_many :enliterator_context_memberships, class_name: "Enliterator::ContextMembership",
                                                  as: :member, dependent: :destroy
       has_many :enliterator_contexts, through: :enliterator_context_memberships, source: :context
-      Enliterator.register_tendable(self)
+      # v0.25: the registry is for HOST models — engine-internal tendables
+      # (Enliterator::Part) get the full machinery but must not enter the
+      # planner's root lanes, the corpus census, or the condition survey.
+      Enliterator.register_tendable(self) unless name.to_s.start_with?("Enliterator::")
     end
 
     # Host SHOULD override to provide the text representation used for embedding + tending.

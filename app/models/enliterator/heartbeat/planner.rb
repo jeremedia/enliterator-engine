@@ -80,7 +80,9 @@ module Enliterator
       # block declares nothing and yields no lanes — root facets are root lanes.
       def context_lanes
         @context_lanes ||= Enliterator::Context.order(:id).flat_map do |ctx|
-          Enliterator.staffing.facets_declared_in(ctx.key).map do |facet|
+          # v0.25: scheduled facets only — a `scheduled: false` facet (the deep
+          # read) is staffed but never enters the pacemaker's lanes.
+          Enliterator.staffing.schedulable_facets_declared_in(ctx.key).map do |facet|
             Lane.new(context: ctx, facet: facet.to_s)
           end
         end
@@ -88,11 +90,14 @@ module Enliterator
 
       # Root lanes: root-declared facets × tendable models (candidates live in
       # the host tables). Falls back to config.tending_facets when no staffing
-      # declares root facets — same fallback Settings uses.
+      # declares root facets — same fallback Settings uses. (v0.25: the
+      # fallback keys off DECLARED facets, so a policy whose root facets are
+      # all unscheduled plans zero root lanes rather than resurrecting config.)
       def root_lanes
         @root_lanes ||= begin
-          facets = Enliterator.staffing.facets_declared_in(nil)
-          facets = Array(@config.tending_facets).map(&:to_s) if facets.empty?
+          declared = Enliterator.staffing.facets_declared_in(nil)
+          facets   = Enliterator.staffing.schedulable_facets_declared_in(nil)
+          facets   = Array(@config.tending_facets).map(&:to_s) if declared.empty?
           facets.flat_map { |facet| tendable_models.map { |m| Lane.new(facet: facet.to_s, model: m) } }
         end
       end
@@ -102,11 +107,12 @@ module Enliterator
       end
 
       # Registry ∪ visit log (the registry only fills as classes autoload in
-      # dev — the visit log is the truer authority, same as Settings).
+      # dev — the visit log is the truer authority, same as Settings; v0.25:
+      # host types only — tended Parts must not become root lanes).
       def tendable_models
         @tendable_models ||= begin
           names = Enliterator.tendable_models.map(&:name) |
-                  Enliterator::Visit.distinct.pluck(:tendable_type).compact
+                  Enliterator::Visit.host_tendable_types
           names.sort.filter_map do |name|
             name.constantize
           rescue NameError

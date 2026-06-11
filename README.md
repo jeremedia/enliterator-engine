@@ -158,6 +158,25 @@ doc.tend!(facet: "summary")          # runs one Visitor pass synchronously
 Enliterator::TendingVisitJob.perform_later(doc, "summary")  # …or in the background
 ```
 
+Deep-read a record (v0.25 — **analytical cataloging**): give the host a
+`to_enliterator_parts` method (`[{heading:, text:}]` in document order) and declare an
+`analysis` facet with `scheduled: false` (fully staffed, never planned by the heartbeat —
+readings run by deliberate invocation). `Tending::Reading` then works the way a librarian
+reads a dense work: section it, take per-section notes (each part is a first-class tendable
+— claims, escalation, audits, embeddings all apply), and re-tend the work-level facets from
+the assembled notebook so the deepening supersedes the front-matter understanding in place:
+
+```ruby
+Enliterator::Tending::Reading.new(doc, context: ctx,
+                                  synthesizes: %w[summary significance]).call
+# => { parts: 23, tended: 23, skipped: 0, failed: 0, synthesized: 2, tokens: 124_718, ... }
+```
+
+Unchanged sections are skipped on re-reads (re-reading an unchanged section is pure NOOP
+spend); part claims are audited against their own section's text; `Trajectory::Judge` can
+blindly compare the shallow vs deep understanding before you commit to a whole-collection
+campaign.
+
 Inspect the accumulated literacy:
 
 ```ruby

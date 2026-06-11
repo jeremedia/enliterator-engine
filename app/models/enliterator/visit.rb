@@ -22,6 +22,16 @@ module Enliterator
     # Junior visits superseded by escalation are recorded with applied: false.
     scope :applied, -> { where(applied: true) }
 
+    # v0.25: the HOST tendable types in the visit log — the "Registry ∪ visit
+    # log" authority rule's log side, in ONE place. Engine-internal tendables
+    # (Enliterator::Part) are excluded by name: parts are tended and their
+    # visits are real provenance, but they must never be resurrected into the
+    # planner's root lanes, the corpus census, the survey, or Settings.
+    def self.host_tendable_types
+      distinct.where("tendable_type NOT LIKE 'Enliterator::%'")
+              .pluck(:tendable_type).compact
+    end
+
     # Compact projection for prompt context handed to the next visit.
     def to_state
       {

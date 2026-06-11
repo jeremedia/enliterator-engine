@@ -329,10 +329,11 @@ module Enliterator
       end
     end
 
-    # Registry ∪ visit log — same authority rule as the planner/Settings.
+    # Registry ∪ visit log — same authority rule as the planner/Settings
+    # (v0.25: host types only — Parts are not surveyed).
     def tendable_models
       names = Enliterator.tendable_models.map(&:name) |
-              Enliterator::Visit.distinct.pluck(:tendable_type).compact
+              Enliterator::Visit.host_tendable_types
       names.sort.filter_map { |n| n.safe_constantize }
     end
 

@@ -36,9 +36,10 @@ module Enliterator
 
     def show
       klass = params[:type].to_s.safe_constantize
-      # Allow-list: never instantiate an arbitrary class named in a URL — only the
-      # host models that actually mounted Tendable.
-      unless klass && Enliterator.tendable_models.include?(klass)
+      # Allow-list: never instantiate an arbitrary class named in a URL — only
+      # the host models that mounted Tendable, plus the engine's own Part
+      # (v0.25: an analytical entry deserves an entry page too).
+      unless Enliterator.tendable_type?(klass)
         return render(:not_found, status: :not_found)
       end
 

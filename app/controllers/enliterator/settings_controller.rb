@@ -22,8 +22,9 @@ module Enliterator
 
       # What this enliteration actually works on. The in-memory registry only fills as
       # model classes autoload (lazy in dev), so the visit log is the truer authority —
-      # prefer the types that have actually been tended, fall back to the registry.
-      tended_types = Enliterator::Visit.distinct.pluck(:tendable_type).compact
+      # prefer the types that have actually been tended (host types only — v0.25:
+      # tended Parts are internal), fall back to the registry.
+      tended_types = Enliterator::Visit.host_tendable_types
       @models = tended_types.presence || Enliterator.tendable_models.map(&:name)
 
       # Live tally of what's accrued: approved terms now in force across all facets.

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_11_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_11_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -495,6 +495,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_11_160000) do
     t.index ["name", "computed_at"], name: "idx_enliterator_measures_on_name_computed"
     t.index ["tendable_type", "tendable_id", "name"], name: "idx_enliterator_facets_on_tendable_and_name", unique: true
     t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_measures_untendable", where: "(((name)::text = 'condition'::text) AND (score = (0.0)::double precision))"
+  end
+
+  create_table "enliterator_parts", force: :cascade do |t|
+    t.integer "char_end"
+    t.integer "char_start"
+    t.string "content_digest"
+    t.datetime "created_at", null: false
+    t.string "heading"
+    t.integer "ordinal", null: false
+    t.string "record_id", null: false
+    t.string "record_type", null: false
+    t.text "text"
+    t.datetime "updated_at", null: false
+    t.index ["record_type", "record_id", "ordinal"], name: "idx_enliterator_parts_identity", unique: true
+    t.index ["record_type", "record_id"], name: "index_enliterator_parts_on_record_type_and_record_id"
   end
 
   create_table "enliterator_proposed_terms", force: :cascade do |t|

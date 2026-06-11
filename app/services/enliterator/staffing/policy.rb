@@ -54,6 +54,10 @@ module Enliterator
         # so a contextless policy is byte-identical to v0.12.
         @context_facets    = {}
         @current_context_key = nil
+        # v0.25: facets declared `scheduled: false` — fully staffed (tier,
+        # vocabulary, required terms all resolve) but excluded from heartbeat
+        # lane planning. For orchestrated/manual tending (the deep read).
+        @unscheduled_root  = Set.new
 
         instance_eval(&block) if block
       end
@@ -97,12 +101,18 @@ module Enliterator
       # Visitor forces escalation regardless of confidence, and the top tier refuses
       # to mint `verified` while a required term is unmet. nil/omitted ⇒ no required
       # terms ⇒ byte-identical to v0.3/v0.4.
-      def facet(name, tier:, terms:, required: nil)
+      # +scheduled+ (v0.25, optional): `false` keeps the facet OUT of heartbeat
+      # lane planning while leaving it fully staffed — tier, vocabulary, and
+      # required terms still resolve for orchestrated or manual tending (the
+      # deep read runs by deliberate invocation, never by the pacemaker).
+      # Omitted ⇒ scheduled, byte-identical to v0.24.
+      def facet(name, tier:, terms:, required: nil, scheduled: true)
         assign(name, tier: tier)
         bucket[:term_lists][name.to_s] =
           terms.each_with_object({}) { |(k, v), h| h[k.to_s] = v.to_s }
         req = Array(required).map(&:to_s).reject(&:empty?)
         bucket[:required][name.to_s] = req unless req.empty?
+        bucket[:unscheduled] << name.to_s unless scheduled
         self
       end
 
@@ -235,6 +245,25 @@ module Enliterator
         (@context_facets.dig(context_key.to_s, :assignments) || {}).keys
       end
 
+      # v0.25: is the facet schedulable (not declared `scheduled: false`) in
+      # the given declaration scope?
+      def scheduled?(facet, context_key = nil)
+        set =
+          if context_key.nil? || context_key.to_s == "root"
+            @unscheduled_root
+          else
+            @context_facets.dig(context_key.to_s, :unscheduled) || Set.new
+          end
+        !set.include?(facet.to_s)
+      end
+
+      # v0.25: what the heartbeat planner enumerates — declared facets MINUS
+      # the unscheduled ones. `facets_declared_in` keeps the full set (manual
+      # tend_context still reaches unscheduled facets deliberately).
+      def schedulable_facets_declared_in(context_key)
+        facets_declared_in(context_key).select { |f| scheduled?(f, context_key) }
+      end
+
       # Tiers at/after `tier` in ladder order (the remaining climb). If `tier`
       # is not on the ladder, returns just [tier] (nowhere to climb).
       def ladder_from(tier)
@@ -341,9 +370,11 @@ module Enliterator
       # flat root registries outside any block (the v0.12 shape, untouched).
       def bucket
         if @current_context_key
-          @context_facets[@current_context_key] ||= { assignments: {}, term_lists: {}, required: {} }
+          @context_facets[@current_context_key] ||=
+            { assignments: {}, term_lists: {}, required: {}, unscheduled: Set.new }
         else
-          { assignments: @assignments, term_lists: @term_lists, required: @required_term_map }
+          { assignments: @assignments, term_lists: @term_lists,
+            required: @required_term_map, unscheduled: @unscheduled_root }
         end
       end
 
