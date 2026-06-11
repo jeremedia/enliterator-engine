@@ -12,7 +12,12 @@ module Enliterator
   # the instrument; Audit::Examiner renders the LLM verdicts.
   class Audit < ApplicationRecord
     VERDICTS = %w[supported unsupported contradicted unverifiable].freeze
-    SOURCES  = %w[examiner human].freeze
+    # v0.26 adds "agent": a conversational agent's flag filed through the MCP
+    # surface — EYES for the immune system, never part of the instrument. The
+    # accuracy/agreement math and the examiner's sampling pool scope to
+    # `instrument` (examiner + human) so an agent flag changes NO number; its
+    # whole purpose is to reach a human on /review.
+    SOURCES  = %w[examiner human agent].freeze
     # supported vs DEFECTIVE is the binary the anchor-agreement headline uses;
     # unverifiable pairs are excluded from agreement entirely.
     DEFECTIVE = %w[unsupported contradicted].freeze
@@ -24,8 +29,11 @@ module Enliterator
     validates :verdict, inclusion: { in: VERDICTS }
     validates :source,  inclusion: { in: SOURCES }
 
-    scope :examiner, -> { where(source: "examiner") }
-    scope :human,    -> { where(source: "human") }
+    scope :examiner,   -> { where(source: "examiner") }
+    scope :human,      -> { where(source: "human") }
+    scope :agent,      -> { where(source: "agent") }
+    # The v0.18 instrument's evidence: examiner verdicts calibrated by human ones.
+    scope :instrument, -> { where(source: %w[examiner human]) }
 
     def defective? = DEFECTIVE.include?(verdict)
 
@@ -74,8 +82,10 @@ module Enliterator
       end
 
       def candidate_scope
+        # Never-EXAMINED means no instrument audit — an agent flag must not
+        # remove a claim from the examiner's sampling pool (v0.26).
         Enliterator::Claim.live.where(locked: false).where.not(visit_id: nil)
-                          .where.not(id: Enliterator::Audit.select(:claim_id))
+                          .where.not(id: Enliterator::Audit.instrument.select(:claim_id))
       end
 
       # The accuracy report, per facet × tier cell. The EFFECTIVE verdict per
@@ -135,8 +145,9 @@ module Enliterator
       private
 
       # {claim => effective_verdict} — latest human, else latest examiner.
+      # Instrument-scoped: agent flags carry no verdict weight (v0.26).
       def effective_verdicts
-        includes(claim: :visit).order(:created_at).each_with_object({}) do |audit, h|
+        instrument.includes(claim: :visit).order(:created_at).each_with_object({}) do |audit, h|
           current = h[audit.claim]
           # Walk in created order: later rows replace earlier UNLESS a human
           # verdict already stands and this one is examiner.
@@ -147,7 +158,7 @@ module Enliterator
 
       # [[latest examiner audit, latest human audit], ...] per overlapping claim.
       def audit_pairs
-        by_claim = order(:created_at).group_by(&:claim_id)
+        by_claim = instrument.order(:created_at).group_by(&:claim_id)
         by_claim.filter_map do |_, audits|
           e = audits.select { |a| a.source == "examiner" }.last
           h = audits.select { |a| a.source == "human" }.last

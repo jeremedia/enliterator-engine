@@ -21,6 +21,12 @@ Enliterator::Engine.routes.draw do
   get "catalog",        to: "catalog#index",  as: :catalog
   get "catalog/wander", to: "catalog#wander", as: :catalog_wander
 
+  # The MCP endpoint (v0.26): the agent's reading-room card — the protocol
+  # minimum (JSON-RPC over POST, tools only) serving provenance, trajectory,
+  # and self-knowledge to conversational agents. Other verbs: 405.
+  post  "mcp", to: "mcp#rpc", as: :mcp
+  match "mcp", to: "mcp#method_not_allowed", via: [ :get, :put, :delete, :patch ]
+
   get "status", to: "status#index", as: :status
   # Per-record drill-down. :type/:id are separate segments so polymorphic, possibly
   # non-integer (uuid) host PKs survive routing; the id constraint allows dots/uuids.

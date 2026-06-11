@@ -210,8 +210,9 @@ module Enliterator
 
     # Latest audit verdict per claim, human outranking examiner (the anchor
     # is the only independent ground truth — same precedence as Audit.accuracy).
+    # Instrument-scoped (v0.26): agent flags carry no verdict weight here.
     def audit_verdicts(claims)
-      Enliterator::Audit.where(claim_id: claims.map(&:id)).order(:created_at)
+      Enliterator::Audit.instrument.where(claim_id: claims.map(&:id)).order(:created_at)
                         .each_with_object({}) do |a, h|
         next if h[a.claim_id]&.start_with?("human:") && a.source == "examiner"
         h[a.claim_id] = "#{a.source}:#{a.verdict}"

@@ -177,6 +177,28 @@ spend); part claims are audited against their own section's text; `Trajectory::J
 blindly compare the shallow vs deep understanding before you commit to a whole-collection
 campaign.
 
+### The MCP surface (v0.26)
+
+The engine speaks the Model Context Protocol natively — `POST /enliterator/mcp`, the
+protocol minimum implemented inline (JSON-RPC 2.0 over POST, tools only, no gem, no SSE).
+Wire a conversational agent up with:
+
+```
+claude mcp add --transport http enliterator https://your-host/enliterator/mcp
+```
+
+Thirteen tools, designed around what an enliterated collection uniquely offers an agent —
+**provenance, trajectory, and self-knowledge**: `collection_overview` and `vocabulary`
+(orient), `search` / `browse_subjects` / `subject_search` / `record_entry` (navigate — every
+claim carries its confidence, tier, and audit verdict), `connections` (the Atlas,
+queryable), `trajectory` ("what did the collection learn, and when?"), `provenance` ("how
+do you know that?"), `quote` (claim → the located source passage), `accuracy` (the audited
+rates, so the agent can calibrate out loud) — plus two **governed writes**: `propose_term`
+files into the authority-control queue and `flag_claim` files an agent audit into the
+review queue. The agent is another patron and another set of eyes — never a hand that
+edits the record: agent flags change no accuracy number (instrument-scoped, spec-pinned).
+Every response is bounded (caps + truncation flags) and self-describing (`next:` hints).
+
 Inspect the accumulated literacy:
 
 ```ruby
