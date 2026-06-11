@@ -326,10 +326,11 @@ module Enliterator
     # Registry ∪ visit log — the same authority rule as the planner, Condition,
     # and Settings: in dev the registry only fills as classes autoload, so a
     # fresh boot's first catalog view would count a corpus of zero (and CACHE
-    # it — the v0.20 idiom would serve the lie for five minutes).
+    # it — the v0.20 idiom would serve the lie for five minutes). v0.25: host
+    # types only — tended Parts must not inflate the corpus.
     def known_tendables
       names = Enliterator.tendable_models.map(&:name) |
-              Enliterator::Visit.distinct.pluck(:tendable_type).compact
+              Enliterator::Visit.host_tendable_types
       names.sort.filter_map { |n| n.safe_constantize }
     end
 

@@ -178,6 +178,23 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.25 — analytical cataloging (the deep read)**: `Enliterator::Part` (sections as
+  first-class tendables — Tendable polymorphism gives them the WHOLE loop free) +
+  `Tending::Reading` (section → per-part analysis reads → kind "part" embeddings →
+  synthesis re-tends work facets from `Part.notebook_for`). RULES THAT BITE: (1) engine
+  models never register (`register_tendable` skips `Enliterator::*`) AND the visit-log
+  union reads `Visit.host_tendable_types` — without BOTH, tended parts resurrect into
+  planner root lanes/corpus census/survey; (2) `facet ..., scheduled: false` keeps a
+  declared facet out of planner lanes (without it the pacemaker deep-reads unsupervised —
+  context declarations FEED lanes); (3) drill-down allowlists use
+  `Enliterator.tendable_type?` (hosts ∪ Part). Synthesis is NOTEBOOK-grounded (host's
+  to_enliterator_text returns notebook for summary/significance/connections once notes
+  exist — HSDL's kwarg was `stream:` since v0.4, DEAD since the v0.12 rename, fixed to
+  `facet:`). Verified live: 26-part thesis read whole, 208 analytical claims, real
+  cited_works/index_terms, significance deepened (supersession visible), summary honestly
+  NOOP'd (abstract was already faithful). Pilot rake `enliterator:deep_read_pilot` (HSDL)
+  + Trajectory::Judge verdict gates v0.26 heartbeat integration + the Bedrock campaign.
+  analysis facet at QUALITY tier (gemma's 8K ctx can't hold whole sections). 506 examples.
 - **v0.24 — the Catalog** (tenth surface, /enliterator/catalog): browse + search the
   enliterated holdings. Grid/search walk the embedding spine (`Embedding.in_context` —
   Conversation's pool, EXTRACTED; `ContextMembership.member_exists` is the generalized EXISTS

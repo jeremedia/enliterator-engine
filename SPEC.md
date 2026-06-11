@@ -1666,3 +1666,87 @@ one OFFSET query.
 - Live on HSDL dev: stats over the real corpus, real headings with congruent counts,
   semantic search, context scoping, wander.
 - SPEC, README (ten surfaces), CLAUDE.md, About colophon.
+
+# v0.25 — Analytical Cataloging (the deep read, piloted)
+
+Tending read ~6K chars of front matter; a median converted thesis is 220K. Jeremy: "Say some
+collections, like the CHDS theses, warranted deeper understanding... How can we really use
+the model's capacity to read the whole thing? A librarian per-record?" Library science has
+the piece: ANALYTICAL ENTRIES — describing the PARTS of dense works, which libraries always
+wanted and could never afford. The economics just flipped.
+
+## 1. Parts: sections as first-class tendables
+`Enliterator::Part` (record polymorphic, ordinal, heading, stored text slice, content
+digest) includes Tendable — visits, claims, reconciliation, escalation, suggestions, audit
+grounding, embeddings, trajectories all work polymorphically, zero special cases. The host
+contract is `to_enliterator_parts` → [{heading:, text:}] (mirrors to_enliterator_text);
+`Part.refresh_for!` reconciles rows by ORDINAL (content change updates in place — claims
+survive, the clock moves; vanished trailing sections destroy, notes cascade).
+
+## 2. Engine-internal, by rule
+Parts get the machinery but never the registry: `register_tendable` skips `Enliterator::*`
+classes, and the "Registry ∪ visit log" authority rule (planner root lanes, Condition,
+Settings, the Catalog corpus) reads `Visit.host_tendable_types`, which excludes engine
+types by name — a TENDED part must not be resurrected into root lanes or the census.
+Drill-down stays reachable: `Enliterator.tendable_type?` (status#show, catalog type filter)
+admits registered hosts ∪ Part, so an analytical entry has an entry page.
+
+## 3. The reading (`Tending::Reading`)
+One librarian's session: section → read each part on the `analysis` facet (a plain Visitor
+pass — vocabulary, required terms, escalation all apply) → file a `kind: "part"` embedding
+per content version → re-tend the work-level facets from the NOTEBOOK
+(`Part.notebook_for`: every part in order, each live analysis claim under its heading).
+Skip-if-fresh per part (unchanged digest + a succeeded read = the v0.14 NOOP-spend verdict
+applied inside the document). Three straight failed reads with nothing tended = stand down
+(the heartbeat's misconfiguration rule). The host's `to_enliterator_text` decides synthesis
+input: HSDL returns the notebook for summary/significance/connections once notes exist —
+so the deepening SUPERSEDES the front-matter understanding in place, "Understanding over
+time" shows it, and Trajectory::Judge can compare it blind.
+
+## 4. `scheduled: false` (the no-unsupervised-deep-reads pin)
+The analysis facet must live in the policy (the Visitor resolves tier/vocabulary/required
+from it), but policy context declarations FEED PLANNER LANES — without a gate, the next
+pacemaker cycle would start deep-reading unsupervised. `facet ..., scheduled: false` keeps
+a facet fully staffed but out of `schedulable_facets_declared_in`, which both lane builders
+now use; `facets_declared_in` is untouched (manual tend_context still reaches it).
+
+## 5. The pilot, before the campaign
+HSDL: `to_enliterator_parts` sections docling markdown on h2 headings (merge < 1,500-char
+fragments, hard-split > 30K, boilerplate dropped — nobody takes reading notes on the table
+of contents); the `analysis` facet (8 terms, summary REQUIRED) at QUALITY tier (whole
+sections need the window; cheap-tier economics are the campaign's question);
+`evidence_base` added to significance (only answerable from a whole-work reading).
+`enliterator:deep_read_pilot N=25` reads the cohort and puts each thesis's shallow vs deep
+understanding in front of Trajectory::Judge — blind pairwise winner/richer/more_accurate.
+The judge's verdict gates v0.26 (heartbeat lane integration) and the Bedrock batch campaign
+(~$200–500 for all 1,327 theses — the grant's named workload).
+
+## Honesty notes
+- Synthesis claims are NOTEBOOK-grounded, not source-grounded; part claims are
+  source-grounded against their own section. The provenance chain records exactly that, and
+  the examiner verifies each against the same text its tend read (the part's slice; the
+  notebook) — a derivation audit for synthesis, named plainly.
+- Part text is a stored COPY (~300MB at full-corpus scale; ~5MB pilot) — chosen so
+  content_digest is stable evidence independent of re-conversions.
+- refresh_for! reconciles by ordinal: re-conversion that shifts sections re-reads them
+  (digest change) and a vanished trailing section's notes are destroyed. Coarse, honest.
+- The synthesis can NOOP — verified live on the first reading: the abstract-grounded
+  summary was already faithful and the reconciler refused to churn it. The deepening showed
+  where front matter couldn't reach (significance: 3 added + 3 updated, evidence_base
+  minted). Ties on summary in the judge table are expected, not failure.
+- Part embeddings (kind "part") accrue but no surface retrieves them yet.
+- First engine-side embedding writer (the Reading); primaries remain host-mirrored.
+- Found and fixed in the host while wiring: HSDL's `to_enliterator_text(stream:)` kwarg
+  predated the v0.12 stream→facet rename, so the engine's facet-aware dispatch NEVER fired
+  — the authorship title-page branch was dead and only worked because the generic 6K head
+  contains the title page. Renamed to `facet:`; the branch is live for the first time.
+
+## Done = all of:
+- Migration (enliterator_parts) on dummy + HSDL; Part + Reading + scheduled gate +
+  registration rules; 17 new examples. **506 green.**
+- Verified live on HSDL: one thesis read whole (26 parts, 208 analytical claims, 124,718
+  tokens, zero failures), real scholarly notes (cited_works naming Hoffman/Schmid/Gurr,
+  index_terms as subject headings), significance deepened with supersession visible,
+  pacemaker plan clean of analysis items, part entry page renders.
+- The 25-thesis pilot run + judge verdict table (tmp/deep_read_pilot.md on HSDL).
+- SPEC, README, CLAUDE.md, About colophon.

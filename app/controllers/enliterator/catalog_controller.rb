@@ -43,12 +43,13 @@ module Enliterator
     private
 
     # The status#show pattern: a type param is only honored when it names a
-    # registered tendable — anything else renders as an honest note, never a 500.
+    # tendable type (registered host model, or the engine's Part — v0.25) —
+    # anything else renders as an honest note, never a 500.
     def safe_type
       t = params[:type].presence
       return nil unless t
       klass = t.to_s.safe_constantize
-      (klass && Enliterator.tendable_models.include?(klass)) ? klass.name : nil
+      Enliterator.tendable_type?(klass) ? klass.name : nil
     end
   end
 end

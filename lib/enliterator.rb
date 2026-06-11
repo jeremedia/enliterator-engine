@@ -272,6 +272,16 @@ module Enliterator
       tendable_models << model unless tendable_models.include?(model)
     end
 
+    # v0.25: is this class a legitimate tendable TYPE for the drill-down
+    # surfaces (status#show, the catalog's type filter)? Registered host
+    # models plus the engine's own Part — parts carry claims and deserve an
+    # entry page, but they are deliberately NOT in the registry (no root
+    # lanes, no corpus census).
+    def tendable_type?(klass)
+      return false if klass.nil?
+      klass == Enliterator::Part || tendable_models.include?(klass)
+    end
+
     private
 
     # True when the LiteLLM gateway has enough config to build tier adapters.
