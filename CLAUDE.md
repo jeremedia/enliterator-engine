@@ -92,8 +92,11 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, released through **v0.17**; **v0.18–v0.20
-  built locally** — push gated. v0.19 = the component standard (tokens + shared components in
+- Remote: github.com/jeremedia/enliterator-engine, **released through v0.23** (pushed 2026-06-10/11;
+  tags + GitHub releases v0.18–v0.22; v0.23 pushed via another of Jeremy's sessions, which also
+  pinned HSDL's Gemfile to it — HSDL commit 43943ba — and cut HSDL Release v1.42.0; check whether
+  a v0.23 tag/release exists before assuming). The version history:
+  v0.19 = the component standard (tokens + shared components in
   the layout style block, ctx-switch left beside what it scopes, Requests queue as per-term
   cards). v0.20 = the prepared finding aid: Status/Heartbeat previews read the last ledger
   row's `planned` jsonb via `Heartbeat::PreparedPlan` (live census only on a host with zero
@@ -160,11 +163,21 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   enliterator:audit N=`, `/review` (confirm/overrule/correct → `Tendable#correct_claim!`, NOT
   assert_claim! — locked human supersession; `Claim::AlreadySuperseded` race guard), Status
   accuracy panel.
-- **NEXT**: read morning ledgers for the supervised week; accumulate audit cells toward n≈30;
-  human-anchor sessions on /review; vocabulary trigger still UNMEASURED — watch its first real
-  wave via trajectory. Then: the frontier conversation (bound root lanes vs raise budget) and
-  the auth wrap before staging (FEDLINK 2026-07-14). UI rule going forward (v0.19): new pages
+- **NEXT**: read morning ledgers for the supervised week (2026-06-11 morning's cycle is the
+  FIRST with v0.23 pulse stamping — expect phase nil + pulse_at ≈ finished_at; also the first
+  audit allocation since the sampler fix should finally include significance/*); accumulate
+  audit cells toward n≈30; human-anchor sessions on /review (~18+ approvals waiting on
+  /requests from cycles #12/#45); vocabulary trigger still UNMEASURED. Then: the frontier
+  conversation (bound root lanes vs raise budget) and the auth wrap before staging (engine-push
+  prerequisite now CLEARED; FEDLINK 2026-07-14). UI rule going forward (v0.19): new pages
   compose from the layout's tokens/components; page `<style>` is page-specific layout only.
+- **How updates reach the engine (answered 2026-06-10)**: source_change = `updated_at` vs lane
+  anchor — the legacy→dev sync's row rewrites ARE the signal, zero integration. ASSOCIATED
+  tables (vocabulary_term_relations, marc_subjects) are INVISIBLE (no touch:true, raw-SQL
+  reconciles) and that is correct today because `to_enliterator_text` reads only
+  title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
+  the tending input, wire a signal (sync-rake touch, touch:true, or point
+  `heartbeat_source_changed` at a digest covering associations).
 - **v0.23 — every cycle ends on the ledger**: heartbeat rows pulse liveness + phase
   (`pulse_at`/`phase`, stamped per phase AND per LLM-loop iteration); `Heartbeat.reap_orphans!`
   (run by open! and the monitor page) stamps process-death orphans — finished_at = last sign
