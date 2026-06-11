@@ -20,6 +20,20 @@ RSpec.describe Enliterator::Atlas do
   def node(atlas, id)  = atlas[:nodes].find { |n| n[:id] == id }
   def edge(atlas, key) = atlas[:edges].find { |e| e[:key] == key }
 
+  it "rolls analytical entries up: a part's claims draw from the PARENT work's node, never a part node (v0.26.1)" do
+    w    = Widget.create!(title: "Deep Thesis", body: "b")
+    part = Enliterator::Part.refresh_for!(w, [ { heading: "Lit Review", text: "alpha" } ]).first
+    claim!(part, key: "cited_works", value: [ "Bruce Hoffman, Inside Terrorism" ])
+    claim!(w, key: "advisor", value: "Dr. Voss")
+
+    atlas = described_class.assemble
+    expect(atlas[:nodes].map { |n| n[:id] }.grep(/\Ar:Enliterator::Part/)).to be_empty
+    cited = edge(atlas, "cited_works")
+    expect(cited[:s]).to eq("r:Widget:#{w.id}")             # the WORK carries the citation edge
+    expect(node(atlas, "e:bruce hoffman, inside terrorism")).to be_present
+    expect(node(atlas, "r:Widget:#{w.id}")[:size]).to eq(2) # work + part claims, one node
+  end
+
   it "draws records as nodes and entity-bearing claims as typed edges" do
     w = Widget.create!(title: "Continuity of Operations", body: "b")
     claim!(w, key: "advisor", value: "Dr. Mara Voss")
