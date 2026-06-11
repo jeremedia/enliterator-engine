@@ -1598,3 +1598,71 @@ of minutes with no sign of life. A deliberate default change, both knobs configu
   its 61 visits, death phase named, monitor freed; its considerer's 18 approve-recommendations
   were already waiting on /requests.
 - SPEC, README, CLAUDE.md, About colophon.
+
+# v0.24 — The Catalog (browse the enliterated holdings)
+
+Every surface so far was curatorial back-office or a single keyhole — Chat retrieves five
+records, /status/:type/:id shows one. Jeremy: "I do see the need to browse the enliterated
+collection in a useful and interesting and educating way." Library science already has the
+piece: the CATALOG — the OPAC over the holdings. Search by meaning, browse by subject
+heading, and on every card the UNDERSTANDING, not just the metadata: accumulated claims,
+tending depth, contexts, last visit. The educating part is the cards — the compounding,
+visible at the shelf.
+
+## 1. Two spines, deliberately
+- The GRID and SEARCH walk the embedding spine (`kind: "primary"` — one row per enliterated
+  record, the exact pool Conversation retrieves from, now shared as `Embedding.in_context`).
+  Browse counts and search reach agree with Chat by construction.
+- SUBJECT browse walks the claim store: live UNDERSTANDING claims (`Claim.understanding`,
+  extracted from the Atlas), read cumulatively up the context path AND intersected with
+  membership — without that, a non-member's root claim would leak into a scoped browse.
+
+## 2. Headings congruent with their click-throughs (the load-bearing rule)
+A heading is a byte-exact stored value. The filter is jsonb containment
+(`value @> to_jsonb(term)`), which matches a scalar string and a string array element and
+nothing else — so heading extraction admits exactly those shapes (no hash digging, no
+numbers, no stripping). Counts are DISTINCT RECORDS (the same key/value at root and in a
+context is one record). Identifier keys are excluded by NAME (Atlas::IDENTIFIER_KEY_RX —
+control numbers are access points, not subject headings); a key with more values than the
+display cap and no value grouping two records is identifier-shaped and skipped. Spec-pinned:
+every offered heading's count equals its click-through total.
+
+## 3. Honest at corpus scale (the v0.20 law applied)
+The landing blob (stats, headings, recent, per-type counts) is cached 5 min keyed to the
+latest heartbeat id. The grid orders by ACCESSION (newest embeddings first — index-backed,
+stable; ordering 330K records by last-visit would be a per-view census). Heading tallies cap
+at 50,000 scanned claims per key and render "≥" beyond. ANN search returns one honest page
+(the K nearest), no pager. Pages clamp into range; a page the collection moved out from
+under says so. The new `[key, context_id]` claims index serves the heading/subject/sampling
+queries (nothing led on `key` before — Synopsis.key_summary rides it too).
+
+## 4. Degraded search names itself
+The Null embedder's deterministic pseudo-vector would RANK against real embeddings and look
+like results — so search degrades by name ("null-embedder" when unconfigured outside specs,
+"no-vector" when the gateway returns nothing) and the page falls back to the browse with the
+reason stated. No fake results, ever.
+
+## 5. Wander
+`/catalog/wander` lands on one random record's full entry — the serendipity of open stacks,
+one OFFSET query.
+
+## Honesty notes
+- The grid shows EMBEDDED records (the spine); subject browse covers all claim-bearing
+  records. They can differ by records that hold understanding claims but were never embedded
+  — rare by construction (the visitor embeds before tending), named here.
+- Headings are claims-in-use, not authority records: no syndetic structure, no see-also.
+  (SKOS export is the future shape for that.)
+- Hash-shaped and numeric claim values never become headings — not a modeling judgment, a
+  FILTERABILITY rule: a heading the filter can't find again is a lie.
+- Search requires the embedder; there is no keyword/full-text fallback index (deliberate —
+  the catalog's search IS the literacy thesis; ILIKE over jsonb at scale is a trap).
+- Card claim counts are UNDERSTANDING claims; /status/:type/:id additionally shows condition
+  flags and host seeds, so its claim table can read higher. Same records, wider ledger.
+
+## Done = all of:
+- Migration ([key, context_id]) on dummy + HSDL; Catalog service + controller/views;
+  `Embedding.in_context` + `Claim.understanding` extracted (Conversation/Atlas refactored,
+  their suites the regression net); 25 new examples. **489 green.**
+- Live on HSDL dev: stats over the real corpus, real headings with congruent counts,
+  semantic search, context scoping, wander.
+- SPEC, README (ten surfaces), CLAUDE.md, About colophon.

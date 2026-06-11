@@ -589,6 +589,10 @@
         <span class="surface-desc">The self-portrait — per-facet health, the vocabulary it uses, the connection graph, and drill-down into any single tended record.</span>
       </div>
       <div class="card">
+        <span class="surface-title"><%= link_to "Catalog", catalog_path %></span>
+        <span class="surface-desc">The holdings, browsable — search by meaning, browse by subject heading, wander the open stacks; every card shows what the collection knows.</span>
+      </div>
+      <div class="card">
         <span class="surface-title"><%= link_to "Chat", conversation_path %></span>
         <span class="surface-desc">Converse with the enliteration — answers grounded in the collection's own records, with source links back to Status.</span>
       </div>
@@ -597,8 +601,16 @@
         <span class="surface-desc">Govern the vocabulary — review the terms the model wants, approve / map / reject, and watch the loop converge.</span>
       </div>
       <div class="card">
+        <span class="surface-title"><%= link_to "Review", review_path %></span>
+        <span class="surface-desc">The human anchor — confirm, overrule, or correct the examiner's verdicts on sampled claims; the audit's ground truth.</span>
+      </div>
+      <div class="card">
         <span class="surface-title"><%= link_to "Contexts", contexts_path %></span>
         <span class="surface-desc">Collections within collections — the context tree, each lens's facets and members; the nav switcher views every surface through any of them.</span>
+      </div>
+      <div class="card">
+        <span class="surface-title"><%= link_to "Atlas", atlas_path %></span>
+        <span class="surface-desc">The collection, drawn — records, the entities their claims name, every edge carrying its provenance; replay it to watch the collection learn.</span>
       </div>
       <div class="card">
         <span class="surface-title"><%= link_to "Heartbeat", heartbeat_path %></span>
@@ -615,7 +627,9 @@
     </div>
 
     <p class="about-colophon">
-      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.23 — every cycle
+      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.24 — the
+      catalog: the holdings browsable at last — search by meaning, subject headings congruent
+      with their click-throughs, the open-stacks wander; v0.23 every cycle
       ends on the ledger: orphaned cycles are reaped with their endings reconstructed from
       provenance; v0.22 portability: the enliteration moves between deployments instead of
       re-buying the inference; v0.21 the atlas: the collection drawn as a graph whose every edge

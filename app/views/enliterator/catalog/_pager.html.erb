@@ -1,0 +1,13 @@
+<%# Hand-rolled pager (house rule: no pagination gem). +base+ carries the
+    mode's params (type, or key+value) so the window keeps its filter. %>
+<% if pages > 1 %>
+  <div class="pager">
+    <% if page > 1 %>
+      <%= link_to "‹ previous", catalog_path(base.merge(page: page - 1)), class: "btn btn-sm" %>
+    <% end %>
+    <span class="muted samples">page <%= page %> of <%= number_with_delimiter(pages) %></span>
+    <% if page < pages %>
+      <%= link_to "next ›", catalog_path(base.merge(page: page + 1)), class: "btn btn-sm" %>
+    <% end %>
+  </div>
+<% end %>

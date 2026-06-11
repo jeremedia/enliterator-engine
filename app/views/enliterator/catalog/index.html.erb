@@ -1,0 +1,162 @@
+<%# v0.24: the catalog — the OPAC over the enliterated holdings. Browse walks
+    the embedding spine in accession order; search ranks the same pool Chat
+    retrieves from; subject headings are the claim vocabulary in use, with
+    counts congruent to their click-throughs. Cards show the UNDERSTANDING —
+    claims, tending depth, contexts — not just metadata. %>
+<style>
+  .catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                  gap: var(--s3); margin: var(--s4) 0; }
+  .pager { display: flex; align-items: center; gap: var(--s3); margin: var(--s4) 0; }
+  .catalog-search { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
+                    margin: var(--s4) 0; }
+  .catalog-search .field { flex: 1 1 260px; }
+</style>
+
+<h1>Catalog <span class="subtitle">— the enliterated holdings, browsable</span></h1>
+<p class="muted">
+  Every record here has been visited and understood by the tending loop — the cards show what the
+  collection knows, not just what it holds. Search by meaning, browse by subject heading, or
+  <%= link_to "wander the stacks", catalog_wander_path(type: @type), title: "open a random record" %>.
+</p>
+
+<form class="catalog-search" method="get" action="<%= catalog_path %>">
+  <input class="field" type="text" name="q" value="<%= @q %>"
+         placeholder="search by meaning — a theme, a question, a subject…">
+  <% if @type %><input type="hidden" name="type" value="<%= @type %>"><% end %>
+  <button class="btn btn-primary" type="submit">Search by meaning</button>
+</form>
+
+<% if @unknown_type %>
+  <p><span class="chip warn">unknown type “<%= @unknown_type %>” — showing all types</span></p>
+<% end %>
+
+<% if @degraded %>
+  <div class="card" style="margin-bottom: var(--s4)">
+    <span class="chip warn">search unavailable</span>
+    <span class="muted">
+      <% if @degraded == "null-embedder" %>
+        Searching by meaning needs the embedder, and no gateway key is configured
+        (<code>ENLITERATOR_LLM_KEY</code>). Showing the browse instead — no results were faked.
+      <% else %>
+        The embedder returned nothing for this query (gateway unavailable?). Showing the browse
+        instead — no results were faked.
+      <% end %>
+    </span>
+  </div>
+<% end %>
+
+<% if @mode == :search %>
+  <h2>Nearest records <span class="subtitle">— the <%= @search[:records].size %> nearest to “<%= @q %>”, by meaning</span></h2>
+  <p class="muted samples">
+    Ranked by cosine distance against the same embeddings Chat retrieves from — smaller is nearer.
+    <%= link_to "clear search", catalog_path(type: @type) %>
+  </p>
+  <% if @search[:records].empty? %>
+    <div class="card"><span class="muted">No records near that query — the pool may be empty in this scope.</span></div>
+  <% else %>
+    <div class="catalog-grid">
+      <% @search[:records].each do |card| %><%= render "card", card: card %><% end %>
+    </div>
+  <% end %>
+
+<% elsif @mode == :subject %>
+  <h2>Subject <span class="subtitle">— records whose <code><%= @subject[:key] %></code> is “<%= @subject[:value] %>”</span></h2>
+  <p class="muted samples">
+    <strong><%= number_with_delimiter(@subject[:total]) %></strong> record(s) hold this understanding.
+    <%= link_to "clear filter", catalog_path(type: @type) %>
+  </p>
+  <% if @subject[:records].empty? %>
+    <div class="card"><span class="muted">No records hold that claim<%= " in this scope" if current_context %>.</span></div>
+  <% else %>
+    <div class="catalog-grid">
+      <% @subject[:records].each do |card| %><%= render "card", card: card %><% end %>
+    </div>
+    <%= render "pager", page: @subject[:page], pages: @subject[:pages],
+               base: { key: @subject[:key], value: @subject[:value] } %>
+  <% end %>
+
+<% else %>
+  <% stats = @overview[:stats] %>
+  <% if stats[:enliterated].zero? %>
+    <div class="card">
+      <p><strong>Nothing is enliterated yet.</strong></p>
+      <p class="muted">
+        The catalog fills as the collection is tended — run a cycle from the
+        <%= link_to "heartbeat", heartbeat_path %> and the first records will appear here.
+      </p>
+    </div>
+  <% else %>
+    <div class="card" style="margin-bottom: var(--s4)">
+      <div class="strip">
+        <span><span class="big"><%= number_with_delimiter(stats[:enliterated]) %></span>
+          <span class="muted samples">records enliterated</span></span>
+        <span><span class="big"><%= number_with_delimiter(stats[:corpus]) %></span>
+          <span class="muted samples">in the corpus</span></span>
+        <span><span class="big"><%= number_with_delimiter(stats[:live_claims]) %></span>
+          <span class="muted samples">live claims</span></span>
+        <span><span class="big"><%= number_with_delimiter(stats[:vocabulary_keys]) %></span>
+          <span class="muted samples">vocabulary keys in use</span></span>
+      </div>
+      <p class="muted samples" style="margin: .4rem 0 0">
+        The frontier advances every cycle: each enliterated record has been read, summarized, and
+        connected — and is revisited as understanding compounds. The rest of the corpus is on the horizon.
+      </p>
+    </div>
+
+    <% if @overview[:headings].any? %>
+      <h2>Subject headings <span class="subtitle">— the vocabulary in use, as a browse index</span></h2>
+      <div class="row">
+        <% @overview[:headings].each do |h| %>
+          <div class="card">
+            <div style="margin-bottom: var(--s2)"><code><%= h[:key] %></code>
+              <% if h[:approx] %><span class="muted samples" title="tally capped — counts are at least these">≥</span><% end %>
+            </div>
+            <% h[:values].each do |(term, n)| %>
+              <%= link_to catalog_path(key: h[:key], value: term), class: "chip",
+                          style: "text-decoration:none; margin: 0 .2rem .3rem 0; display:inline-block" do %>
+                <%= term %> <strong><%= n %></strong>
+              <% end %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+
+    <% if @overview[:recent].any? %>
+      <h2>Recently tended <span class="subtitle">— where attention just landed</span></h2>
+      <p>
+        <% @overview[:recent].each do |r| %>
+          <%= link_to status_record_path(r[:type], r[:id]), class: "chip",
+                      style: "text-decoration:none; margin: 0 .2rem .3rem 0; display:inline-block" do %>
+            <%= r[:label] %> <span class="muted samples"><%= r[:at].strftime("%b %-d") %></span>
+          <% end %>
+        <% end %>
+      </p>
+    <% end %>
+
+    <h2>The stacks <span class="subtitle">— newest additions first<%= ", #{@type} only" if @type %></span>
+      <% if @type %><span class="subtitle" style="font-size:.85rem">· <%= link_to "all types →", catalog_path %></span><% end %>
+    </h2>
+    <% if @overview[:types].size > 1 %>
+      <p>
+        <% @overview[:types].sort_by { |_, n| -n }.each do |(t, n)| %>
+          <%= link_to catalog_path(type: t), class: "chip#{" tier" if t == @type}",
+                      style: "text-decoration:none; margin-right:.2rem" do %>
+            <%= t %> <strong><%= number_with_delimiter(n) %></strong>
+          <% end %>
+        <% end %>
+      </p>
+    <% end %>
+    <% if @page[:records].empty? %>
+      <div class="card">
+        <span class="muted">The collection moved under this page —
+          <%= link_to "back to page 1", catalog_path(type: @type) %>.</span>
+      </div>
+    <% else %>
+      <div class="catalog-grid">
+        <% @page[:records].each do |card| %><%= render "card", card: card %><% end %>
+      </div>
+      <%= render "pager", page: @page[:page], pages: @page[:pages], base: { type: @type } %>
+    <% end %>
+  <% end %>
+<% end %>

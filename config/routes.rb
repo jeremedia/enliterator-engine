@@ -14,6 +14,13 @@ Enliterator::Engine.routes.draw do
   # members, and claim counts. The "collections within collections" view.
   get "contexts", to: "contexts#index", as: :contexts
 
+  # The catalog (v0.24): browse and search the enliterated holdings — the OPAC
+  # over what the collection has come to understand. Search by meaning through
+  # Chat retrieval's pool; browse by subject heading (the vocabulary in use);
+  # wander lands on a random record, the open-stacks gesture.
+  get "catalog",        to: "catalog#index",  as: :catalog
+  get "catalog/wander", to: "catalog#wander", as: :catalog_wander
+
   get "status", to: "status#index", as: :status
   # Per-record drill-down. :type/:id are separate segments so polymorphic, possibly
   # non-integer (uuid) host PKs survive routing; the id constraint allows dots/uuids.

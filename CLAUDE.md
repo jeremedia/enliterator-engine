@@ -178,6 +178,20 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.24 — the Catalog** (tenth surface, /enliterator/catalog): browse + search the
+  enliterated holdings. Grid/search walk the embedding spine (`Embedding.in_context` —
+  Conversation's pool, EXTRACTED; `ContextMembership.member_exists` is the generalized EXISTS
+  builder); subject browse walks `Claim.understanding` (also extracted — Atlas refactored onto
+  it) intersected with membership (cumulative claim reads would leak non-members into a scoped
+  browse). LOAD-BEARING RULE: headings are byte-exact stored values, extraction admits ONLY
+  the shapes jsonb containment (`value @> to_jsonb(term)`) can find again (string scalar,
+  string array element — no hash digging, no strip, no numbers); counts are distinct RECORDS;
+  spec-pinned congruence heading-count == click-through total. Identifier keys excluded by
+  NAME (IDENTIFIER_KEY_RX — control numbers are access points, not subjects). Accession-order
+  grid (id DESC — last-visit ordering would be a census), cached overview (v0.20 idiom),
+  heading tally capped 50K/key ("≥"), ANN search = one honest page, degraded embedder names
+  itself + falls back to browse. New claims index `[key, context_id]` (nothing led on key;
+  Synopsis.key_summary rides it too). `/catalog/wander` = random record. 489 examples.
 - **v0.23 — every cycle ends on the ledger**: heartbeat rows pulse liveness + phase
   (`pulse_at`/`phase`, stamped per phase AND per LLM-loop iteration); `Heartbeat.reap_orphans!`
   (run by open! and the monitor page) stamps process-death orphans — finished_at = last sign

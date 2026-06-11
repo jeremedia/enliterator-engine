@@ -1,0 +1,27 @@
+<%# One holding, with its understanding: title → the record's full entry;
+    excerpt = what the collection knows (a summary-like claim when one
+    exists); chips = the tending provenance, made visible. %>
+<div class="card">
+  <div style="margin-bottom: var(--s2)">
+    <%= link_to card[:label], status_record_path(card[:type], card[:id]),
+                style: "font-weight: 600; text-decoration: none" %>
+  </div>
+  <% if card[:excerpt].present? %>
+    <p class="muted" style="font-size: var(--fs-sm); margin: 0 0 var(--s2)"><%= card[:excerpt] %></p>
+  <% end %>
+  <div>
+    <span class="chip tier" title="live understanding claims"><%= card[:claim_count] %> claim<%= "s" unless card[:claim_count] == 1 %></span>
+    <% if card[:visit_count].positive? %>
+      <span class="chip" title="applied tending visits">
+        tended ×<%= card[:visit_count] %><% if card[:last_visit_at] %>,
+        last <%= card[:last_visit_at].strftime("%b %-d") %><% end %>
+      </span>
+    <% end %>
+    <% card[:contexts].each do |name| %>
+      <span class="chip"><%= name %></span>
+    <% end %>
+    <% if card[:distance] %>
+      <span class="muted samples mono" title="cosine distance — smaller is nearer"><%= format("%.3f", card[:distance]) %></span>
+    <% end %>
+  </div>
+</div>
