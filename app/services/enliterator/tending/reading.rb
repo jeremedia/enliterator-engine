@@ -129,12 +129,25 @@ module Enliterator
 
       # One vector per part per content version. kind "part" keeps these out
       # of every "primary" retrieval pool. A nil vector (degraded embedder)
-      # skips with a log line — never a fake row.
+      # skips with a log line — never a fake row. The embedding is AUXILIARY
+      # to the reading: a transient embed failure (v0.26.2 — a live gateway
+      # credential-rotation blip killed a whole session through this call)
+      # warns and moves on; the next reading re-embeds (the content hash
+      # won't match).
       def ensure_part_embedding(part)
         existing = part.enliterator_embeddings.find_by(kind: "part")
         return false if existing && existing.content_hash == part.content_digest
 
-        vector = @embedder.embed(part.enliterator_text)
+        vector =
+          begin
+            @embedder.embed(part.enliterator_text)
+          rescue StandardError => e
+            Enliterator.logger&.warn(
+              "[enliterator] part embedding failed for Part/#{part.id} — " \
+              "#{e.class}: #{e.message} — continuing the reading"
+            )
+            nil
+          end
         if vector.nil?
           Enliterator.logger&.warn(
             "[enliterator] part embedding skipped for Part/#{part.id} — embedder returned nil"
