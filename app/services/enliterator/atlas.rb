@@ -49,13 +49,21 @@ module Enliterator
       claims = understanding_claims(context).to_a
       return empty_atlas(context) if claims.empty?
 
-      by_record = claims.group_by { |c| [ c.tendable_type, c.tendable_id ] }
+      # v0.26.1: ANALYTICAL ENTRIES ROLL UP. The atlas draws WORKS — a part's
+      # claims (cited_works, index_terms, the deep read's notes) contribute
+      # their edges to the parent record's node, never a node of their own.
+      # Without this, one deep-read pilot (940 parts, 8K part claims) flooded
+      # the node cap with part nodes that have no context membership — no
+      # gravity well — and the layout exploded (found live, 2026-06-11).
+      part_parent = part_parents(claims)
+
+      by_record = claims.group_by { |c| record_key_for(c, part_parent) }
       records   = materialize(by_record.keys)
       verdicts  = audit_verdicts(claims)
 
       nodes  = {}   # id => node hash
       edges  = {}   # [s, t, key] => edge hash (deduped; weight = max confidence)
-      index  = resolution_index(claims, by_record, records)
+      index  = resolution_index(claims, by_record, records, part_parent)
 
       # Record nodes (label, genre group, first-claim timestamp, drill-down path).
       by_record.each do |(type, id), cs|
@@ -84,11 +92,12 @@ module Enliterator
                           at: cs.map(&:created_at).min.to_i }
       end
 
-      # Typed edges from entity-bearing claims.
+      # Typed edges from entity-bearing claims (a part's edges source from
+      # its PARENT work's node — the roll-up).
       bearing = entity_bearing_keys(claims)
       claims.each do |c|
         next unless bearing.include?(c.key)
-        source = record_node_id(c.tendable_type, c.tendable_id)
+        source = record_node_id(*record_key_for(c, part_parent))
         extract_terms(c.value).each do |term|
           norm   = term.downcase.strip
           target = index[norm]
@@ -128,7 +137,8 @@ module Enliterator
     # {normalized short string => record node id}, UNIQUE values only — a
     # collision means the string can't name one record, so it stays an entity.
     # Sources: IDENTIFIER claim values (eo_number "13129") + record titles.
-    def resolution_index(claims, by_record, records)
+    # Part claims resolve to their PARENT work's node (the roll-up).
+    def resolution_index(claims, by_record, records, part_parent = {})
       index, seen = {}, {}
       add = lambda do |str, node_id|
         norm = str.to_s.downcase.strip
@@ -143,7 +153,7 @@ module Enliterator
       claims.each do |c|
         next unless c.key.match?(IDENTIFIER_KEY_RX)
         next unless c.value.is_a?(String) && c.value.length <= SHORT
-        add.call(c.value, record_node_id(c.tendable_type, c.tendable_id))
+        add.call(c.value, record_node_id(*record_key_for(c, part_parent)))
       end
       by_record.each_key do |(type, id)|
         title = record_label(records[[ type, id ]], type, id)
@@ -184,6 +194,28 @@ module Enliterator
     end
 
     # ---- assembly helpers --------------------------------------------------
+
+    # {part_id(String) => [parent_type, parent_id]} for every Part claim in
+    # the build — one query, only when parts are present.
+    def part_parents(claims)
+      part_ids = claims.select { |c| c.tendable_type == "Enliterator::Part" }
+                       .map(&:tendable_id).uniq
+      return {} if part_ids.empty?
+      Enliterator::Part.where(id: part_ids)
+                       .pluck(:id, :record_type, :record_id)
+                       .each_with_object({}) { |(id, t, rid), h| h[id.to_s] = [ t, rid.to_s ] }
+    end
+
+    # The node a claim belongs to: its record — or its record's PARENT when
+    # the claim sits on an analytical entry. A part whose parent vanished
+    # falls back to itself (materialize labels it honestly by id).
+    def record_key_for(claim, part_parent)
+      if claim.tendable_type == "Enliterator::Part"
+        part_parent[claim.tendable_id.to_s] || [ claim.tendable_type, claim.tendable_id ]
+      else
+        [ claim.tendable_type, claim.tendable_id ]
+      end
+    end
 
     def record_node_id(type, id) = "r:#{type}:#{id}"
 

@@ -1818,3 +1818,12 @@ counter-pattern, applied to the agent as consumer.
   thesis (record_entry with parts, trajectory showing the deepening, provenance + quote on
   an analytical claim), the governed writes landing on /requests and /review.
 - SPEC, README, CLAUDE.md, About colophon.
+
+## v0.26.1 — analytical entries roll up in the Atlas
+Found live the same day: the deep-read pilot's 940 parts (8K part claims) flooded the
+atlas node cap with part nodes that carry no context membership — no gravity well — and
+the layout exploded. The rule, now spec-pinned: THE ATLAS DRAWS WORKS. A part's claims
+(cited_works, index_terms) contribute their edges to the parent record's node and resolve
+identifiers to the parent; part nodes never exist. The deep read's payoff lands where it
+belongs: the citation graph drawn from the works themselves (132 cited_works + 1,760
+index_terms edges on HSDL the day the pilot finished).
