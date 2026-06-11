@@ -89,6 +89,16 @@ RSpec.describe Enliterator::Tending::Reading do
     expect(llm.facets_seen.last(2)).to eq(%w[summary significance])
   end
 
+  it "an exploding embedder cannot kill the reading — the notes still land (v0.26.2)" do
+    boom = Class.new do
+      def embed(_text) = raise("gateway rotating")
+      def dimensions = 1536
+    end.new
+    summary = described_class.new(widget, llm: llm, embedder: boom).call
+    expect(summary).to include(tended: 2, failed: 0, embedded: 0)
+    expect(Enliterator::Part.where(record: widget).first.enliterator_claims.live).to be_present
+  end
+
   it "skips honestly when the host yields no parts" do
     bare = Widget.create!(title: "Bare", body: "")
     expect(reading(bare).call).to eq(skipped: :no_parts)
