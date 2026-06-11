@@ -22,6 +22,11 @@ module Enliterator
     scope :current, -> { where(superseded_by_id: nil) }
     # Current AND not tombstoned (a DELETE supersedes without a replacement).
     scope :live,    -> { current.where.not(status: "superseded") }
+    # v0.24 (extracted from the Atlas): claims that ARE understanding —
+    # engine-derived (visit-stamped) plus curator corrections (human:*).
+    # Excludes the condition reconciler's locked source_status flags and host
+    # assert_claim! seeds: flags and catalog facts are not tended understanding.
+    scope :understanding, -> { where("visit_id IS NOT NULL OR attributed_to LIKE 'human%'") }
 
     # Compact projection for literacy_state / prompt context.
     def to_state

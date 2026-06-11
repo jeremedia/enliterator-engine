@@ -72,14 +72,17 @@ bin/rails db:migrate
 
 ### Mounting the UI (v0.6)
 
-Mount the engine in the host's routes to get nine web surfaces — a **status
-browser**, a **conversation UI** (with a scope banner naming the active context), a
-**governed-vocabulary review queue**, a **claim quality-review queue** (the audit's
-human anchor), a **context tree**, an **atlas** (the collection drawn as a graph —
-records, the entities their claims name, every edge carrying its provenance and
-asserted-at date; replay it to watch the collection learn, or export a self-contained
-HTML copy with `rake enliterator:atlas`), a **heartbeat pulse monitor** (trigger one
-tending cycle and watch it live), an **About explainer**, and a **Settings** surface —
+Mount the engine in the host's routes to get ten web surfaces — a **status
+browser**, a **catalog** (browse and search the enliterated holdings — semantic search
+through the retrieval pool, subject-heading browse over the vocabulary in use, and a
+"wander" link for open-stacks serendipity), a **conversation UI** (with a scope banner
+naming the active context), a **governed-vocabulary review queue**, a **claim
+quality-review queue** (the audit's human anchor), a **context tree**, an **atlas**
+(the collection drawn as a graph — records, the entities their claims name, every edge
+carrying its provenance and asserted-at date; replay it to watch the collection learn,
+or export a self-contained HTML copy with `rake enliterator:atlas`), a **heartbeat
+pulse monitor** (trigger one tending cycle and watch it live), an **About explainer**,
+and a **Settings** surface —
 all styled by one inline component system (no asset pipeline, no style dependency) — for free:
 
 ```ruby
@@ -95,6 +98,12 @@ mount Enliterator::Engine => "/enliterator"
   `Enliterator::Trajectory` (`state_at` any past moment, per-facet diffs with churn detection,
   `compounding_summary` rollups) and `Enliterator::Trajectory::Judge` (blind pairwise LLM
   comparison of a record's earlier vs later understanding).
+- `/enliterator/catalog` — the catalog (v0.24): the OPAC over the enliterated holdings.
+  Search by meaning (the same embedding pool Chat retrieves from, distances shown), browse
+  by **subject heading** (the claim vocabulary in use, counts congruent with their
+  click-throughs), filter by type, page the stacks in accession order — every card shows
+  the record's understanding (claims, tending depth, contexts) and links to its full entry.
+  `/enliterator/catalog/wander` opens a random record: the open-stacks gesture.
 - `/enliterator/chat` — a reference interview with the enliteration: answers stream
   token-by-token, grounded in a collection self-portrait plus the records retrieved per
   question, with source chips linking back to the status browser.
@@ -119,9 +128,6 @@ mount Enliterator::Engine => "/enliterator"
   is seeded — flat installs are unchanged). Declare per-context facets with the policy's
   `context "key" do … end` blocks; seed `Enliterator::Context` (ancestry) + memberships
   (`record.place_in_context!`); tend with `enliterator:tend_context CONTEXT=key`.
-- `/enliterator/about` — the explainer (v0.10): what enliteracy is, why the collection is tended, and
-  how compounding attention changes it now and over time. The demo surface and a living north-star doc
-  (hand-revised each version); a live strip shows real counts from the collection it's mounted on.
 - `/enliterator/settings` — the configuration surface (v0.11): a read-only window onto the org chart
   (facets → tiers, the climb, required keys), the effective vocabulary per facet (code + accrued
   `live` keys), routing/capability, the considerer's autonomy, and tending behavior. Reflects the

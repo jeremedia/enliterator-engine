@@ -93,14 +93,7 @@ module Enliterator
       vector = @embedder.embed(question)
       return [] if vector.nil?
 
-      pool = Enliterator::Embedding.where(kind: "primary")
-      if @context
-        membership = Enliterator::ContextMembership
-                       .where(context_id: @context.id)
-                       .where("enliterator_context_memberships.member_type = enliterator_embeddings.embeddable_type")
-                       .where("enliterator_context_memberships.member_id = enliterator_embeddings.embeddable_id")
-        pool = pool.where(membership.arel.exists)
-      end
+      pool = Enliterator::Embedding.where(kind: "primary").in_context(@context)
 
       pool.nearest_neighbors(:embedding, vector, distance: "cosine").first(@retrieve_k).filter_map do |emb|
         rec = emb.embeddable

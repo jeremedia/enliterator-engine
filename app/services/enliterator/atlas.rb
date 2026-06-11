@@ -114,13 +114,11 @@ module Enliterator
 
     # ---- claim scope -----------------------------------------------------
 
-    # Live claims that ARE understanding: engine-derived (visit-stamped) plus
-    # curator corrections (human:*). This excludes the condition reconciler's
-    # locked source_status flags ("condition-survey") and host assert_claim!
-    # seeds — condition flags and catalog facts are not tended understanding.
+    # Live claims that ARE understanding (Claim.understanding — extracted to
+    # the model in v0.24 so the Catalog reads the same definition), read
+    # cumulatively up the context path.
     def understanding_claims(context)
-      scope = Enliterator::Claim.live
-                                .where("visit_id IS NOT NULL OR attributed_to LIKE 'human%'")
+      scope = Enliterator::Claim.live.understanding
       scope = scope.where(context_id: context.scope_ids) if context
       scope
     end

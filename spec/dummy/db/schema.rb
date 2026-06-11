@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_10_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_11_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -420,6 +420,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_200000) do
     t.jsonb "value"
     t.bigint "visit_id"
     t.index ["context_id"], name: "index_enliterator_claims_on_context_id"
+    t.index ["key", "context_id"], name: "idx_enliterator_claims_on_key_and_context"
     t.index ["superseded_by_id"], name: "idx_enliterator_claims_on_superseded_by_id"
     t.index ["tendable_type", "tendable_id", "context_id", "key"], name: "idx_enliterator_claims_on_tendable_context_key"
     t.index ["tendable_type", "tendable_id", "key"], name: "idx_enliterator_claims_on_tendable_and_key"
