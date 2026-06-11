@@ -178,6 +178,19 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.26 — the MCP surface** (`POST /enliterator/mcp`): the protocol minimum INLINE
+  (JSON-RPC 2.0, tools only, no gem, no SSE, stateless; `claude mcp add --transport http
+  enliterator http://localhost:3055/enliterator/mcp`). 13 tools = projections over cached
+  services: collection_overview/vocabulary/search/browse_subjects/subject_search/
+  record_entry/connections/trajectory/provenance/quote/accuracy + governed writes
+  propose_term (suggestions queue) + flag_claim (agent Audit → /review queue). RULES THAT
+  BITE: Audit SOURCES gained "agent" and the v0.18 instrument scopes to
+  `Audit.instrument` (examiner+human) in FOUR sites — effective_verdicts, audit_pairs,
+  sampler candidate_scope, Atlas verdict precedence — spec-pinned that an agent flag
+  changes NO accuracy number and doesn't remove a claim from the sampling pool. McpController
+  needs skip_forgery_protection. quote locates spans LEXICALLY (exact → densest token
+  cluster → located:false head). Tool payloads bounded + self-describing (`next:` hints).
+  527 examples.
 - **v0.25 — analytical cataloging (the deep read)**: `Enliterator::Part` (sections as
   first-class tendables — Tendable polymorphism gives them the WHOLE loop free) +
   `Tending::Reading` (section → per-part analysis reads → kind "part" embeddings →

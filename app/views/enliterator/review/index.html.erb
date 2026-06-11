@@ -48,7 +48,7 @@
       <span class="muted">@<%= claim.context&.key || "root" %></span>
       <span class="mono muted samples"><%= claim.tendable_type %>/<%= claim.tendable_id %></span>
       <span class="chip <%= 'tier' if audit.verdict == 'supported' %><%= ' warn' if audit.defective? %>">
-        examiner: <%= audit.verdict %></span>
+        <%= audit.source %>: <%= audit.verdict %></span>
       <% if audit.source_truncated %><span class="muted samples">(source truncated at examination)</span><% end %>
       <% if row[:source_changed] %>
         <span class="warn samples">source changed since examination — re-read before ruling</span>
@@ -57,7 +57,7 @@
     <table style="margin-top:.5rem">
       <tr><th style="width:12%">claim</th>
           <td><%= claim.value.is_a?(String) ? claim.value : claim.value.to_json %></td></tr>
-      <tr><th>examiner</th>
+      <tr><th><%= audit.source %></th>
           <td><%= audit.rationale %>
             <% if audit.corrected_value.present? && audit.corrected_value != {} %>
               <div class="muted samples">proposes: <%= audit.corrected_value.is_a?(String) ? audit.corrected_value : audit.corrected_value.to_json %></div>

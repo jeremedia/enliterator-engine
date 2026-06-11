@@ -24,19 +24,21 @@ module Enliterator
     end
 
     def verdict
-      audit = Enliterator::Audit.examiner.find(params[:audit_id])
+      # v0.26: agent flags are reviewable exactly like examiner verdicts —
+      # confirming an agent's suspicion mints the same human audit.
+      audit = Enliterator::Audit.where(source: %w[examiner agent]).find(params[:audit_id])
       claim = audit.claim
       note  = params[:note].presence
 
       case params[:decision]
       when "confirm"
         record_human!(claim, audit.verdict, note)
-        redirect_to review_path, notice: "Confirmed the examiner: #{audit.verdict} — \"#{claim.key}\"."
+        redirect_to review_path, notice: "Confirmed the #{audit.source}: #{audit.verdict} — \"#{claim.key}\"."
       when "overrule"
         v = params[:verdict].to_s
         return redirect_to(review_path, alert: "Pick a verdict to overrule with.") unless Enliterator::Audit::VERDICTS.include?(v)
         record_human!(claim, v, note)
-        redirect_to review_path, notice: "Overruled the examiner: #{v} — \"#{claim.key}\"."
+        redirect_to review_path, notice: "Overruled the #{audit.source}: #{v} — \"#{claim.key}\"."
       when "correct"
         value = params[:value].to_s
         return redirect_to(review_path, alert: "A correction needs the corrected value.") if value.blank?
@@ -67,13 +69,15 @@ module Enliterator
       )
     end
 
-    # Latest examiner audit per claim with no human verdict yet; the mix is
-    # ~1/3 supported, the rest defective/unverifiable first (largest piles of
-    # doubt up top). Each entry carries `source_changed` (digest drift) and
-    # `live` (a re-tended claim gets a successor note, not buttons).
+    # Latest examiner-or-agent audit per claim with no human verdict yet
+    # (v0.26: an MCP agent's flags enter the same queue — the flag's whole
+    # purpose is human eyes); the mix is ~1/3 supported, the rest
+    # defective/unverifiable first (largest piles of doubt up top). Each
+    # entry carries `source_changed` (digest drift) and `live` (a re-tended
+    # claim gets a successor note, not buttons).
     def build_queue
       reviewed_ids = Enliterator::Audit.human.select(:claim_id)
-      latest = Enliterator::Audit.examiner.where.not(claim_id: reviewed_ids)
+      latest = Enliterator::Audit.where(source: %w[examiner agent]).where.not(claim_id: reviewed_ids)
                                  .order(:created_at).includes(claim: [ :visit, :tendable, :context ])
                                  .group_by(&:claim_id).values.map(&:last)
 

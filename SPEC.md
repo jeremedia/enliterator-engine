@@ -1750,3 +1750,71 @@ The judge's verdict gates v0.26 (heartbeat lane integration) and the Bedrock bat
   pacemaker plan clean of analysis items, part entry page renders.
 - The 25-thesis pilot run + judge verdict table (tmp/deep_read_pilot.md on HSDL).
 - SPEC, README, CLAUDE.md, About colophon.
+
+# v0.26 — MCP Tooling (the agent's reading-room card)
+
+Jeremy: "What tools would empower you to intelligently conversationally navigate,
+understand, and communicate an enliterated collection?" Designed by its consumer. What an
+enliterated collection uniquely offers an agent is PROVENANCE, TRAJECTORY, and
+SELF-KNOWLEDGE — calibration tools no RAG server has: the agent can say "authorship claims
+here audit at 95% supported" and "the collection revised this after reading the whole
+thesis" instead of hedging uniformly. Nearly every tool is a thin projection over a cached
+service built in v0.6–v0.25; this version is the agent-shaped hands.
+
+## 1. The endpoint: the protocol minimum, inline
+`POST /enliterator/mcp` — JSON-RPC 2.0, Streamable HTTP, tools only. initialize /
+notifications (202 empty) / tools/list / tools/call; POST-only, always application/json
+(no SSE — clients accept plain JSON); GET 405; stateless. ~120 lines, no gem — the "UI is
+100% self-contained" ethos extended to the agent surface. Protocol misses are JSON-RPC
+errors (-32601/-32602/-32700); tool failures are isError results with ACTIONABLE text,
+never a backtrace. Wire-up: `claude mcp add --transport http enliterator
+http://localhost:3055/enliterator/mcp`.
+
+## 2. Thirteen tools (11 read, 2 governed-write)
+Orient: collection_overview (the self-portrait: stats/contexts/facets/condition/accuracy),
+vocabulary (the claim language). Navigate: search (Chat's pool — counts agree everywhere),
+browse_subjects + subject_search (the v0.24 congruence, agent-shaped), record_entry (THE
+core tool: claims grouped by facet, each with provenance on its sleeve — confidence, tier,
+status, locked, attribution, latest audit verdict — plus tending rollup and analytical
+entries when deep-read; a Part has an entry too). Connect: connections (typed edges from
+the CACHED atlas + semantic neighbors). Calibrate: trajectory (how understanding
+compounded, visit by visit), provenance ("how do you know that?" — the full chain),
+quote (claim → primary material: the passage located lexically in the same text the tend
+read), accuracy (the audited rates, said out loud). Participate: propose_term (a pending
+suggestion riding pressure→considerer→curator), flag_claim (an agent audit reaching the
+review queue).
+
+## 3. The agent is eyes, never a hand (the scoping rule)
+Audit::SOURCES gains "agent", and the v0.18 instrument scopes to `instrument`
+(examiner + human) in all four aggregation sites: effective_verdicts, audit_pairs, the
+sampler's never-examined pool, and the Atlas verdict precedence. SPEC-PINNED: an agent
+flag changes NO accuracy number and does not remove a claim from the examiner's sampling
+pool — its whole purpose is to reach a human, so agent flags enter the /review queue
+beside examiner verdicts (confirm/overrule/correct work identically; the chip names the
+source).
+
+## 4. Bounded and self-describing, by discipline
+The agent's context window is a budget exactly like the heartbeat's: every collection
+capped (search 10, claims 60, edges 40, neighbors 8, parts 80), every long value truncated
+with a flag, quote windows ≤1,200 chars. Every response carries `next:` hints naming the
+follow-up tools and the /enliterator path a human would use — the asymmetric-observability
+counter-pattern, applied to the agent as consumer.
+
+## Honesty notes
+- The protocol MINIMUM, deliberately: no SSE, resources, prompts, sampling, or sessions.
+- Auth posture is the mount's (auth-less dev; the staging wrap covers /enliterator/mcp —
+  same prefix). No Origin validation yet — named as a hardening item before any
+  non-localhost exposure.
+- quote's span location is LEXICAL (exact match → densest token cluster → head-of-source
+  with located: false). It never fakes a quote; it says when it couldn't find one.
+- search requires the embedder and SAYS SO when degraded (the error names
+  browse_subjects/subject_search as the working alternatives).
+- record_entry's verdict display ranks human > examiner > agent — an agent flag shows but
+  never outranks the instrument.
+
+## Done = all of:
+- Endpoint + 13 tools + audit scoping; 21 new examples (7 protocol + 14 tool). **527 green.**
+- Live on HSDL dev: the JSON-RPC handshake by curl, real tool calls over the deep-read
+  thesis (record_entry with parts, trajectory showing the deepening, provenance + quote on
+  an analytical claim), the governed writes landing on /requests and /review.
+- SPEC, README, CLAUDE.md, About colophon.
