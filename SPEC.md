@@ -1827,3 +1827,53 @@ the layout exploded. The rule, now spec-pinned: THE ATLAS DRAWS WORKS. A part's 
 identifiers to the parent; part nodes never exist. The deep read's payoff lands where it
 belongs: the citation graph drawn from the works themselves (132 cited_works + 1,760
 index_terms edges on HSDL the day the pilot finished).
+
+# v0.27 — The Brief (the collection reports its own night)
+
+## Why
+"How did last night's tending go?" was answered by hand-composing the same query every
+morning: heartbeats, visits, failures, readings, governance — re-derived each time,
+forgetting the same corners. The records were always there (the ledger, the immutable
+Visit history with errors on the failures, the governance tables); nothing composed them.
+The Brief is that composition written once — compounding tooling for operating the
+engine, in the engine.
+
+## What
+`Enliterator::Brief.report(since:)` — a pure-read, time-windowed digest (default 12h;
+a Duration reads as "ago"):
+- **headline** — one relayable line: cycles, visits (failed count), deep-read visits, tokens.
+- **heartbeats** — each ledger row compacted: planned, executed rollup by status, tokens,
+  warnings, error.
+- **visits** — total, by facet×status, by tier, by reason, token sum (ONE pluck feeds
+  headline + rollup + readings; the Visit table is the busiest in the engine).
+- **failures** — count + sample (cap 10, flagged truncated) WITH each visit's recorded
+  error (rule 3 pays off: no log-grepping).
+- **readings** — deep-read part visits rolled up to their parent records (sessions, not
+  page turns): records, parts read/failed, syntheses, tokens.
+- **governance** — suggestions filed (by status), proposed-term motion (by
+  recommended_decision; updated_at reads as "moved" — the table mutates in place),
+  audits by source×verdict.
+- **embeddings** — rows written in the window.
+
+Surfaces (thin projections, the v0.26 law):
+- `rake enliterator:brief` (`HOURS=` default 12) — the terminal morning read.
+- MCP tool **`recent_activity`** (`hours` 1–168, clamped not errored) — the 14th tool;
+  where collection_overview is the self-portrait (state), recent_activity is the diary
+  (change). Carries `next:` hints like every tool.
+
+## Honesty notes
+- The Brief is BREADTH over a window; `Report.summary` stays the DEPTH instrument
+  (adapter mix, escalation/empty-final rates, confidence). The Brief deliberately
+  duplicates none of it — read the Brief first, reach for `enliterator:status` when a
+  number looks wrong.
+- Pure read: no network, no cache writes, no migration. Byte-identical when unused.
+- ProposedTerm has no status column — motion is grouped by `recommended_decision`
+  (nil reads as "open").
+
+## Done = all of:
+- Service + rake + MCP tool; 8 new examples (7 service + 1 tool) + the tools/list pin
+  moves 13→14. **537 green.**
+- Live on HSDL dev: `bin/rails enliterator:brief` reproduces the night the tool was born
+  from (the Bedrock sample's failures with their gateway errors, the 1:30 AM heartbeat,
+  the deep-read rollup).
+- SPEC, README, CLAUDE.md, About colophon.

@@ -178,6 +178,15 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.27 — the Brief**: `Enliterator::Brief.report(since:)` — the time-windowed activity
+  digest ("how did last night's tending go?"): heartbeats compacted, visits by
+  facet/tier/reason, failures WITH their Visit.error, deep-read part visits rolled up to
+  parent records, governance motion (suggestions by status, ProposedTerm by
+  recommended_decision — it has NO status column, audits by source×verdict). Surfaced as
+  `rake enliterator:brief HOURS=` and MCP tool `recent_activity` (the 14th — clamps hours
+  1–168, never errors on range). Breadth over a window; `Report.summary` /
+  `enliterator:status` stays the per-facet DEPTH instrument — the Brief duplicates none
+  of it. Pure read. 537 examples.
 - **v0.26 — the MCP surface** (`POST /enliterator/mcp`): the protocol minimum INLINE
   (JSON-RPC 2.0, tools only, no gem, no SSE, stateless; `claude mcp add --transport http
   enliterator http://localhost:3055/enliterator/mcp`). 13 tools = projections over cached

@@ -35,6 +35,7 @@ module Enliterator
         Tools::Provenance,
         Tools::Quote,
         Tools::Accuracy,
+        Tools::RecentActivity,
         Tools::ProposeTerm,
         Tools::FlagClaim
       ]
