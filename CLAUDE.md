@@ -178,6 +178,30 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.28 — the Reference Desk (Plan A: the agentic core)**: Plan A built under
+  `Enliterator::Chat` — `Gateway#converse_with_tools` (optional-multi-tool adapter
+  primitive; `ToolTurn` return; Null/Bedrock raise `NotImplementedError` — loud fail on
+  misconfiguration); `Chat::Widget` (pure-function tool renderers: record_entry /
+  provenance / trajectory / accuracy / search / subject_search / quote / connections +
+  JSON fallback; class-names only; all tool data HTML-escaped — hard rule 2); `Chat::Agent`
+  + registry (`Chat.register`, `Chat.for_context` fallback to Frontdesk; fail-fast tier
+  validation at registration; duplicate-Frontdesk guard); `Chat::Loop` — THE ENFORCEMENT
+  BOUNDARY (the loop, not the model, enforces): route_to intercepted FIRST (switch agent,
+  emit handoff, NEVER dispatch); allow-list checked BEFORE `Mcp.dispatch` (read-only
+  enforcement — injected write instructions are blocked by name); grounding injected only
+  for context-bearing tools the model left unscoped (model scope honored — grounded, not
+  walled); step cap + per-turn wall-clock budget; tool failure or gateway raise → VISIBLE
+  terminal event (rule 3). On handoff: re-resolves LLM + switches system prompt per new
+  agent's tier. `Audit.accuracy` cached (last-write + count key — NOT heartbeat id).
+  Federation-gated transport: `ConversationController#stream` drives the loop when
+  `config.chat_federation` ON; 5 new SSE events (`tool_call_start` / `tool_call_result` /
+  `tool_call_error` / `handoff` + existing `token`/`provenance`/`done`); AG-UI semantics,
+  not its casing. RULES THAT BITE: `config.chat_federation` is OFF by default — suite is
+  byte-identical to v0.27 when unused; agents must resolve to a `converse_with_tools`
+  gateway tier or registration fails; the off-path view is byte-identical (literal diff
+  verified). Plan B (public accountless desk: sessionless controller, link token, rate
+  limit, per-surface affordance scrub, leashed web tool) is the HORIZON, not yet built.
+  572 examples.
 - **v0.27 — the Brief**: `Enliterator::Brief.report(since:)` — the time-windowed activity
   digest ("how did last night's tending go?"): heartbeats compacted, visits by
   facet/tier/reason, failures WITH their Visit.error, deep-read part visits rolled up to

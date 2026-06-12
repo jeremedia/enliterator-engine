@@ -1877,3 +1877,87 @@ Surfaces (thin projections, the v0.26 law):
   from (the Bedrock sample's failures with their gateway errors, the 1:30 AM heartbeat,
   the deep-read rollup).
 - SPEC, README, CLAUDE.md, About colophon.
+
+# v0.28 — The Reference Desk (the agentic core)
+
+## Why
+The authed `/enliterator/chat` could answer a question. It couldn't hold a conversation
+across tools — triage it, hand it to the right expert, show its provenance inline, recover
+visibly when a tool failed. A reference interview is not a single shot; it's a governed
+exchange where the desk knows what it can answer, knows when to say "let me connect you
+with a specialist," and never pretends confidence it doesn't have. v0.28 builds that desk
+into the engine — agentic, federated, gated.
+
+## What
+
+### Gateway primitive: `Gateway#converse_with_tools`
+A NEW adapter method — optional-multi-tool: the model chooses whether and which tools to
+call. Returns a `ToolTurn` (text OR tool_calls with ids + the assistant message to feed
+back into the loop). Streams text deltas. Only the Gateway adapter implements it; Null and
+Bedrock inherit a `NotImplementedError` — a misconfigured federation fails loudly rather
+than silently degrading.
+
+### `Chat::Widget` — inline provenance for tool results
+Pure functions `(tool_name, result) → self-contained HTML`, one renderer per
+widget-worthy MCP tool (record_entry, provenance, trajectory, accuracy, search,
+subject_search, quote, connections) + an unknown-tool JSON fallback. All untrusted tool
+data is HTML-escaped; class-names only (the layout owns CSS — hard rule 2). Built to
+later wrap as MCP Apps `ui://` resources (Plan B horizon).
+
+### `Chat::Agent` + the federation registry
+A federation of agents: a **Frontdesk** (nil grounding — triages + routes) and grounded
+specialists (e.g. CHDS Theses, scoped to their context). Registration FAIL-FASTS if the
+agent's tier doesn't resolve to a `converse_with_tools`-capable Gateway adapter — the
+direct-Bedrock trap is caught at boot, not at first message. The registry guards a
+duplicate Frontdesk. `Chat.for_context(key)` resolves the active agent, falling back to
+the Frontdesk.
+
+### `Chat::Loop` — the governed agentic loop
+The **security enforcement boundary** (the loop, not the model, enforces):
+1. **`route_to` intercepted FIRST** — a handoff instruction switches agent, emits a
+   visible handoff event, and is NEVER dispatched as a tool call.
+2. **Allow-list checked BEFORE `Mcp.dispatch`** — read-only enforcement. An injected
+   web instruction can't call a write tool by name; the allow-list is the gate.
+3. **Grounding injected only for context-bearing tools the model left unscoped** — a
+   model-supplied scope is honored ("grounded, not walled").
+
+On handoff the loop re-resolves the LLM per the new agent's tier and switches the system
+prompt ("fast triage → capable advising" actually activates). Bounded by a step cap AND
+a per-turn wall-clock budget. A tool failure or a mid-loop gateway raise becomes a
+VISIBLE terminal event (rule 3), never a silent hang.
+
+### Cached `Audit.accuracy`
+The hot first-turn path (`collection_overview` runs it inline) now caches, keyed on the
+audit set's last write + count — NOT a heartbeat id, because audits are filed out-of-band
+between beats.
+
+### Federation-gated transport
+`ConversationController#stream` drives the agentic loop when `config.chat_federation` is
+on, emitting the existing lowercase events `token` / `provenance` / `done` plus four new
+events: `tool_call_start` / `tool_call_result` / `tool_call_error` / `handoff`. Event
+vocabulary borrows AG-UI's semantics, not its casing. The off-path (federation OFF) view
+is **byte-identical** — verified by literal diff; the widget-aware JS and scope-banner id
+are ONLY inside the server-rendered federation gate.
+
+## Honesty notes
+- `config.chat_federation` is **OFF by default**. When unused the full suite is
+  byte-identical to v0.27: no new behavior, no new risk surface. This is the project's
+  core discipline applied to the agentic surface.
+- The agentic chat is the **Plan A** of two. **Plan B** — the public accountless desk
+  (sessionless controller, link token, rate limit, per-surface affordance scrub, the
+  leashed web tool) — is the named horizon, not yet built. Full design:
+  `docs/designs/2026-06-12-reference-desk-design.md`; plan:
+  `docs/superpowers/plans/2026-06-12-reference-desk-agentic-core.md`.
+- Null and Bedrock adapters raise `NotImplementedError` on `converse_with_tools` by
+  design — federation with an incapable tier surfaces immediately.
+- Widget HTML is class-name-only (no inline style); all untrusted tool data passes
+  through html_safe only after `ERB::Util.html_escape`.
+
+## Done = all of:
+- `Gateway#converse_with_tools` + `ToolTurn`; `Chat::Widget` (8 renderers + fallback);
+  `Chat::Agent` + registry (`Chat.for_context`, `Chat.register`, duplicate-Frontdesk guard,
+  tier-validation fail-fast); `Chat::Loop` (route_to-first, allow-list-before-dispatch,
+  context-bearing-only grounding, step cap, wall-clock budget, visible terminal events);
+  `Audit.accuracy` cache (last-write + count key); federation-gated `ConversationController#stream`
+  (5 new SSE event types, byte-identical off-path). **572 green.**
+- SPEC, README, CLAUDE.md, About colophon.

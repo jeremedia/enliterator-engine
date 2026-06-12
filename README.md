@@ -106,7 +106,13 @@ mount Enliterator::Engine => "/enliterator"
   `/enliterator/catalog/wander` opens a random record: the open-stacks gesture.
 - `/enliterator/chat` — a reference interview with the enliteration: answers stream
   token-by-token, grounded in a collection self-portrait plus the records retrieved per
-  question, with source chips linking back to the status browser.
+  question, with source chips linking back to the status browser. With
+  `config.chat_federation` enabled (v0.28, opt-in), the chat becomes an agentic
+  **Reference Desk** — a Frontdesk that triages and routes to grounded specialists, a
+  governed loop that enforces the allow-list and shows every tool call inline as a
+  provenance widget, and handoff events so the patron sees which desk is answering.
+  The public accountless desk (Plan B — sessionless, link-token, rate-limited) is the
+  forthcoming horizon.
 - `/enliterator/suggestions` — the governed-vocabulary review queue: when the model proposes a
   term a facet's contract doesn't cover, a curator approves it, maps it onto an existing key
   (a synonym), or rejects it. The ontology tends itself. The queue ranks by accumulated **pressure**
