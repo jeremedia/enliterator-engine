@@ -117,6 +117,14 @@ module Enliterator
           raise NotImplementedError, "#{self.class} must implement #decide"
         end
 
+        # v0.28: optional-multi-tool completion. Offers +tools+ with tool_choice
+        # "auto"; returns a ToolTurn (text OR tool_calls). Only the Gateway adapter
+        # implements it — Null/Bedrock inherit this raise so a misconfigured
+        # federation fails loudly, never silently.
+        def converse_with_tools(messages:, tools:, tags: [], stream: false, &block)
+          raise NotImplementedError, "#{self.class} does not implement converse_with_tools"
+        end
+
         # The structured-output schema for a call. With no contract this is the
         # default RESPONSE_SCHEMA constant ITSELF (identity preserved, so the v0.2
         # adapter specs comparing against RESPONSE_SCHEMA stay green). With a

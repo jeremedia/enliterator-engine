@@ -28,6 +28,12 @@ module Enliterator
       # The provider gem is lazy-required on first real use; specs inject a fake
       # `client:` and touch neither the gem nor the network.
       class Gateway < Base
+        # The outcome of one converse_with_tools round: a final text answer, OR a
+        # set of tool calls to execute and feed back. Exactly one is populated.
+        # +tokens+ is {} on the stream path (stream_raw yields no usage block) —
+        # that empty hash is expected there, not a bug.
+        ToolTurn = Struct.new(:text, :tool_calls, :assistant_message, :tokens, keyword_init: true)
+
         # @param tier     [String] LiteLLM alias used as the model id (e.g. "cheap", "quality").
         # @param base_url [String] gateway base URL (OpenAI-compatible, e.g. "https://llm.example.com/v1").
         # @param api_key  [String] LiteLLM project key (from ENV; never committed).
@@ -167,6 +173,45 @@ module Enliterator
           parse_arguments(arguments_of(first_tool_call(response)))
         end
 
+        # v0.28: one round of an optional-multi-tool conversation. With a block +
+        # stream, text deltas are yielded and a text-only ToolTurn is returned.
+        # Otherwise a non-streamed call returns either tool_calls (to execute) or
+        # text (the final answer). The loop owns multi-round control flow.
+        def converse_with_tools(messages:, tools:, tags: [], stream: false, &block)
+          params = { model: @tier, messages: messages, tools: tools, tool_choice: "auto" }
+          request_options = {}
+          request_options[:extra_body] = { metadata: { tags: Array(tags) } } if Array(tags).any?
+
+          if stream && block
+            full = +""
+            args = params.dup
+            args[:request_options] = request_options unless request_options.empty?
+            client.chat.completions.stream_raw(**args).each do |chunk|
+              delta = extract_delta(chunk)
+              next if delta.nil? || delta.empty?
+              full << delta
+              block.call(delta)
+            end
+            return ToolTurn.new(text: full, tool_calls: [], assistant_message: nil, tokens: {})
+          end
+
+          response =
+            if request_options.empty?
+              client.chat.completions.create(**params)
+            else
+              client.chat.completions.create(**params, request_options: request_options)
+            end
+
+          calls = all_tool_calls(response)
+          if calls.any?
+            ToolTurn.new(text: nil, tool_calls: calls, assistant_message: assistant_message_of(response),
+                         tokens: extract_tokens(response))
+          else
+            ToolTurn.new(text: extract_message_content(response).to_s, tool_calls: [], assistant_message: nil,
+                         tokens: extract_tokens(response))
+          end
+        end
+
         private
 
         # Incremental text from a streamed chat-completion chunk. Tolerates the gem's
@@ -271,6 +316,45 @@ module Enliterator
             end
 
           Array(calls).first
+        end
+
+        # ALL tool calls on the first choice's message, normalized to
+        # {id:, name:, arguments: Hash}. (first_tool_call returns only the first.)
+        def all_tool_calls(response)
+          message = message_of(first_choice(response))
+          return [] unless message
+          raw =
+            if message.respond_to?(:tool_calls)
+              message.tool_calls
+            elsif message.is_a?(Hash)
+              message[:tool_calls] || message["tool_calls"]
+            end
+          Array(raw).map do |tc|
+            id = tc.respond_to?(:id) ? tc.id : (tc.is_a?(Hash) ? (tc[:id] || tc["id"]) : nil)
+            fn = tc.respond_to?(:function) ? tc.function : (tc.is_a?(Hash) ? (tc[:function] || tc["function"]) : nil)
+            name = fn.respond_to?(:name) ? fn.name : (fn.is_a?(Hash) ? (fn[:name] || fn["name"]) : nil)
+            { id: id, name: name.to_s, arguments: parse_arguments(arguments_of(tc)) }
+          end
+        end
+
+        # The assistant message, as a plain Hash with its tool_calls, for the loop
+        # to append to messages before the tool-result messages (OpenAI requires the
+        # assistant turn carrying tool_calls to precede the matching tool messages).
+        def assistant_message_of(response)
+          message = message_of(first_choice(response))
+          calls = (message.respond_to?(:tool_calls) ? message.tool_calls :
+                   (message.is_a?(Hash) ? (message[:tool_calls] || message["tool_calls"]) : [])) || []
+          {
+            "role" => "assistant",
+            "content" => nil,
+            "tool_calls" => Array(calls).map do |tc|
+              id = tc.respond_to?(:id) ? tc.id : (tc.is_a?(Hash) ? (tc[:id] || tc["id"]) : nil)
+              fn = tc.respond_to?(:function) ? tc.function : (tc.is_a?(Hash) ? (tc[:function] || tc["function"]) : nil)
+              name = fn.respond_to?(:name) ? fn.name : (fn.is_a?(Hash) ? (fn[:name] || fn["name"]) : nil)
+              { "id" => id, "type" => "function",
+                "function" => { "name" => name, "arguments" => arguments_of(tc).to_s } }
+            end
+          }
         end
 
         def first_choice(response)
