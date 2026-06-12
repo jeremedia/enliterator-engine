@@ -16,7 +16,7 @@ module Enliterator
 
         def call
           {
-            by_facet_and_tier: Enliterator::Audit.accuracy,
+            by_facet_and_tier: Enliterator::Audit.accuracy_cached,
             anchor_agreement:  Enliterator::Audit.anchor_agreement.except(:matrix),
             verdict_meanings: {
               supported:    "the source provides evidence for the claim",
