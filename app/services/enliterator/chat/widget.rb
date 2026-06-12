@@ -92,6 +92,58 @@ module Enliterator
         %(<div class="enl-widget enl-widget--traj"><div class="enl-widget__head">#{h(r[:facet])}</div>) +
           %(<ol class="enl-traj">#{steps}</ol></div>)
       end
+
+      # --- search / subject_search (same card-list shape) ---------------------
+      def render_search(result)
+        cards = Array(symize(result)[:results]).map do |item|
+          i = symize(item)
+          counts = [ ("#{h(i[:claim_count])} claims" if i[:claim_count]),
+                     ("#{h(i[:visit_count])} visits" if i[:visit_count]) ].compact.join(" · ")
+          %(<li class="enl-result"><div class="enl-result__label">#{h(i[:label])} ) +
+            %(<span class="enl-result__type">#{h(i[:type])}</span></div>) +
+            %(<div class="enl-result__excerpt">#{h(i[:excerpt])}</div>) +
+            %(<div class="enl-result__counts">#{counts}</div></li>)
+        end.join
+        %(<div class="enl-widget enl-widget--results"><ul class="enl-results">#{cards}</ul></div>)
+      end
+      def render_subject_search(result) = render_search(result)
+
+      # --- quote -------------------------------------------------------------
+      def render_quote(result)
+        r = symize(result)
+        if r[:located] == false
+          %(<div class="enl-widget enl-widget--quote enl-widget--quote-unlocated">) +
+            %(<div class="enl-quote__flag">passage not located — showing head of source</div>) +
+            %(<blockquote class="enl-quote">#{h(r[:passage])}</blockquote></div>)
+        else
+          %(<div class="enl-widget enl-widget--quote"><blockquote class="enl-quote">#{h(r[:passage])}</blockquote></div>)
+        end
+      end
+
+      # --- connections -------------------------------------------------------
+      def render_connections(result)
+        r = symize(result)
+        edges = Array(r[:edges]).map do |e|
+          e = symize(e)
+          %(<li class="enl-edge"><span class="enl-edge__key">#{h(e[:key])}</span> → #{h(e[:target])}</li>)
+        end.join
+        neighbors = Array(r[:neighbors])
+        nb = if neighbors.empty? && r[:neighbors_state].to_s != "" && r[:neighbors_state].to_s != "ok"
+               state_label = neighbor_state_label(r[:neighbors_state].to_s)
+               %(<div class="enl-edge__degraded">neighbors unavailable — #{h(state_label)}</div>)
+             else
+               neighbors.map { |n| n = symize(n); %(<li class="enl-neighbor">#{h(n[:label])}</li>) }.join
+             end
+        %(<div class="enl-widget enl-widget--conn"><ul class="enl-edges">#{edges}</ul>#{nb}</div>)
+      end
+
+      def neighbor_state_label(state)
+        case state
+        when "no_embedding"  then "no embedding for this record"
+        when "not_in_atlas"  then "not in the atlas yet"
+        else                      state
+        end
+      end
     end
   end
 end
