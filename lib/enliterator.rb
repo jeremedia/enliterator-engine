@@ -156,6 +156,13 @@ module Enliterator
     # bounded call becomes a COUNTED failure instead of a hung cycle.
     attr_accessor :gateway_timeout, :gateway_max_retries
 
+    # ---- v0.28 Agentic Reference Desk ------------------------------------
+
+    # Gate for the agentic federation. nil/false ⇒ /enliterator/chat is the
+    # byte-identical single-shot RAG. true ⇒ the controller drives Chat::Loop,
+    # routing through the Chat::Agent registry.
+    attr_accessor :chat_federation
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -181,6 +188,7 @@ module Enliterator
       @staffing = nil
       @escalation_threshold = 0.6
       @suggestion_sink = nil
+      @chat_federation = nil
       @allow_null_llm = false
       @conversation_tier = nil
       @considerer_tier = nil
