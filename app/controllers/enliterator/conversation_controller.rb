@@ -18,18 +18,25 @@ module Enliterator
       response.headers["Cache-Control"]     = "no-cache"
       response.headers["X-Accel-Buffering"] = "no" # disable proxy buffering (nginx/Caddy)
 
-      provenance = Enliterator::Conversation.new(context: current_context).reply(
-        question: params[:question].to_s,
-        history:  parse_history,
-        stream:   true
-      ) { |delta| sse(:token, t: delta) }
+      if Enliterator.configuration.chat_federation
+        agent = Enliterator::Chat.for_context(current_context&.key)
+        Enliterator::Chat::Loop.new(agent: agent, sink: method(:sse)).run(params[:question].to_s)
+      else
+        # ===== existing single-shot path — preserve VERBATIM =====
+        provenance = Enliterator::Conversation.new(context: current_context).reply(
+          question: params[:question].to_s,
+          history:  parse_history,
+          stream:   true
+        ) { |delta| sse(:token, t: delta) }
 
-      # `context` makes each answer self-describing about its scope — the
-      # retrieval pool that produced it, not just which records it cited.
-      sse(:provenance, records: provenance[:records], tier: provenance[:tier],
-                       degraded: provenance[:degraded],
-                       context: current_context&.key || "root")
-      sse(:done, {})
+        # `context` makes each answer self-describing about its scope — the
+        # retrieval pool that produced it, not just which records it cited.
+        sse(:provenance, records: provenance[:records], tier: provenance[:tier],
+                         degraded: provenance[:degraded],
+                         context: current_context&.key || "root")
+        sse(:done, {})
+        # ===== end existing path =====
+      end
     rescue ActionController::Live::ClientDisconnected
       # client navigated away mid-stream — nothing to clean up beyond the ensure
     rescue => e
