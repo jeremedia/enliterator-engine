@@ -9,7 +9,7 @@ module Enliterator
     class Loop
       ROUTE_TO = "route_to"
 
-      def initialize(agent:, llm: nil, sink:, step_cap: 4, context_resolver: nil)
+      def initialize(agent:, llm: nil, sink:, step_cap: 4, wall_budget: 90, clock: nil, context_resolver: nil)
         @agent   = agent
         # An injected adapter (specs) overrides per-tier resolution entirely; otherwise
         # resolve + cache one adapter PER TIER so a route_to to a higher-tier specialist
@@ -17,6 +17,8 @@ module Enliterator
         @injected_llm = llm
         @sink    = sink
         @step_cap = step_cap
+        @wall_budget = wall_budget
+        @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
         # Maps a context key → the value tools expect (the key string). Server-side,
         # never the cookie. Default: identity.
         @resolve = context_resolver || ->(key) { key }
@@ -27,14 +29,29 @@ module Enliterator
         messages = [ { "role" => "system", "content" => @agent.system_prompt },
                      { "role" => "user", "content" => question.to_s } ]
         steps = 0
+        started = @clock.call
         loop do
+          # NOTE: the budget is checked BETWEEN rounds, not mid-call. A single slow
+          # gateway call can exceed wall_budget by up to gateway_timeout (~180s);
+          # Plan B sets a shorter per-call gateway_timeout upstream to bound that.
+          if @clock.call - started > @wall_budget
+            emit(:token, t: "I reached my time budget — here is what I have so far.")
+            Enliterator.logger&.info("[enliterator] chat loop hit wall budget (#{@wall_budget}s) agent=#{@agent.name}")
+            break
+          end
           if steps >= @step_cap
             emit(:token, t: "I reached my step budget — here is what I have so far.")
             Enliterator.logger&.info("[enliterator] chat loop hit step cap (#{@step_cap}) agent=#{@agent.name}")
             break
           end
           steps += 1
-          turn = llm.converse_with_tools(messages: messages, tools: tool_defs_with_route)
+          begin
+            turn = llm.converse_with_tools(messages: messages, tools: tool_defs_with_route)
+          rescue StandardError => e
+            emit(:token, t: "I hit an error reaching the model — please try again.")
+            Enliterator.logger&.warn("[enliterator] chat loop model error: #{e.class}: #{e.message}")
+            break
+          end
           if turn.tool_calls.empty?
             emit(:token, t: turn.text.to_s)
             break
