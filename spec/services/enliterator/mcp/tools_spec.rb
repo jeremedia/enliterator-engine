@@ -186,6 +186,21 @@ RSpec.describe "Enliterator MCP tools", type: :request do
     end
   end
 
+  describe "recent_activity" do
+    it "answers the morning question: windowed digest with failures and a clamped window" do
+      w = enliterate!("A", topic: "x")
+      w.enliterator_visits.create!(facet: "summary", status: "failed", tier: "cheap",
+                                   error: "gateway down", created_at: 1.hour.ago)
+
+      out = call_tool("recent_activity", hours: 9_999)   # clamps to MAX_HOURS, no error
+      expect(out[:window][:hours]).to be <= Enliterator::Mcp::Tools::RecentActivity::MAX_HOURS
+      expect(out[:headline]).to be_present
+      expect(out[:visits][:total]).to be >= 2
+      expect(out[:failures][:sample].first[:error]).to eq("gateway down")
+      expect(out[:next]).to be_present   # self-describing
+    end
+  end
+
   describe "the governed writes" do
     it "propose_term files a pending suggestion that rides authority control" do
       w = enliterate!("A")

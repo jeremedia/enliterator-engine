@@ -348,3 +348,70 @@ namespace :enliterator do
     end
   end
 end
+
+namespace :enliterator do
+  # v0.27: the Brief — "how did last night's tending go?" without re-deriving
+  # the query every morning. A time-windowed digest: heartbeat cycles, visits
+  # by facet/tier/reason, failures WITH their errors, deep-read sessions,
+  # governance motion. Pure read. (Per-facet depth lives in enliterator:status.)
+  #
+  #   bin/rails enliterator:brief             # last 12 hours
+  #   HOURS=36 bin/rails enliterator:brief
+  desc "Activity digest for the last HOURS (default 12): cycles, visits, failures, readings, governance"
+  task brief: :environment do
+    hours = (ENV["HOURS"].presence || 12).to_f
+    b = Enliterator::Brief.report(since: hours.hours)
+    fmt_n = ->(n) { ActiveSupport::NumberHelper.number_to_delimited(n) }
+    # App-zone labels, the v0.23 convention — the system clock can be a different
+    # zone than the collection speaks (launchd taught us that the hard way).
+    at    = ->(t) { t ? t.in_time_zone.strftime("%m-%d %H:%M") : "—" }
+
+    puts "── enliterator brief ── last #{b[:window][:hours]}h (since #{at.call(b[:window][:since])})"
+    puts b[:headline]
+
+    if b[:heartbeats].any?
+      puts "\nheartbeats:"
+      b[:heartbeats].each do |hb|
+        line = "  #{at.call(hb[:at])}→#{hb[:finished_at] ? hb[:finished_at].in_time_zone.strftime('%H:%M') : 'RUNNING'}" \
+               "  #{hb[:mode]}  planned #{hb[:planned]}" \
+               "  executed #{hb[:executed].sort.map { |k, v| "#{k}=#{v}" }.join(' ')}" \
+               "  tokens #{fmt_n.call(hb[:tokens])}"
+        line += "  ⚠ ABORTED: #{hb[:error][0, 120]}" if hb[:error]
+        puts line
+        Array(hb[:warnings]).each { |w| puts "      ⚠ #{w}" }
+      end
+    end
+
+    v = b[:visits]
+    if v[:total].positive?
+      puts "\nvisits: #{v[:total]} · #{fmt_n.call(v[:tokens])} tokens"
+      puts "  by facet:  " + v[:by_facet].sort.map { |f, st| "#{f} #{st.map { |k, n| "#{n} #{k}" }.join(', ')}" }.join("  ·  ")
+      puts "  by tier:   " + v[:by_tier].map { |k, n| "#{k}=#{n}" }.join("  ")
+      puts "  by reason: " + v[:by_reason].map { |k, n| "#{k}=#{n}" }.join("  ")
+    end
+
+    f = b[:failures]
+    if f[:count].positive?
+      puts "\nfailures: #{f[:count]}#{f[:truncated] ? " (showing #{f[:sample].size})" : ''}"
+      f[:sample].each { |x| puts "  #{at.call(x[:at])}  #{x[:facet]}/#{x[:tier]}  #{x[:record]} — #{x[:error] || '(no error recorded)'}" }
+    end
+
+    r = b[:readings]
+    if r[:parts_read].positive? || r[:parts_failed].positive? || r[:syntheses].positive?
+      puts "\ndeep reads: #{r[:records]} record(s) · #{r[:parts_read]} parts read" \
+           "#{" · #{r[:parts_failed]} failed" if r[:parts_failed].positive?}" \
+           " · #{r[:syntheses]} syntheses · #{fmt_n.call(r[:tokens])} tokens"
+    end
+
+    g = b[:governance]
+    moved = g.values.sum { |h| h.values.sum { |x| x.is_a?(Hash) ? x.values.sum : x } }
+    if moved.positive?
+      puts "\ngovernance:"
+      puts "  suggestions: #{g[:suggestions].map { |k, n| "#{k}=#{n}" }.join('  ')}" if g[:suggestions].any?
+      puts "  term motion: #{g[:term_motion].map { |k, n| "#{k}=#{n}" }.join('  ')}" if g[:term_motion].any?
+      g[:audits].each { |src, verdicts| puts "  audits (#{src}): #{verdicts.map { |k, n| "#{k}=#{n}" }.join('  ')}" }
+    end
+
+    puts "\nembeddings written: #{b[:embeddings][:written]}" if b[:embeddings][:written].positive?
+  end
+end
