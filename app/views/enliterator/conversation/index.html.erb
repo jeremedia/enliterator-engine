@@ -7,14 +7,14 @@
     the conversation happens, not only in the nav's small selector. %>
 <% if current_context %>
   <div class="card" style="padding:.6rem 1.1rem; border-left:3px solid var(--accent)">
-    <strong>Asking within: <%= current_context.name %></strong>
+    <strong<% if Enliterator.configuration.chat_federation %> id="enl-scope-banner"<% end %>>Asking within: <%= current_context.name %></strong>
     <span class="muted">— <%= @scope_count %> member record(s). Answers retrieve only this collection's
     members, read through its lens (plus inherited claims).</span>
     <%= link_to "ask the whole collection instead →", conversation_path(context: "root"),
                 class: "samples", style: "white-space:nowrap" %>
   </div>
 <% else %>
-  <p class="muted samples" style="margin-top:-.4rem">
+  <p class="muted samples" style="margin-top:-.4rem"<% if Enliterator.configuration.chat_federation %> id="enl-scope-banner"<% end %>>
     Asking the <strong>whole collection</strong> — every context's records are in the retrieval pool.
     <% if context_switcher_options.any? %>Narrow to one collection with the context selector in the nav.<% end %>
   </p>
@@ -141,6 +141,21 @@
     if (ev === "token") { state.text += payload.t || ""; scheduleRender(els, state); }
     else if (ev === "provenance") { renderProvenance(els.prov, payload.records, payload.context); }
     else if (ev === "error") { state.text += "\n\n_[" + (payload.message || "error") + "]_"; }
+<% if Enliterator.configuration.chat_federation %>
+    else if (ev === "tool_call_result") {
+      var widget = document.createElement("div"); widget.className = "enl-tool-result";
+      widget.innerHTML = payload.html || ""; thread.appendChild(widget); thread.scrollTop = thread.scrollHeight;
+    }
+    else if (ev === "handoff") {
+      var banner = document.getElementById("enl-scope-banner");
+      if (banner) banner.textContent = "Desk: " + (payload.to || "");
+    }
+    else if (ev === "tool_call_error") {
+      var err = document.createElement("div"); err.className = "enl-chat-error";
+      err.textContent = payload.message || "tool error"; thread.appendChild(err);
+    }
+    // tool_call_start: no-op (spinner could go here)
+<% end %>
   }
 
   form.addEventListener("submit", function (e) {
