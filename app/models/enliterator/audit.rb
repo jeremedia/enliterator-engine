@@ -88,6 +88,15 @@ module Enliterator
                           .where.not(id: Enliterator::Audit.instrument.select(:claim_id))
       end
 
+      # v0.28: cached accuracy for the hot first-turn path (collection_overview /
+      # the accuracy tool). Keyed on the audit set's last write + count — NOT the
+      # heartbeat id — because audits are filed out-of-band (human /review, agent
+      # flag_claim) between beats; a heartbeat-id key would serve a stale number.
+      def accuracy_cached
+        key = [ "enliterator-accuracy", maximum(:updated_at)&.to_i, count ]
+        Rails.cache.fetch(key, expires_in: 5.minutes) { accuracy }
+      end
+
       # The accuracy report, per facet × tier cell. The EFFECTIVE verdict per
       # claim: the latest HUMAN audit wins over any examiner one (the anchor
       # is the only independent ground truth). HEADLINE = the process rate —

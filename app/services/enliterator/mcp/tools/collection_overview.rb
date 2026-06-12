@@ -35,7 +35,7 @@ module Enliterator
             },
             condition: condition.slice(:surveyed, :total, :untendable, :residue_count)
                                 .merge(piles: Array(condition[:piles]).map { |p| p.slice(:signature, :count, :band) }),
-            accuracy: Enliterator::Audit.accuracy.map { |r|
+            accuracy: Enliterator::Audit.accuracy_cached.map { |r|
               r.slice(:facet, :tier, :audited, :supported_rate, :contradicted)
             },
             next: {
