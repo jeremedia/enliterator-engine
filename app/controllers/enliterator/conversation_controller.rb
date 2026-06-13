@@ -18,6 +18,10 @@ module Enliterator
       response.headers["Cache-Control"]     = "no-cache"
       response.headers["X-Accel-Buffering"] = "no" # disable proxy buffering (nginx/Caddy)
 
+      if Enliterator.configuration.chat_followups && params[:from_followup].present?
+        Enliterator.logger&.info("[enliterator] followup_click q=#{params[:question].to_s[0, 80].inspect}")
+      end
+
       if Enliterator.configuration.chat_federation
         agent = Enliterator::Chat.for_context(current_context&.key)
         # error_detail? is the per-surface decision point — passed explicitly here so

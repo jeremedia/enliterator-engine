@@ -23,7 +23,7 @@ RSpec.describe "Conversation federation", type: :request do
     end
   end
 
-  after { Enliterator.configuration.chat_federation = nil; Enliterator::Chat.reset! }
+  after { Enliterator.configuration.chat_federation = nil; Enliterator.configuration.chat_followups = nil; Enliterator::Chat.reset! }
 
   # Helper: pull the JSON object that follows an `event: error` line in an SSE body.
   # The controller writes "event: error\n" then "data: <json>\n\n". Returns the parsed
@@ -149,6 +149,37 @@ RSpec.describe "Conversation federation", type: :request do
     Enliterator::Chat.reset!
     expect { post "/enliterator/chat/stream", params: { question: "hi" } }.not_to raise_error
     expect(response).to have_http_status(:ok)
+  end
+
+  it "logs a follow-up click-through when from_followup is present (flag on)" do
+    Enliterator.configuration.chat_followups = true
+    Enliterator.configuration.chat_federation = true
+    llm_double = double(converse_with_tools: Enliterator::Adapters::LLM::Gateway::ToolTurn.new(
+      text: "ok", tool_calls: [], assistant_message: nil, tokens: {}))
+    allow(Enliterator).to receive(:llm).and_return(llm_double)
+    Enliterator::Chat.register(name: "F", grounding: nil, system_prompt: "p",
+                               tools: %w[search], tier: "cheap")
+    allow(Enliterator.logger).to receive(:info)
+    post "/enliterator/chat/stream", params: { question: "hi", from_followup: "1" }
+    expect(Enliterator.logger).to have_received(:info).with(/followup_click/).at_least(:once)
+  ensure
+    Enliterator.configuration.chat_followups = nil
+  end
+
+  it "does NOT log a click-through for an ordinary submit (no from_followup param)" do
+    # Guards against a refactor that logs on every request, not just follow-up clicks.
+    Enliterator.configuration.chat_followups = true
+    Enliterator.configuration.chat_federation = true
+    llm_double = double(converse_with_tools: Enliterator::Adapters::LLM::Gateway::ToolTurn.new(
+      text: "ok", tool_calls: [], assistant_message: nil, tokens: {}))
+    allow(Enliterator).to receive(:llm).and_return(llm_double)
+    Enliterator::Chat.register(name: "F", grounding: nil, system_prompt: "p",
+                               tools: %w[search], tier: "cheap")
+    allow(Enliterator.logger).to receive(:info)
+    post "/enliterator/chat/stream", params: { question: "hi" }  # no from_followup
+    expect(Enliterator.logger).not_to have_received(:info).with(/followup_click/)
+  ensure
+    Enliterator.configuration.chat_followups = nil
   end
 
   # The OFF-view byte-identity guarantee, codified. The implementers proved by
