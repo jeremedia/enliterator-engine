@@ -431,6 +431,18 @@
     return text;
   }
 
+  // v0.35 federated render: same 70ms debounce as scheduleRender, but renders the
+  // PROSE (sentinel tail stripped) so %%FOLLOWUPS%% never shows. scheduleRender (shared
+  // with the single-shot path) is left untouched — byte-identical when federation off.
+  function scheduleRenderFederated(els, state) {
+    if (state.timer) return;
+    state.timer = setTimeout(function () {
+      state.timer = null;
+      els.md.innerHTML = mdToHtml(proseOf(state.text));
+      followStream();
+    }, 70);
+  }
+
   // ── Citations: the "infrastructure is the argument" surface ──────────────
   // A grounded answer connects to the records the desk actually consulted. As
   // tool widgets stream into the trace, every [data-enl-id] element registers a
@@ -784,7 +796,7 @@
 
     if (ev === "token") {
       ensureAnswer(els);
-      state.text += payload.t || ""; scheduleRender(els, state);
+      state.text += payload.t || ""; scheduleRenderFederated(els, state);
     }
     else if (ev === "provenance") {
       ensureAnswer(els);
@@ -866,6 +878,10 @@
       noteActiveDesk(to);
       followStream();
     }
+    else if (ev === "followups") {
+      renderFollowupButtons(payload.items || []);
+      els.gotFollowups = true;
+    }
     // ev === "done" is handled by the reader-done path in submitQuestionFederated.
   }
 
@@ -877,7 +893,7 @@
     // overwrite it with the (empty) answer flush. Otherwise render the answer.
     if (!els.errored) {
       ensureAnswer(els);
-      els.md.innerHTML = mdToHtml(state.text); // final flush
+      els.md.innerHTML = mdToHtml(proseOf(state.text)); // final flush
     }
     // v0.29 citations: the sources rail reflects what the desk actually
     // consulted (always-correct, even if no label matched in the prose); the
@@ -901,12 +917,12 @@
                            (elapsed != null ? " · " + elapsed + "s" : "") + " ▸";
     els.head.addEventListener("click", function () { els.trace.classList.toggle("is-open"); });
     history.push({ role: "user", content: q });
-    history.push({ role: "assistant", content: state.text });
+    history.push({ role: "assistant", content: proseOf(state.text) });
     sendBusy(false);
-    // Derive this turn's follow-up suggestions from the records the desk just
-    // consulted (client-side, from the trace). Falls back to the static starters
-    // when nothing was consulted — the prompt bar is never left blank (rule 3).
-    refreshFollowups(els);
+    // v0.35: buttons came from the :followups event during the stream. If none
+    // arrived (model omitted the block, or the flag is off), restore the static
+    // starters so the prompt bar is never blank (rule 3).
+    if (!els.gotFollowups) restoreStaticStarters();
     // Return focus to the composer so the patron can immediately type a follow-up.
     if (input) input.focus();
   }
@@ -927,7 +943,7 @@
     var t = buildTurn();
     var els = { trace: t.trace, head: t.head, steps: t.steps, sources: t.sources,
                 turn: t.turn, md: null, prov: null, toolSteps: {}, activeDesk: "Frontdesk",
-                sourceCount: 0,
+                sourceCount: 0, gotFollowups: false,
                 // v0.29 citations: the consulted-records registry for THIS turn.
                 // `list` is first-seen order ([n] = index+1); `seen` dedupes by
                 // type/id. Harvested from tool widgets as they stream in.
@@ -950,6 +966,7 @@
     var body = new FormData();
     body.append("question", q);
     body.append("history", JSON.stringify(history));
+    if (fromFollowup) { body.append("from_followup", "1"); fromFollowup = false; }
 
     fetch(streamUrl, { method: "POST", headers: { "X-CSRF-Token": csrf }, body: body })
       .then(function (resp) {
@@ -1002,76 +1019,46 @@
     // Shift+Enter falls through to the default newline; autosize fires on input.
   });
 
-  // ── Dynamic follow-up suggestions ───────────────────────────────────────
-  // After a turn completes, replace the static starters with follow-ups derived
-  // from the records the desk consulted THIS turn (read client-side from the
-  // rendered tool widgets in the trace). The first turn (and any turn that
-  // consulted no labeled records) keeps/falls back to the static starters, so
-  // the prompt bar is never blank (rule 3).
+  // ── Follow-ups (v0.35: rendered from the server's :followups event) ─────────
   var promptsEl = document.getElementById("prompts");
   var staticPromptsHTML = promptsEl ? promptsEl.innerHTML : null;
+  var fromFollowup = false; // set by a follow-up button click; read once in submitQuestionFederated
 
-  // Click-to-populate for a button.prompt (mirrors the static handler so
-  // dynamically-rebuilt buttons behave identically): fill the box, then send.
   function wirePrompt(b) {
     b.addEventListener("click", function () {
       if (send.disabled) return;
-      input.value = b.textContent.trim();
-      autosize();
+      input.value = b.textContent.trim(); autosize();
       submitQuestion(input.value);
     });
   }
 
-  // Collect up to `max` distinct record labels from this turn's trace widgets.
-  // Record labels surface as .enl-result__label / .enl-widget__head / the
-  // subject/heading keys inside the tool result <details> bodies.
-  function consultedLabels(traceEl, max) {
-    if (!traceEl) return [];
-    var sel = ".enl-result__label, .enl-widget__head, .enl-headings__key, .enl-prov__claim, .enl-edge__key";
-    var nodes = traceEl.querySelectorAll(sel);
-    var seen = {}, labels = [];
-    for (var i = 0; i < nodes.length && labels.length < max; i++) {
-      var txt = (nodes[i].textContent || "").trim();
-      if (!txt) continue;
-      if (txt.length > 80) txt = txt.slice(0, 77) + "…";  // keep buttons sane
-      var k = txt.toLowerCase();
-      if (seen[k]) continue;
-      seen[k] = true;
-      labels.push(txt);
-    }
-    return labels;
+  // Restore the original starter buttons (the rule-3 fallback when a turn produced
+  // no follow-ups). Re-wires because an innerHTML restore drops listeners.
+  function restoreStaticStarters() {
+    if (!promptsEl || staticPromptsHTML === null) return;
+    if (promptsEl.innerHTML === staticPromptsHTML) return;
+    promptsEl.innerHTML = staticPromptsHTML;
+    promptsEl.querySelectorAll("button.prompt").forEach(wirePrompt);
   }
 
-  // Vary the phrasing so four suggestions don't read as a template dump.
-  var FOLLOWUP_FORMS = [
-    function (l) { return "Tell me more about " + l; },
-    function (l) { return "What connects to " + l + "?"; },
-    function (l) { return "Show the provenance for " + l; },
-    function (l) { return "How does " + l + " fit the bigger picture?"; }
-  ];
-
-  function refreshFollowups(els) {
-    if (!promptsEl) return;
-    var labels = consultedLabels(els.trace, 4);
-    if (!labels.length) {                   // nothing consulted → restore starters
-      if (staticPromptsHTML !== null && promptsEl.innerHTML !== staticPromptsHTML) {
-        promptsEl.innerHTML = staticPromptsHTML;
-        promptsEl.querySelectorAll("button.prompt").forEach(wirePrompt);
-      }
-      return;
-    }
-    // Rebuild: a fresh label + the follow-up buttons (varied phrasing per label).
+  // Render the server-reasoned next-questions as buttons. A click flags the next
+  // submit as follow-up-originated (for click-through instrumentation), populates
+  // the composer, and sends. Empty list → keep/restore starters (rule 3).
+  function renderFollowupButtons(items) {
+    if (!promptsEl || !items || !items.length) { restoreStaticStarters(); return; }
     promptsEl.innerHTML = "";
     var label = document.createElement("span");
-    label.className = "label";
-    label.textContent = "Follow up:";
+    label.className = "label"; label.textContent = "Follow up:";
     promptsEl.appendChild(label);
-    labels.forEach(function (l, i) {
+    items.forEach(function (q) {
       var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "prompt";
-      btn.textContent = FOLLOWUP_FORMS[i % FOLLOWUP_FORMS.length](l);
-      wirePrompt(btn);
+      btn.type = "button"; btn.className = "prompt"; btn.textContent = q;
+      btn.addEventListener("click", function () {
+        if (send.disabled) return;
+        fromFollowup = true;
+        input.value = q; autosize();
+        submitQuestion(input.value);
+      });
       promptsEl.appendChild(btn);
     });
     followStream();
