@@ -27,14 +27,17 @@ function lift(name) {
   throw new Error("unbalanced " + name);
 }
 
-// renderErrorCard's closure refs: `document` (createElement), `thread` (scrollTop +
-// the bare fallback append), `ensureAnswer` (called only when els.md is absent). We
-// inject all three. We drive the els.md / els.turn placement branches directly (els
-// always carries md or turn here), so ensureAnswer is a no-op probe that records if
-// it were ever reached unexpectedly.
+// renderErrorCard's closure refs: `document` (createElement), `thread` (the bare
+// fallback append when neither els.md nor els.turn resolves), `ensureAnswer` (called
+// only when els.md is absent), and `followStream` (the v0.34 auto-scroll hook, called
+// after placement — orthogonal to the card's DOM/XSS properties, so we inject a
+// no-op). We drive the els.md / els.turn placement branches directly (els always
+// carries md or turn here), so ensureAnswer is a no-op probe that records if it were
+// ever reached unexpectedly.
 let ensureAnswerCalls = 0;
+const noop = function () {};
 const factory = new Function(
-  "document", "thread", "ensureAnswer",
+  "document", "thread", "ensureAnswer", "followStream",
   lift("renderErrorCard") + "\nreturn { renderErrorCard: renderErrorCard };"
 );
 
@@ -87,7 +90,7 @@ function childByClass(card, cls) {
 {
   const dom = makeDom();
   const thread = { scrollTop: 0, scrollHeight: 100, appendChild() {} };
-  const api = factory(dom.document, thread, function () { ensureAnswerCalls++; });
+  const api = factory(dom.document, thread, function () { ensureAnswerCalls++; }, noop);
   const els = { md: new dom.Element("div"), turn: new dom.Element("div") };
   api.renderErrorCard(els, { message: "I lost the connection — please try again." });
   // The card is the sole child of els.md (typing placeholder cleared, card appended).
@@ -105,7 +108,7 @@ function childByClass(card, cls) {
 {
   const dom = makeDom();
   const thread = { scrollTop: 0, scrollHeight: 100, appendChild() {} };
-  const api = factory(dom.document, thread, function () {});
+  const api = factory(dom.document, thread, function () {}, noop);
   const els = { md: new dom.Element("div") };
   api.renderErrorCard(els, {});
   const card = els.md.childNodes.find(n => n.nodeType === 1 && n.className === "enl-error");
@@ -117,7 +120,7 @@ function childByClass(card, cls) {
 {
   const dom = makeDom();
   const thread = { scrollTop: 0, scrollHeight: 100, appendChild() {} };
-  const api = factory(dom.document, thread, function () {});
+  const api = factory(dom.document, thread, function () {}, noop);
   const els = { md: new dom.Element("div") };
   api.renderErrorCard(els, {
     message: "conversation failed",
@@ -143,7 +146,7 @@ function childByClass(card, cls) {
 {
   const dom = makeDom();
   const thread = { scrollTop: 0, scrollHeight: 100, appendChild() {} };
-  const api = factory(dom.document, thread, function () {});
+  const api = factory(dom.document, thread, function () {}, noop);
   const els = { md: new dom.Element("div") };
   const evil = '<img src=x onerror=alert(1)>';
   const evil2 = '<script>alert(2)</script>';
@@ -181,7 +184,7 @@ function childByClass(card, cls) {
   // ensureAnswer here would set els.md; simulate the real one assigning md so the
   // md branch is taken (matching the view). But we test the els.turn fallback by
   // making ensureAnswer a no-op (md stays absent) and giving only a turn.
-  const api = factory(dom.document, thread, function () { /* no-op: md stays unset */ });
+  const api = factory(dom.document, thread, function () { /* no-op: md stays unset */ }, noop);
   const els = { turn: new dom.Element("div") };
   api.renderErrorCard(els, { message: "fallback" });
   const card = els.turn.childNodes.find(n => n.nodeType === 1 && n.className === "enl-error");

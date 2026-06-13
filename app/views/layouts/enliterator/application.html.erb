@@ -414,7 +414,9 @@
     .enl-cite__pop .label { font-weight: 600; display: block; margin-bottom: var(--s1); }
     .enl-cite__pop .type { font-size: var(--fs-xs); color: var(--muted); }
     .enl-sources { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
-    .enl-sources__head { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2); }
+    .enl-sources__head { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); cursor: pointer; user-select: none; }
+    .enl-sources__head:hover, .enl-sources__head:focus-visible { color: var(--text); outline: none; }
+    .enl-sources__disclosure[open] > .enl-sources__head { margin-bottom: var(--s2); }
     .enl-sources__item { display: flex; gap: var(--s2); padding: var(--s1) 0; font-size: var(--fs-sm); }
     .enl-sources__num { flex: none; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
     .enl-chat-error { background: var(--warn-soft); color: var(--warn); border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: var(--fs-sm); margin: var(--s2) 0; }
