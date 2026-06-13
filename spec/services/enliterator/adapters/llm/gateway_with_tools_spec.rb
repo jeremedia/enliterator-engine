@@ -19,6 +19,17 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
     end
   end
 
+  # A fake client whose streaming endpoint replays a canned list of chunks (plain
+  # Hashes, mirroring the gem's struct shape). chat.completions.stream_raw(**) returns
+  # the Enumerable; the create path is unused on the stream branch.
+  class FakeStreamClient
+    attr_reader :stream_calls
+    def initialize(*chunks) = (@chunks = chunks; @stream_calls = [])
+    def chat = self
+    def completions = self
+    def stream_raw(**params) = (@stream_calls << params; @chunks)
+  end
+
   def tool_def(name)
     { "type" => "function", "function" => { "name" => name, "description" => "x",
                                             "parameters" => { "type" => "object", "properties" => {} } } }
@@ -63,5 +74,97 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
     gw.converse_with_tools(messages: [ { role: "user", content: "hi" } ], tools: [ tool_def("search") ])
     expect(client.calls.first[:tool_choice]).to eq("auto")
     expect(client.calls.first[:tools].first.dig("function", "name")).to eq("search")
+  end
+
+  # v0.33 — streamed tool-call assembly. The stream branch now BOTH streams content
+  # deltas AND reassembles fragmented tool calls from choice.delta.tool_calls.
+  describe "stream: true with a block (v0.33)" do
+    def content_chunk(text)
+      { "choices" => [ { "delta" => { "content" => text } } ] }
+    end
+
+    def tool_chunk(index:, id: nil, name: nil, arguments: nil)
+      fn = {}
+      fn["name"] = name unless name.nil?
+      fn["arguments"] = arguments unless arguments.nil?
+      entry = { "index" => index }
+      entry["id"] = id unless id.nil?
+      entry["function"] = fn
+      { "choices" => [ { "delta" => { "tool_calls" => [ entry ] } } ] }
+    end
+
+    it "streams content fragments to the block; text-only ToolTurn, no tool calls" do
+      client = FakeStreamClient.new(content_chunk("Hel"), content_chunk("lo "), content_chunk("world"))
+      gw = described_class.new(tier: "cheap", base_url: "x", api_key: "k", client: client)
+
+      got = []
+      out = gw.converse_with_tools(messages: [ { role: "user", content: "hi" } ],
+                                   tools: [ tool_def("search") ], stream: true) { |d| got << d }
+
+      expect(got).to eq(%w[Hel lo\  world])
+      expect(out.text).to eq("Hello world")
+      expect(out.tool_calls).to eq([])
+      expect(out.assistant_message).to be_nil
+      expect(out.tokens).to eq({})
+    end
+
+    it "assembles a fragmented tool call (id/name on first fragment, arguments across chunks)" do
+      client = FakeStreamClient.new(
+        tool_chunk(index: 0, id: "call_1", name: "search", arguments: '{"q":'),
+        tool_chunk(index: 0, arguments: '"x"'),
+        tool_chunk(index: 0, arguments: "}")
+      )
+      gw = described_class.new(tier: "cheap", base_url: "x", api_key: "k", client: client)
+
+      called = false
+      out = gw.converse_with_tools(messages: [ { role: "user", content: "hi" } ],
+                                   tools: [ tool_def("search") ], stream: true) { |_d| called = true }
+
+      expect(called).to be(false) # no content deltas → block never fired
+      expect(out.text).to eq("")
+      expect(out.tool_calls).to eq([ { id: "call_1", name: "search", arguments: { "q" => "x" } } ])
+      # assistant_message carries the raw (un-parsed) arguments string, same shape as non-stream.
+      tc = out.assistant_message["tool_calls"].first
+      expect(out.assistant_message["role"]).to eq("assistant")
+      expect(out.assistant_message["content"]).to be_nil
+      expect(tc["id"]).to eq("call_1")
+      expect(tc["type"]).to eq("function")
+      expect(tc["function"]).to eq({ "name" => "search", "arguments" => '{"q":"x"}' })
+    end
+
+    it "assembles TWO tool calls (index 0 and 1) in order" do
+      client = FakeStreamClient.new(
+        tool_chunk(index: 0, id: "call_a", name: "search", arguments: '{"q":"x"}'),
+        tool_chunk(index: 1, id: "call_b", name: "provenance", arguments: '{"claim_id":'),
+        tool_chunk(index: 1, arguments: "7}")
+      )
+      gw = described_class.new(tier: "cheap", base_url: "x", api_key: "k", client: client)
+
+      out = gw.converse_with_tools(messages: [ { role: "user", content: "hi" } ],
+                                   tools: [ tool_def("search"), tool_def("provenance") ], stream: true) { |_d| }
+
+      expect(out.tool_calls).to eq([
+        { id: "call_a", name: "search", arguments: { "q" => "x" } },
+        { id: "call_b", name: "provenance", arguments: { "claim_id" => 7 } }
+      ])
+      expect(out.assistant_message["tool_calls"].map { |tc| tc["id"] }).to eq(%w[call_a call_b])
+    end
+
+    it "handles a content preamble followed by tool-call chunks (text AND tool_calls)" do
+      client = FakeStreamClient.new(
+        content_chunk("Let me look that up. "),
+        tool_chunk(index: 0, id: "call_1", name: "search", arguments: '{"q":"x"}')
+      )
+      gw = described_class.new(tier: "cheap", base_url: "x", api_key: "k", client: client)
+
+      got = []
+      out = gw.converse_with_tools(messages: [ { role: "user", content: "hi" } ],
+                                   tools: [ tool_def("search") ], stream: true) { |d| got << d }
+
+      expect(got).to eq([ "Let me look that up. " ])
+      expect(out.text).to eq("Let me look that up. ")
+      expect(out.tool_calls).to eq([ { id: "call_1", name: "search", arguments: { "q" => "x" } } ])
+      expect(out.assistant_message["tool_calls"].size).to eq(1)
+    end
   end
 end

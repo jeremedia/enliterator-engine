@@ -184,14 +184,44 @@ module Enliterator
 
           if stream && block
             full = +""
+            # Tool calls stream as fragmented choice.delta.tool_calls entries keyed by
+            # index — id/name typically land on the first fragment, arguments accrete
+            # across many. Accumulate per index; preserve emission order.
+            fragments = {} # index => { id:, name:, args: +"" }
             args = params.dup
             args[:request_options] = request_options unless request_options.empty?
             client.chat.completions.stream_raw(**args).each do |chunk|
               delta = extract_delta(chunk)
-              next if delta.nil? || delta.empty?
-              full << delta
-              block.call(delta)
+              if delta && !delta.empty?
+                full << delta
+                block.call(delta)
+              end
+              extract_tool_call_deltas(chunk).each do |tcd|
+                idx = tcd[:index] || fragments.size
+                frag = (fragments[idx] ||= { id: nil, name: nil, args: +"" })
+                frag[:id]   = tcd[:id]   unless tcd[:id].nil?
+                frag[:name] = tcd[:name] unless tcd[:name].nil?
+                frag[:args] << tcd[:arguments].to_s unless tcd[:arguments].nil?
+              end
+              # Skip chunks carrying neither content nor tool deltas (role/finish chunks).
             end
+
+            if fragments.any?
+              ordered = fragments.sort_by { |idx, _| idx }.map { |_, f| f }
+              tool_calls = ordered.map do |f|
+                { id: f[:id], name: f[:name].to_s, arguments: parse_arguments(f[:args]) }
+              end
+              assistant_message = {
+                "role" => "assistant", "content" => nil,
+                "tool_calls" => ordered.map do |f|
+                  { "id" => f[:id], "type" => "function",
+                    "function" => { "name" => f[:name], "arguments" => f[:args] } }
+                end
+              }
+              return ToolTurn.new(text: full, tool_calls: tool_calls,
+                                  assistant_message: assistant_message, tokens: {})
+            end
+
             return ToolTurn.new(text: full, tool_calls: [], assistant_message: nil, tokens: {})
           end
 
@@ -227,6 +257,32 @@ module Enliterator
           return nil if delta.nil?
           if delta.respond_to?(:content) then delta.content
           elsif delta.is_a?(Hash) then delta[:content] || delta["content"]
+          end
+        end
+
+        # Tool-call fragments from a streamed chunk's choice.delta.tool_calls. Returns
+        # [{index:, id:, name:, arguments:}] (any of id/name/arguments may be nil on a
+        # given fragment), or [] when the chunk carries no tool-call delta. Tolerates the
+        # gem's struct objects and plain Hashes (fakes in specs), mirroring extract_delta.
+        def extract_tool_call_deltas(chunk)
+          choice = first_choice(chunk)
+          return [] if choice.nil?
+          delta =
+            if choice.respond_to?(:delta) then choice.delta
+            elsif choice.is_a?(Hash) then choice[:delta] || choice["delta"]
+            end
+          return [] if delta.nil?
+          raw =
+            if delta.respond_to?(:tool_calls) then delta.tool_calls
+            elsif delta.is_a?(Hash) then delta[:tool_calls] || delta["tool_calls"]
+            end
+          Array(raw).map do |tc|
+            index = tc.respond_to?(:index) ? tc.index : (tc.is_a?(Hash) ? (tc[:index] || tc["index"]) : nil)
+            id    = tc.respond_to?(:id)    ? tc.id    : (tc.is_a?(Hash) ? (tc[:id]    || tc["id"])    : nil)
+            fn    = tc.respond_to?(:function) ? tc.function : (tc.is_a?(Hash) ? (tc[:function] || tc["function"]) : nil)
+            name      = fn.respond_to?(:name)      ? fn.name      : (fn.is_a?(Hash) ? (fn[:name]      || fn["name"])      : nil)
+            arguments = fn.respond_to?(:arguments) ? fn.arguments : (fn.is_a?(Hash) ? (fn[:arguments] || fn["arguments"]) : nil)
+            { index: index, id: id, name: name, arguments: arguments }
           end
         end
 
