@@ -55,8 +55,17 @@ module Enliterator
             break
           end
           @steps += 1
+          # v0.33: stream the final answer token-by-token. The adapter fires the block
+          # per content delta; `streamed` records whether it did, so a real streaming
+          # round (block fired) does NOT also emit the lumped final text — while a
+          # non-streaming adapter (or the test ScriptedLLM, which ignores the block)
+          # leaves `streamed` false and the full text is emitted as before.
+          streamed = false
           begin
-            turn = llm.converse_with_tools(messages: messages, tools: tool_defs_with_route)
+            turn = llm.converse_with_tools(messages: messages, tools: tool_defs_with_route, stream: true) do |delta|
+              streamed = true
+              emit(:token, t: delta)
+            end
           rescue StandardError => e
             emit(:error, Enliterator::Chat::ErrorReport.build(
               e, where: { stage: "model call", agent: @agent.name, tier: @agent.tier },
@@ -65,7 +74,7 @@ module Enliterator
             break
           end
           if turn.tool_calls.empty?
-            emit(:token, t: turn.text.to_s)
+            emit(:token, t: turn.text.to_s) unless streamed
             break
           end
           messages << (turn.assistant_message || { "role" => "assistant", "content" => nil })
