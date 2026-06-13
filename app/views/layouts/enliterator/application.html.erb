@@ -30,8 +30,8 @@
          border, or radius, use a token instead.
 
        TOKENS (:root)
-         Color    --bg --panel --ink --muted --line --accent --accent-soft
-                  --warn --warn-soft --chip
+         Color    --bg --panel --ink --muted --line --accent --accent-dark
+                  --accent-soft --warn --warn-soft --chip
          Space    --s1 .25 · --s2 .5 · --s3 .75 · --s4 1 · --s5 1.5 · --s6 2 rem
          Radius   --r-sm 6 · --r 10 · --r-pill 999 px
          Type     --fs-xs .75 · --fs-sm .82 · --fs-base .9 · --fs-lg 1.08 ·
@@ -70,8 +70,8 @@
        ════════════════════════════════════════════════════════════════════════ */
     :root {
       --bg: #f7f7f5; --panel: #fff; --ink: #1c1c1a; --muted: #6b6b66;
-      --line: #e3e3df; --accent: #2d6a4f; --accent-soft: #e8f0ec; --warn: #b4231f;
-      --warn-soft: #fdeceb; --chip: #eef0f2;
+      --line: #e3e3df; --accent: #2d6a4f; --accent-dark: #245741; --accent-soft: #e8f0ec;
+      --warn: #b4231f; --warn-soft: #fdeceb; --chip: #eef0f2;
       /* spacing scale (8px rhythm, expressed in rem) */
       --s1: .25rem; --s2: .5rem; --s3: .75rem; --s4: 1rem; --s5: 1.5rem; --s6: 2rem;
       /* radii */
@@ -173,7 +173,7 @@
     .btn-affirmative { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
     .btn-affirmative:hover { background: #dde9e2; border-color: var(--accent); }
     .btn-primary { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
-    .btn-primary:hover { background: #245741; }
+    .btn-primary:hover { background: var(--accent-dark); }
     .btn-destructive { color: var(--warn); border-color: var(--line); background: var(--panel); }
     .btn-destructive:hover { background: var(--warn-soft); border-color: var(--warn); }
 
@@ -226,7 +226,7 @@
       font: inherit; resize: vertical; min-height: 2.6rem; }
     .ask button { padding: 0 1.1rem; border: 0; border-radius: 8px; background: var(--accent);
       color: #fff; font-weight: 600; cursor: pointer; transition: background .15s; }
-    .ask button:hover:not(:disabled) { background: #245741; }
+    .ask button:hover:not(:disabled) { background: var(--accent-dark); }
     .ask button:disabled { opacity: .5; cursor: default; }
 
     /* ── Promoted: live-stats strip (shared component, moved from About) ─────
@@ -255,6 +255,14 @@
     .stats-footer strong { color: var(--ink); }
     @media (max-width: 759px) {
       .stats-grid { grid-template-columns: repeat(2, 1fr); gap: .75rem .75rem; }
+    }
+
+    /* ── Reduced motion ──────────────────────────────────────────────────────
+       Honor the OS setting: drop the hover/focus color fades on every
+       interactive surface that carries a transition. (The fades are color-only
+       and low-risk, but the preference is a deliverable, so respect it.) */
+    @media (prefers-reduced-motion: reduce) {
+      a, .field, .btn, button.prompt, .ask button { transition: none; }
     }
   </style>
 </head>
