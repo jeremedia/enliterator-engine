@@ -25,6 +25,98 @@ RSpec.describe "Conversation federation", type: :request do
 
   after { Enliterator.configuration.chat_federation = nil; Enliterator::Chat.reset! }
 
+  # Helper: pull the JSON object that follows an `event: error` line in an SSE body.
+  # The controller writes "event: error\n" then "data: <json>\n\n". Returns the parsed
+  # Hash, or nil if no error event was emitted.
+  def error_event_data(body)
+    # Match the data: line immediately following the error event line.
+    m = body.match(/event: error\ndata: (?<json>.+)\n/)
+    m && JSON.parse(m[:json])
+  end
+
+  # v0.30: the controller's outer rescue routes the stream error through ErrorReport,
+  # gated by Enliterator.configuration.error_detail?. These pin the three safety
+  # invariants: prod (detail off) is BYTE-IDENTICAL to today's {message: "conversation
+  # failed"}; detail on carries actionable detail; and NO request param can flip the gate.
+  describe "stream error reporting (the outer rescue → ErrorReport)" do
+    # error_detail defaults to false in the test env, but we set it per-example and
+    # restore it so no example leaks the config to its neighbors.
+    around do |example|
+      prev = Enliterator.configuration.error_detail
+      example.run
+      Enliterator.configuration.error_detail = prev
+    end
+
+    # Force the SINGLE-SHOT path's collaborator to raise — the recognizable message is
+    # timeout-ish so a hint resolves when detail is on (proves the hint plumbing).
+    def force_single_shot_raise!
+      Enliterator.configuration.chat_federation = nil
+      conv = instance_double(Enliterator::Conversation)
+      allow(Enliterator::Conversation).to receive(:new).and_return(conv)
+      allow(conv).to receive(:reply).and_raise(StandardError.new("upstream request timed out"))
+    end
+
+    it "with detail OFF (prod), the error payload is exactly the message floor (byte-identity)" do
+      Enliterator.configuration.error_detail = false
+      force_single_shot_raise!
+
+      post "/enliterator/chat/stream", params: { question: "hi" }
+
+      expect(response.body).to include("event: error")
+      data = error_event_data(response.body)
+      # The prod floor: exactly today's payload, nothing more.
+      expect(data).to eq("message" => "conversation failed")
+      expect(data).not_to have_key("detail")
+      expect(data).not_to have_key("where")
+      expect(data).not_to have_key("hint")
+    end
+
+    it "with detail ON, the error payload carries actionable detail (and a matching hint)" do
+      Enliterator.configuration.error_detail = true
+      force_single_shot_raise!
+
+      post "/enliterator/chat/stream", params: { question: "hi" }
+
+      expect(response.body).to include("event: error")
+      data = error_event_data(response.body)
+      # message floor is still the static literal — never e.message.
+      expect(data["message"]).to eq("conversation failed")
+      # ...but now actionable detail rides along.
+      expect(data["detail"]).to include("StandardError")
+      expect(data["detail"]).to include("timed out")
+      expect(data["where"]).to include("stream")     # humanized {stage: "stream"}
+      expect(data["hint"]).to match(/timed out|gateway timed out/i)  # the timeout HINT resolved
+    end
+
+    it "NO request param can enable detail — prod stays message-only even with debug/detail params" do
+      Enliterator.configuration.error_detail = false   # prod
+      force_single_shot_raise!
+
+      # A user-supplied param must NOT route around the gate.
+      post "/enliterator/chat/stream", params: { question: "hi", debug: "1", detail: "1" }
+
+      expect(response.body).to include("event: error")
+      data = error_event_data(response.body)
+      expect(data).to eq("message" => "conversation failed")
+      expect(data).not_to have_key("detail")
+    end
+
+    it "the FEDERATION path's stream error also routes through the gated report" do
+      Enliterator.configuration.error_detail = false   # prod floor
+      Enliterator.configuration.chat_federation = true
+      # Force the loop construction/run to raise inside the controller's try block so the
+      # OUTER controller rescue (not the Loop's own model-error rescue) catches it.
+      allow(Enliterator::Chat).to receive(:for_context).and_raise(StandardError.new("registry blew up"))
+
+      post "/enliterator/chat/stream", params: { question: "hi" }
+
+      expect(response.body).to include("event: error")
+      data = error_event_data(response.body)
+      expect(data).to eq("message" => "conversation failed")
+      expect(data).not_to have_key("detail")
+    end
+  end
+
   it "with federation OFF, the stream uses the single-shot path (no widget/handoff events)" do
     Enliterator.configuration.chat_federation = nil
     post "/enliterator/chat/stream", params: { question: "hi" }

@@ -20,7 +20,11 @@ module Enliterator
 
       if Enliterator.configuration.chat_federation
         agent = Enliterator::Chat.for_context(current_context&.key)
-        Enliterator::Chat::Loop.new(agent: agent, sink: method(:sse)).run(params[:question].to_s)
+        # error_detail? is the per-surface decision point — passed explicitly here so
+        # the future public desk can pass `false` regardless of env. (The Loop already
+        # defaults to the resolver; this makes the surface's choice the authority.)
+        Enliterator::Chat::Loop.new(agent: agent, sink: method(:sse),
+                                    error_detail: Enliterator.configuration.error_detail?).run(params[:question].to_s)
       else
         # ===== existing single-shot path — preserve VERBATIM =====
         provenance = Enliterator::Conversation.new(context: current_context).reply(
@@ -41,8 +45,14 @@ module Enliterator
       # client navigated away mid-stream — nothing to clean up beyond the ensure
     rescue => e
       Enliterator.logger&.error("[enliterator] conversation stream error: #{e.class}: #{e.message}")
-      # status/headers are already committed once streaming began; surface as an event
-      sse(:error, message: "conversation failed") rescue nil
+      # status/headers are already committed once streaming began; surface as an event.
+      # ErrorReport gates ACTIONABLE detail behind error_detail? — off (prod) yields the
+      # byte-identical {message: "conversation failed"} floor; on (dev) adds detail/where/hint.
+      # `message:` stays the static literal — NEVER e.message — so detail-off can't leak.
+      sse(:error, Enliterator::Chat::ErrorReport.build(
+        e, where: { stage: "stream" },
+        detail: Enliterator.configuration.error_detail?,
+        message: "conversation failed")) rescue nil
     ensure
       response.stream.close
     end
