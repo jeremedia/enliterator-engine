@@ -337,6 +337,176 @@
   };
   function toolLabel(name) { return TOOL_LABELS[name] || ("Consulting " + (name || "a tool")); }
 
+  // ── Citations: the "infrastructure is the argument" surface ──────────────
+  // A grounded answer connects to the records the desk actually consulted. As
+  // tool widgets stream into the trace, every [data-enl-id] element registers a
+  // record (deduped by type/id, numbered in first-seen order). On turn
+  // completion: a "Sources consulted" rail (always-correct — it mirrors the
+  // trace, independent of whether the prose mentions anything), and best-effort
+  // inline chips wrapping conservative label matches in the answer. The DOM
+  // matches the layout's pre-existing .enl-cite* / .enl-sources* CSS.
+
+  var SOURCE_PATH_BASE = statusBase; // record path = statusBase + "/Type/id"
+
+  // The URL for a consulted record: prefer the tool-provided entry path (already
+  // correct, server-built), else reconstruct it the way the single-shot
+  // renderProvenance does (statusBase + "/Type/id"). Same construction either way.
+  function citeUrl(rec) {
+    if (rec.entry) return rec.entry;
+    return SOURCE_PATH_BASE + "/" + encodeURIComponent(rec.type) + "/" + encodeURIComponent(rec.id);
+  }
+
+  // Harvest record identities from one rendered widget body into the turn's
+  // registry. Reads the data-enl-* attributes the widgets now emit. Deduped by
+  // "type/id"; an unlabeled record still registers (the rail shows its type/id).
+  function harvestCites(els, root) {
+    if (!root) return;
+    var nodes = root.querySelectorAll("[data-enl-id]");
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var type = n.getAttribute("data-enl-type") || "";
+      var id = n.getAttribute("data-enl-id") || "";
+      if (!id) continue;
+      var key = type + "/" + id;
+      if (els.cites.seen[key]) continue;
+      els.cites.seen[key] = true;
+      els.cites.list.push({
+        type: type, id: id,
+        label: n.getAttribute("data-enl-label") || "",
+        entry: n.getAttribute("data-enl-entry") || ""
+      });
+    }
+  }
+
+  // The sources rail: one numbered item per consulted record. Empty registry →
+  // leave .enl-sources empty (no orphan header). Built with textContent + DOM
+  // nodes (never innerHTML of record data) — escaping by construction.
+  function renderSourcesRail(els) {
+    var sources = els.sources;
+    if (!sources || !els.cites.list.length) return; // empty → no rail (clean, rule 3)
+    sources.textContent = "";
+    var head = document.createElement("div");
+    head.className = "enl-sources__head";
+    head.textContent = "Sources consulted";
+    sources.appendChild(head);
+    els.cites.list.forEach(function (rec, idx) {
+      var item = document.createElement("div");
+      item.className = "enl-sources__item";
+      var num = document.createElement("span");
+      num.className = "enl-sources__num";
+      num.textContent = "[" + (idx + 1) + "]";
+      var link = document.createElement("a");
+      link.href = citeUrl(rec);
+      link.textContent = rec.label || (rec.type + "/" + rec.id);
+      var type = document.createElement("span");
+      type.className = "muted";
+      type.textContent = rec.type;
+      item.appendChild(num);
+      item.appendChild(link);
+      item.appendChild(type);
+      sources.appendChild(item);
+    });
+  }
+
+  // Inline chips: post-process the rendered answer to superscript a numbered
+  // chip after a conservative match of a consulted record's label. Operates ONLY
+  // on text nodes (never on tags/hrefs) so it can't corrupt existing markup or
+  // open an injection hole. Conservative by design — false silence beats false
+  // positives: labels shorter than the floor are skipped, longest labels match
+  // first, each label is wrapped at most once. No match → no chips (the rail
+  // still stands; rule 3, graceful).
+  var CITE_MIN_LABEL = 12;
+
+  function annotateCites(els) {
+    if (!els.md || !els.cites.list.length) return;
+    // Candidates: [label, refNumber] for labels long/specific enough to match
+    // safely. Sort longest-first so "United States Coast Guard" wins over a
+    // substring label. Track which refs we've already placed (cap: once each).
+    var candidates = [];
+    els.cites.list.forEach(function (rec, idx) {
+      var label = (rec.label || "").trim();
+      if (label.length < CITE_MIN_LABEL) return; // too short → skip (false-positive guard)
+      candidates.push({ label: label, ref: idx + 1, rec: rec });
+    });
+    if (!candidates.length) return;
+    candidates.sort(function (a, b) { return b.label.length - a.label.length; });
+
+    var placed = {}; // ref → true once a chip is placed
+    candidates.forEach(function (cand) {
+      if (placed[cand.ref]) return;
+      if (wrapFirstMatch(els.md, cand.label, cand)) placed[cand.ref] = true;
+    });
+  }
+
+  // Walk text nodes under `root`; on the first node containing `needle` (literal,
+  // case-insensitive), split the node and insert a citation chip right after the
+  // matched text. Returns true if a chip was placed. Skips text already inside a
+  // link or an existing chip (don't nest chips, don't break anchors).
+  function wrapFirstMatch(root, needle, cand) {
+    var lc = needle.toLowerCase();
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      var parent = node.parentNode;
+      if (!parent) continue;
+      if (parent.closest && parent.closest("a, .enl-cite")) continue; // never inside a link/chip
+      var hay = node.nodeValue;
+      var at = hay.toLowerCase().indexOf(lc);
+      if (at === -1) continue;
+      var after = node.splitText(at + needle.length); // node now ends at the match; `after` is the tail
+      var chip = makeCiteChip(cand);
+      parent.insertBefore(chip, after);
+      return true;
+    }
+    return false;
+  }
+
+  // One citation chip: a <button> (keyboard-accessible) showing [n]; click →
+  // the record URL; hover/focus → a popover with the record's label + type. All
+  // record text set via textContent — no innerHTML of untrusted strings.
+  function makeCiteChip(cand) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "enl-cite";
+    btn.setAttribute("data-ref", String(cand.ref));
+    btn.textContent = String(cand.ref);
+    btn.setAttribute("aria-label", "Source " + cand.ref + ": " + (cand.rec.label || cand.rec.type));
+    var url = citeUrl(cand.rec);
+    btn.addEventListener("click", function () { window.location.href = url; });
+    var pop = null;
+    function show() {
+      if (pop) return;
+      pop = buildCitePop(cand.rec);
+      // position within the positioned .enl-turn ancestor, just under the chip
+      var turn = btn.closest(".enl-turn") || document.body;
+      turn.appendChild(pop);
+      var tr = turn.getBoundingClientRect();
+      var br = btn.getBoundingClientRect();
+      pop.style.left = (br.left - tr.left) + "px";
+      pop.style.top = (br.bottom - tr.top + 4) + "px";
+    }
+    function hide() { if (pop) { pop.remove(); pop = null; } }
+    btn.addEventListener("mouseenter", show);
+    btn.addEventListener("mouseleave", hide);
+    btn.addEventListener("focus", show);
+    btn.addEventListener("blur", hide);
+    return btn;
+  }
+
+  function buildCitePop(rec) {
+    var pop = document.createElement("div");
+    pop.className = "enl-cite__pop";
+    var label = document.createElement("span");
+    label.className = "label";
+    label.textContent = rec.label || (rec.type + "/" + rec.id);
+    var type = document.createElement("span");
+    type.className = "type";
+    type.textContent = rec.type;
+    pop.appendChild(label);
+    pop.appendChild(type);
+    return pop;
+  }
+
   // Build the ordered turn container. style="position:relative" gives a later
   // task's citation popover a positioned ancestor.
   function buildTurn() {
@@ -454,6 +624,7 @@
       det.appendChild(sum); det.appendChild(body);
       s.appendChild(det);
       els.sourceCount++;
+      harvestCites(els, body); // v0.29: register any [data-enl-id] records from this widget
       thread.scrollTop = thread.scrollHeight;
     }
     else if (ev === "tool_call_error") {
@@ -485,6 +656,14 @@
     if (state.timer) { clearTimeout(state.timer); state.timer = null; }
     ensureAnswer(els);
     els.md.innerHTML = mdToHtml(state.text); // final flush
+    // v0.29 citations: the sources rail reflects what the desk actually
+    // consulted (always-correct, even if no label matched in the prose); the
+    // inline chips correlate the answer's text to those records (best-effort —
+    // none matching is fine, the rail still stands). Both run AFTER the final
+    // mdToHtml flush so they see the complete answer. Order: rail first (so the
+    // chips can index into the same numbered list).
+    renderSourcesRail(els);
+    annotateCites(els);
     // Any tool step still spinning (no result arrived) resolves to done so the
     // trace never strands a spinner (rule 3: no silent in-progress state).
     Object.keys(els.toolSteps).forEach(function (n) {
@@ -519,7 +698,12 @@
     userBubble(q);
     var t = buildTurn();
     var els = { trace: t.trace, head: t.head, steps: t.steps, sources: t.sources,
-                md: null, prov: null, toolSteps: {}, activeDesk: "Frontdesk", sourceCount: 0 };
+                turn: t.turn, md: null, prov: null, toolSteps: {}, activeDesk: "Frontdesk",
+                sourceCount: 0,
+                // v0.29 citations: the consulted-records registry for THIS turn.
+                // `list` is first-seen order ([n] = index+1); `seen` dedupes by
+                // type/id. Harvested from tool widgets as they stream in.
+                cites: { list: [], seen: {} } };
     var state = { text: "", timer: null };
     input.value = ""; resetTextarea(); sendBusy(true);
 
