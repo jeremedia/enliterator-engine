@@ -107,6 +107,10 @@ const NEGATIVE_CASES = [
     input: "> <img src=x onerror=alert(1)>", mustNotContain: ["<img"] },
   { name: "html inside a table cell stays escaped (no XSS)",
     input: "| H |\n| --- |\n| <script>bad</script> |", mustNotContain: ["<script>bad"] },
+  // A javascript:/data: link the model might echo from untrusted document text
+  // must NOT become a live href — it collapses to its plain label.
+  { name: "a javascript: link is neutralized to plain text (no live href)",
+    input: "[click me](javascript:alert%281%29)", mustNotContain: ["javascript:", "<a "] },
 ];
 
 function render(map) {
