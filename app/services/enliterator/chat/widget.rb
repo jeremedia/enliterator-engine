@@ -23,6 +23,21 @@ module Enliterator
       # coerce any Hash to symbol keys; anything else → {}
       def symize(value) = value.is_a?(Hash) ? value.transform_keys(&:to_sym) : {}
 
+      # v0.29 citations: the record-identity data attributes the client harvests
+      # to build the sources rail + inline chips. ADDITIVE — invisible in the
+      # render, inert when federation is off (the client never runs). Every value
+      # is h()-escaped (a data attribute is an XSS surface too); a missing field
+      # emits no attribute (so the client's [data-enl-id] gate only fires when an
+      # id is actually present). `entry` is the click-through path the tool
+      # already computes (entry_path) — preferred over reconstructing it.
+      def enl_data_attrs(type:, id:, label: nil, entry: nil)
+        return "" if id.nil? || id.to_s.empty?
+        attrs = +%( data-enl-type="#{h(type)}" data-enl-id="#{h(id)}")
+        attrs << %( data-enl-label="#{h(label)}") unless label.nil? || label.to_s.empty?
+        attrs << %( data-enl-entry="#{h(entry)}") unless entry.nil? || entry.to_s.empty?
+        attrs
+      end
+
       # named without a render_ prefix so render() can never dispatch to it — a
       # tool literally named "fallback" must not match this arity-2 method.
       # v0.29: the raw block is COLLAPSED — an unrendered tool announces itself
@@ -35,12 +50,16 @@ module Enliterator
       # --- record_entry ------------------------------------------------------
       def render_record_entry(result)
         r = symize(result)
-        # r[:entry] intentionally omitted — the loop renders the widget inline; the URL isn't surfaced here
+        # v0.29: the record's identity rides on the root as data attributes (the
+        # client harvests them to build the sources rail + an inline chip for this
+        # record). `entry` is the tool's own click-through path. The visible
+        # render is unchanged — these are inert attributes.
+        data = enl_data_attrs(type: r[:type], id: r[:id], label: r[:label], entry: r[:entry])
         facets = (r[:claims_by_facet] || {}).map do |facet, claims|
           rows = Array(claims).map { |c| claim_row(c) }.join
           %(<div class="enl-widget__facet"><div class="enl-widget__facet-name">#{h(facet)}</div>#{rows}</div>)
         end.join
-        %(<div class="enl-widget enl-widget--record">) +
+        %(<div class="enl-widget enl-widget--record"#{data}>) +
           %(<div class="enl-widget__head">#{h(r[:label])}</div>#{facets}</div>)
       end
 
@@ -101,7 +120,12 @@ module Enliterator
           i = symize(item)
           counts = [ ("#{h(i[:claim_count])} claims" if i[:claim_count]),
                      ("#{h(i[:visit_count])} visits" if i[:visit_count]) ].compact.join(" · ")
-          %(<li class="enl-result"><div class="enl-result__label">#{h(i[:label])} ) +
+          # v0.29: each result card carries its record identity (type/id/label/
+          # entry) so the client can number it in the sources rail and link it
+          # through. `entry` is the tool's own path (search_card / subject_search
+          # both emit it). Additive attributes — the visible card is unchanged.
+          data = enl_data_attrs(type: i[:type], id: i[:id], label: i[:label], entry: i[:entry])
+          %(<li class="enl-result"#{data}><div class="enl-result__label">#{h(i[:label])} ) +
             %(<span class="enl-result__type">#{h(i[:type])}</span></div>) +
             %(<div class="enl-result__excerpt">#{h(i[:excerpt])}</div>) +
             %(<div class="enl-result__counts">#{counts}</div></li>)
