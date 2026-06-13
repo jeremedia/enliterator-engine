@@ -52,8 +52,13 @@
   var history = [];
 
   // --- compact, safe markdown -> HTML (no deps). Escapes first, then formats the
-  //     subset LLMs emit: headers, bold/italic, inline code, bullet/numbered lists,
-  //     links, paragraphs. HTML in the source is neutralized before formatting. ---
+  //     subset LLMs emit: headers, bold/italic, inline code, blockquotes, rules,
+  //     bullet/numbered lists (incl. nested), pipe tables, links, paragraphs.
+  //     HTML in the source is neutralized (esc) BEFORE any formatting — every
+  //     matcher below operates on already-escaped text, so no branch can open an
+  //     XSS hole. The extension is additive: input that uses none of the v0.29
+  //     syntax (>, ---, | tables |, indented list items) renders byte-identically
+  //     to the prior version (guarded by spec/javascript/md_golden.test.js). ---
   function esc(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
@@ -68,16 +73,122 @@
     }
   function mdToHtml(src) {
     var lines = esc(src).split("\n");
-    var out = "", list = null;
-    function closeList() { if (list) { out += "</" + list + ">"; list = null; } }
+    var out = "";
+
+    // ── Nested-list builder ────────────────────────────────────────────────
+    // A stack of open lists, each {tag, level}. Flat (level-0) lists produce
+    // EXACTLY the prior "<ul><li>x</li>…</ul>" — no nesting markup, byte-identical
+    // to the old single-`list` loop. Deeper indent opens a child list INSIDE the
+    // current item: we hold the item's "</li>" open, emit the child, then close.
+    var listStack = [];
+    function closeList() {
+      while (listStack.length) {
+        var top = listStack.pop();
+        out += "</li></" + top.tag + ">";
+      }
+    }
+    // depth math: 0-1 leading spaces = level 0; every additional 2 spaces (or a
+    // tab) is one more level. (Markdown emitters use 2- or 4-space indents; we
+    // bucket both — a 4-space child still lands one level deeper than its parent.)
+    function indentLevel(spaces) {
+      var n = spaces.replace(/\t/g, "  ").length;
+      return Math.floor(n / 2);
+    }
+    function listItem(tag, level, text) {
+      // pop deeper / equal-but-different-tag lists down to this level
+      while (listStack.length &&
+             (listStack[listStack.length - 1].level > level ||
+              (listStack[listStack.length - 1].level === level &&
+               listStack[listStack.length - 1].tag !== tag))) {
+        var top = listStack.pop();
+        out += "</li></" + top.tag + ">";
+      }
+      var cur = listStack[listStack.length - 1];
+      if (!cur || cur.level < level) {
+        // open a new (possibly nested) list. When nesting, the parent's <li> is
+        // still open — the child <ul>/<ol> renders inside it.
+        out += "<" + tag + "><li>";
+        listStack.push({ tag: tag, level: level });
+      } else {
+        // sibling item at this level: close the previous item, open a new one
+        out += "</li><li>";
+      }
+      out += inline(text);
+    }
+
+    // ── Table detection: a header row + a delimiter row of dashes. ──────────
+    function tableCells(row) {
+      var t = row.trim().replace(/^\|/, "").replace(/\|$/, "");
+      return t.split("|").map(function (c) { return c.trim(); });
+    }
+    // A delimiter row: contains a pipe (so a bare "---" stays a horizontal rule,
+    // never a table separator) AND every pipe-separated cell is dashes with
+    // optional alignment colons (`:--`, `--:`, `:-:`). Single- and multi-column
+    // delimiters both pass.
+    function isTableDelim(row) {
+      if (row.indexOf("|") === -1) return false;
+      return tableCells(row).every(function (c) { return /^:?-{1,}:?$/.test(c); });
+    }
+
     for (var i = 0; i < lines.length; i++) {
       var ln = lines[i];
+
+      // Pipe table: a header row immediately followed by a delimiter row. Detect
+      // BEFORE the hr branch so a "---"-style delimiter under a header is read as
+      // a table separator, not a horizontal rule.
+      var next = lines[i + 1];
+      if (ln.indexOf("|") !== -1 && next !== undefined && isTableDelim(next) &&
+          ln.trim() !== "" && !/^\s*#{1,6}\s/.test(ln)) {
+        closeList();
+        var headers = tableCells(ln);
+        out += "<table><thead><tr>";
+        headers.forEach(function (c) { out += "<th>" + inline(c) + "</th>"; });
+        out += "</tr></thead><tbody>";
+        i += 2; // consume header + delimiter
+        for (; i < lines.length; i++) {
+          var row = lines[i];
+          if (row.trim() === "" || row.indexOf("|") === -1) { i--; break; }
+          var cells = tableCells(row);
+          out += "<tr>";
+          // pad/truncate to the header width so ragged rows stay well-formed
+          for (var c = 0; c < headers.length; c++) {
+            out += "<td>" + inline(cells[c] !== undefined ? cells[c] : "") + "</td>";
+          }
+          out += "</tr>";
+        }
+        out += "</tbody></table>";
+        continue;
+      }
+
       var h = ln.match(/^(#{1,6})\s+(.*)$/);
-      var ul = ln.match(/^\s*[-*]\s+(.*)$/);
-      var ol = ln.match(/^\s*\d+\.\s+(.*)$/);
+      // Horizontal rule: a WHOLE line of 3+ of a single mark (-, *, _), optionally
+      // surrounded by whitespace. The single-char class (no mixing) means "**" or
+      // "--" or a bold lead never matches; the table branch above already claimed
+      // any "---" acting as a table delimiter.
+      var hr = /^\s*([-*_])\1{2,}\s*$/.test(ln);
+      // blockquote marker: esc() has already turned a leading ">" into "&gt;",
+      // so match the ESCAPED form (operating on escaped text — XSS-safe).
+      var bq = ln.match(/^\s*&gt;\s?(.*)$/);
+      var ul = ln.match(/^(\s*)[-*]\s+(.*)$/);
+      var ol = ln.match(/^(\s*)\d+\.\s+(.*)$/);
+
       if (h) { closeList(); var lvl = Math.min(h[1].length + 1, 6); out += "<h" + lvl + ">" + inline(h[2]) + "</h" + lvl + ">"; }
-      else if (ul) { if (list !== "ul") { closeList(); out += "<ul>"; list = "ul"; } out += "<li>" + inline(ul[1]) + "</li>"; }
-      else if (ol) { if (list !== "ol") { closeList(); out += "<ol>"; list = "ol"; } out += "<li>" + inline(ol[1]) + "</li>"; }
+      else if (hr) { closeList(); out += "<hr>"; }
+      else if (bq) {
+        // gather consecutive blockquote lines into one <blockquote>; a blank
+        // line (or any non-> line) ends it. Inner lines join with <br>.
+        closeList();
+        var quoted = [ inline(bq[1]) ];
+        while (i + 1 < lines.length) {
+          var q = lines[i + 1].match(/^\s*&gt;\s?(.*)$/);
+          if (!q) break;
+          quoted.push(inline(q[1]));
+          i++;
+        }
+        out += "<blockquote>" + quoted.join("<br>") + "</blockquote>";
+      }
+      else if (ul) { listItem("ul", indentLevel(ul[1]), ul[2]); }
+      else if (ol) { listItem("ol", indentLevel(ol[1]), ol[2]); }
       else if (ln.trim() === "") { closeList(); }
       else { closeList(); out += "<p>" + inline(ln) + "</p>"; }
     }
