@@ -114,4 +114,86 @@ RSpec.describe Enliterator::Chat::Loop do
     expect(budget).not_to be_nil
     expect(events.last).to eq([ :done, {} ])
   end
+
+  describe "v0.35 follow-ups (config.chat_followups)" do
+    let(:answer_with_tail) do
+      "Here is the answer.\n\n#{Enliterator::Chat::Followups::SENTINEL}\nWhat changed?\nWho cited it?"
+    end
+
+    def fake_llm(text)
+      Class.new do
+        define_method(:converse_with_tools) do |messages:, tools:, stream: false, **|
+          @seen = messages
+          Enliterator::Adapters::LLM::Gateway::ToolTurn.new(
+            text: text, tool_calls: [], assistant_message: nil, tokens: {})
+        end
+        attr_reader :seen
+      end.new
+    end
+
+    # Real Chat::Agent.new signature: name:, grounding:, system_prompt:, tools:, tier:, routes_to:
+    let(:agent) do
+      Enliterator::Chat::Agent.new(
+        name: "Desk", grounding: nil, system_prompt: "You are the Desk.",
+        tools: %w[search], tier: "cheap", routes_to: [])
+    end
+
+    it "with the flag ON, injects the directive into the system prompt and emits :followups" do
+      Enliterator.configuration.chat_followups = true
+      llm = fake_llm(answer_with_tail)
+      events = []
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(e, d) { events << [ e, d ] }).run("hi")
+      expect(llm.seen.first["content"]).to include(Enliterator::Chat::Followups::SENTINEL)
+      fu = events.find { |e, _| e == :followups }
+      expect(fu).not_to be_nil
+      expect(fu.last[:items]).to eq([ "What changed?", "Who cited it?" ])
+    ensure
+      Enliterator.configuration.chat_followups = nil
+    end
+
+    it "with the flag OFF (default), injects NO directive and emits NO :followups (byte-identical)" do
+      llm = fake_llm(answer_with_tail)
+      events = []
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(e, d) { events << [ e, d ] }).run("hi")
+      expect(llm.seen.first["content"]).not_to include(Enliterator::Chat::Followups::SENTINEL)
+      expect(events.map(&:first)).not_to include(:followups)
+    end
+
+    it "with the flag ON but the model omits the block, emits NO :followups" do
+      Enliterator.configuration.chat_followups = true
+      llm = fake_llm("A plain answer with no block.")
+      events = []
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(e, d) { events << [ e, d ] }).run("hi")
+      expect(events.map(&:first)).not_to include(:followups)
+    ensure
+      Enliterator.configuration.chat_followups = nil
+    end
+
+    # The handoff is the federation path's core mechanic: the directive must be
+    # RE-applied when a specialist takes over, or the answering desk never emits a
+    # block and follow-ups silently vanish. Frontdesk "F" routes to "CHDS"; CHDS
+    # (system_prompt "advise") produces the final answer — assert the system prompt
+    # IT saw is its own persona PLUS the directive (proving system_content ran at the
+    # handoff reset, on the specialist, not the Frontdesk).
+    it "re-applies the directive after a handoff (the specialist that answers carries it)" do
+      Enliterator.configuration.chat_followups = true
+      seen_on_final = nil
+      turns = [ calls({ id: "1", name: "route_to", arguments: { "agent" => "CHDS" } }), answer_with_tail ]
+      llm = Object.new
+      llm.define_singleton_method(:converse_with_tools) do |messages:, tools:, stream: false, **|
+        t = turns.shift
+        next t if t.is_a?(Enliterator::Adapters::LLM::Gateway::ToolTurn) # the route_to turn
+        seen_on_final = messages.first["content"]                        # the final-answer turn
+        Enliterator::Adapters::LLM::Gateway::ToolTurn.new(text: t, tool_calls: [], assistant_message: nil, tokens: {})
+      end
+      events = []
+      Enliterator::Chat::Loop.new(agent: Enliterator::Chat.frontdesk, llm: llm,
+                                  sink: ->(e, d) { events << [ e, d ] }, step_cap: 4).run("hi")
+      expect(seen_on_final).to include("advise")                                   # the SPECIALIST's persona
+      expect(seen_on_final).to include(Enliterator::Chat::Followups::SENTINEL)     # ...plus the directive
+      expect(events.map(&:first)).to include(:handoff, :followups)
+    ensure
+      Enliterator.configuration.chat_followups = nil
+    end
+  end
 end
