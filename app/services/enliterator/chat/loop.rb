@@ -28,7 +28,11 @@ module Enliterator
       def run(question)
         messages = [ { "role" => "system", "content" => @agent.system_prompt },
                      { "role" => "user", "content" => question.to_s } ]
-        steps = 0
+        # @steps is the CURRENT desk's step budget — reset on handoff (see handle_calls),
+        # so a Frontdesk's triage never charges against the specialist's working room.
+        # The wall-clock budget below (from turn start, never reset) and the acyclic
+        # routing topology are the runaway backstops.
+        @steps = 0
         started = @clock.call
         loop do
           # NOTE: the budget is checked BETWEEN rounds, not mid-call. A single slow
@@ -39,12 +43,12 @@ module Enliterator
             Enliterator.logger&.info("[enliterator] chat loop hit wall budget (#{@wall_budget}s) agent=#{@agent.name}")
             break
           end
-          if steps >= @step_cap
+          if @steps >= @step_cap
             emit(:token, t: "I reached my step budget — here is what I have so far.")
             Enliterator.logger&.info("[enliterator] chat loop hit step cap (#{@step_cap}) agent=#{@agent.name}")
             break
           end
-          steps += 1
+          @steps += 1
           begin
             turn = llm.converse_with_tools(messages: messages, tools: tool_defs_with_route)
           rescue StandardError => e
@@ -100,6 +104,13 @@ module Enliterator
               messages[0] = { "role" => "system", "content" => @agent.system_prompt }
               emit(:handoff, to: agent.name)
               messages << tool_result_message(call, { routed_to: agent.name })
+              # The specialist gets its OWN step budget — the patron's triage at the
+              # Frontdesk must not eat the desk's room to actually work. Routing is a
+              # separate phase, not a charge against advising. (Acyclic topology today:
+              # specialists carry empty routes_to, so this resets at most once; the wall
+              # budget bounds any future bidirectional federation regardless. When
+              # bidirectional routing lands, add a handoff ceiling here, tested with it.)
+              @steps = 0
             end
             next
           end

@@ -87,6 +87,25 @@ RSpec.describe Enliterator::Chat::Loop do
     expect(events.last).to eq([ :done, {} ])
   end
 
+  it "gives a routed-to specialist its OWN step budget — triage must not consume the desk's working room" do
+    # Frontdesk spends 2 of 4 steps (a tool call, then route_to). The specialist
+    # then needs 3 tool rounds before composing — which would BLOW a shared cap of
+    # 4, but completes because the handoff resets the budget. (Acyclic topology +
+    # the wall budget are the runaway backstops; the step budget is per-desk.)
+    allow(Enliterator::Mcp).to receive(:dispatch).and_return({ results: [] })
+    run(ScriptedLLM.new(
+      calls({ id: "1", name: "search",   arguments: { "q" => "x" } }),         # Frontdesk step 1
+      calls({ id: "2", name: "route_to", arguments: { "agent" => "CHDS" } }),  # Frontdesk step 2 → handoff (reset)
+      calls({ id: "3", name: "search",   arguments: { "q" => "a" } }),         # CHDS step 1
+      calls({ id: "4", name: "search",   arguments: { "q" => "b" } }),         # CHDS step 2
+      calls({ id: "5", name: "search",   arguments: { "q" => "c" } }),         # CHDS step 3
+      "Here is my recommendation."))                                           # CHDS final answer
+    final = events.reverse.find { |e| e.first == :token }
+    expect(final.last[:t]).to eq("Here is my recommendation.")
+    expect(events.find { |e| e.first == :token && e.last[:t].to_s.match?(/step budget/i) }).to be_nil
+    expect(events.last).to eq([ :done, {} ])
+  end
+
   it "stops at the step cap with a visible budget message (rule 3), never silently" do
     looping = Array.new(10) { calls({ id: "1", name: "search", arguments: { "q" => "x" } }) }
     allow(Enliterator::Mcp).to receive(:dispatch).and_return({ label: "x", claims_by_facet: {} })
