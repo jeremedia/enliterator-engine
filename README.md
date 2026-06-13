@@ -124,7 +124,12 @@ mount Enliterator::Engine => "/enliterator"
   stat-strip across Status / Catalog / Atlas / About / Chat — with no CDN, npm, gem, or
   web-font added (100% inline vanilla, the standing hard rule). Federation OFF emits none of
   the trace/widget/citation DOM or JS; the single-shot stream contract is byte-identical and
-  guarded by a regression spec. The public accountless desk (Plan B — sessionless,
+  guarded by a regression spec. When a turn fails, **v0.30** replaces the bare error
+  bubble with an actionable error card: in development (and only where
+  `config.error_detail` permits) it names the exception, where it happened
+  (stage · agent · tier), and a hint for the likely fix — an expired AWS SSO session,
+  a slow tier, an unreachable gateway. In production the card carries only a generic
+  message; detail never leaks. The public accountless desk (Plan B — sessionless,
   link-token, rate-limited) is the forthcoming horizon.
 - `/enliterator/suggestions` — the governed-vocabulary review queue: when the model proposes a
   term a facet's contract doesn't cover, a curator approves it, maps it onto an existing key
@@ -258,6 +263,7 @@ Enliterator.configure do |c|
   c.stale_after     = 90.days                 # re-tend records whose newest visit is older than this
   c.queue_name      = :enliterator            # ActiveJob queue for TendingVisitJob
   c.logger          = Rails.logger            # optional; defaults to Rails.logger
+  c.error_detail    = nil                     # chat error cards: nil = auto (dev only), true/false to force
 end
 ```
 
@@ -270,6 +276,7 @@ end
 | `tend_batch_size` | `50` | per model/facet cap on records enqueued per run (no silent truncation — a cap hit is logged) |
 | `stale_after` | `90.days` | staleness threshold for the scheduled walk |
 | `queue_name` | `:enliterator` | queue `TendingVisitJob` enqueues onto |
+| `error_detail` | `nil` (auto) | actionable detail in chat error cards: `nil` = on in dev only, `true`/`false` to force. Detail (exception, where, fix-hint) **never reaches production** unless forced; the gate is server-resolved (no request param enables it) |
 
 Adapters are POROs and accept an injected `client:` so they can be stubbed in
 specs with no network and no provider gem. Provider gems are lazy-required inside

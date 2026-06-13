@@ -2097,3 +2097,100 @@ This is grounding tuning at the deployment, not a change to the engine's loop or
   spec. **All hard constraints held: inline vanilla only; single-shot contract unchanged;
   no silent failures.**
 - SPEC, README, CLAUDE.md, About colophon.
+
+# v0.30 — Actionable Errors at the Desk (the failure, made legible)
+
+## Why
+When a chat turn failed, the patron saw "conversation failed" and nothing else — and so
+did the developer who built the deployment. The actionable part of the failure — *which*
+tier, *which* exception, *what to do about it* — was constructed nowhere and dropped on the
+floor. The most common real failure in dev is an expired AWS SSO session: a 20-second wait
+that ends in a blank red bubble, with the fix (`aws sso login`) living only in the
+operator's head. v0.30 makes the desk **tell you what broke and what to do** — but only
+where it is safe to: in development by default, optionally in other envs, **never in
+production**. The reusable pattern is the deliverable; the chat surface is its first (and,
+this version, only) consumer.
+
+## What
+
+### `config.error_detail` — the gate, three-state (`lib/enliterator.rb`)
+A single config knob governs whether actionable detail is ever assembled: `nil` (the
+default) = **auto**, `true` = always, `false` = never. The resolver `error_detail?` reads
+it through, never directly; when `nil` it consults `error_detail_auto`, a callable that
+defaults to the dev-env guard (`defined?(Rails) && Rails.respond_to?(:env) &&
+Rails.env.development?`). This is the **one guarded `Rails.env` touch** in the engine —
+mirroring `logger` — and like `logger` it is host-overridable: a strictly env-policy-free
+host replaces the predicate via `error_detail_auto=`. "Actionable errors in dev by default,
+optionally other envs, off in prod" — expressed as one resolver, not scattered conditionals.
+
+### `Enliterator::Chat::ErrorReport` — the sole constructor (`app/services/enliterator/chat/error_report.rb`)
+The single place the chat `:error` payload is built. `build(error, where:, detail:, message:)`
+returns `{message:}` **always** — and `message` is the caller's static literal (e.g.
+`"conversation failed"`), never `error.message`, so a secret in the exception can never route
+itself around the gate. When `detail` is true it adds three keys: `detail:` (`"Class:
+message"`), `where:` (engine-internal labels humanized to a compact string — stage · agent ·
+tier · tool), and `hint:` from an ordered, first-match-wins `HINTS` table. The gate is one
+line — `return h unless detail` — and it is the whole security argument: nothing may be added
+past it, pinned by a keys-canary spec that asserts the OFF payload has exactly one key. Unlike
+`Widget`, `ErrorReport` renders **no HTML** (the client escapes via `textContent`), so there
+is no `h()` here.
+
+The `HINTS` table is advisory triage, matched against `"#{error.class}: #{error.message}"` so
+a bare error still resolves on its class name: AWS SSO expired → "re-run `aws sso login`";
+gateway timeout; tier-alias not advertised; gateway unreachable; key rejected;
+`NotImplementedError`/`ConfigurationError` (a tier that can't `converse_with_tools`). Patterns
+are narrow and most-specific-first; an unmatched error gets **no hint key** — the class and
+message still show.
+
+### Loop + controller emit a structured `:error` (gated, server-resolved)
+The model-call failure in `Chat::Loop` is now an `:error` event (not a degenerate `:token`),
+routed through `ErrorReport`; a tool failure carries detail/hint when detail is on. The
+`ConversationController`'s outer stream rescue is likewise routed through `ErrorReport`, so it
+covers **both** the federated and the single-shot path. `error_detail` is resolved
+**server-side only** — `error_detail?` is read in the controller, never from a request
+param — so a client cannot turn detail on by adding `?error_detail=1`. Pinned by a request
+spec that asserts no query param enables it.
+
+### The client error card (`renderErrorCard`, textContent-safe, federation-gated)
+A distinct `.enl-error` card replaces the bare red bubble: the generic `message` always; when
+`detail`/`where`/`hint` are present (dev), the class+message, the "where" line, and the hint.
+Every field is written with `textContent`, never `innerHTML` — the payload is HTML-unaware by
+construction (`ErrorReport` emits none), so the card is XSS-safe. The renderer is converged
+across all three error paths: the `:error` SSE event, the transport `.catch`, and
+`tool_call_error`. An `els.errored` flag stops the turn-finish flush from erasing the card —
+the failure stays on screen instead of being cleared by the normal end-of-turn cleanup.
+
+## Honesty notes
+- **Detail is dev-default, config-gated, and never reaches production.** With `error_detail`
+  left `nil` (the default) the auto predicate is true only in `Rails.env.development?`; in
+  prod the payload is byte-identical to today's `{message: "conversation failed"}`. A host
+  that wants detail in staging sets `config.error_detail = true` deliberately; a host that
+  wants it never sets `false`. The gate is the security boundary, spec-pinned.
+- **The hint map is advisory, not authoritative.** It is a first-match-wins table of narrow
+  patterns; an unmatched error simply gets no hint — the class and message are still shown, so
+  the developer is never *worse* off than a raw exception. The hints encode this deployment's
+  known failure modes (gateway, Bedrock SSO, tier aliases); they are guidance, not diagnosis.
+- **The pattern is reusable; only the chat path is wired.** `ErrorReport` + `error_detail?` are
+  surface-agnostic — any future streaming or AJAX surface can adopt the same gated card. This
+  version wires only the chat `:error` path. Global non-chat error surfacing (other engine
+  pages still use Rails' own dev error page), a backtrace in the card, and the public
+  accountless desk consuming this with `detail:false` are **out of scope, named not pretended**.
+- **No silent failures, no new wire risk.** A failed turn becomes a *visible* card (rule 3),
+  not a swallowed exception. Federation OFF and the OFF-view are unaffected — the card is
+  emitted through the same gated transport, and the prod/off payload is unchanged byte-for-byte.
+  Live-proven: a real expired-AWS-SSO model error now surfaces the class+message,
+  "model call · Frontdesk · bedrock-haiku", and the "re-run `aws sso login`" hint.
+
+## Done = all of:
+- `config.error_detail` (3-state nil/true/false, default nil) + `error_detail?` resolver
+  (the one guarded `Rails.env.development?` touch, host-overridable via `error_detail_auto=`);
+  `Enliterator::Chat::ErrorReport.build` as the sole `:error` constructor (`{message:}` always
+  from a static literal; `detail`/`where`/`hint` added only past the `return h unless detail`
+  gate; ordered first-match-wins `HINTS`; keys-canary spec); `Chat::Loop` + `ConversationController`
+  emit a structured `:error` through `ErrorReport` (model + tool + outer stream rescue, covering
+  federated and single-shot), `error_detail` resolved server-side only (no-query-param request
+  spec); client `renderErrorCard` (textContent-safe `.enl-error` card, converged across `:error`
+  / transport `.catch` / `tool_call_error`, `els.errored` survives the turn-finish flush).
+  **Prod/off payload byte-identical to v0.29; federation-off and the OFF-view unaffected; no
+  silent failures.**
+- SPEC, README, CLAUDE.md, About colophon.
