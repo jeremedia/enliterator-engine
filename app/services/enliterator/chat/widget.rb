@@ -24,10 +24,12 @@ module Enliterator
       def symize(value) = value.is_a?(Hash) ? value.transform_keys(&:to_sym) : {}
 
       # named without a render_ prefix so render() can never dispatch to it — a
-      # tool literally named "fallback" must not match this arity-2 method
+      # tool literally named "fallback" must not match this arity-2 method.
+      # v0.29: the raw block is COLLAPSED — an unrendered tool announces itself
+      # (rule 3, visible) without letting its JSON dominate the transcript.
       def fallback_html(tool_name, result)
-        %(<div class="enl-widget enl-widget--raw"><div class="enl-widget__head">#{h(tool_name)}</div>) +
-          %(<pre class="enl-widget__json">#{h(JSON.pretty_generate(result))}</pre></div>)
+        %(<div class="enl-widget enl-widget--raw"><details><summary class="enl-widget__head">#{h(tool_name)}</summary>) +
+          %(<pre class="enl-widget__json">#{h(JSON.pretty_generate(result))}</pre></details></div>)
       end
 
       # --- record_entry ------------------------------------------------------
@@ -143,6 +145,172 @@ module Enliterator
         when "not_in_atlas"  then "not in the atlas yet"
         else                      state
         end
+      end
+
+      # --- collection_overview ----------------------------------------------
+      # The self-portrait card: the shared stat-strip (four headline numbers),
+      # facet chips, then the context tree and accuracy table tucked behind
+      # collapsed details. `next:` is the model's map — never rendered.
+      def render_collection_overview(result)
+        r     = symize(result)
+        stats = symize(r[:stats])
+        strip = stat_strip([
+          [ stats[:enliterated],     "enliterated" ],
+          [ stats[:corpus],          "corpus" ],
+          [ stats[:live_claims],     "live claims" ],
+          [ stats[:vocabulary_keys], "vocabulary keys" ]
+        ])
+
+        chips = Array(r[:facets]).map { |f|
+          f = symize(f)
+          %(<span class="facet-chip">#{h(f[:facet])} · #{h(f[:tended_count])}</span>)
+        }.join
+        chips = %(<div class="stats-facets">#{chips}</div>) unless chips.empty?
+
+        %(<div class="enl-widget enl-widget--overview">#{strip}#{chips}) +
+          overview_contexts(r[:contexts]) +
+          overview_accuracy(r[:accuracy]) + %(</div>)
+      end
+
+      def stat_strip(pairs)
+        cells = pairs.map { |num, label|
+          %(<div class="stat-cell"><div class="stat-num">#{h(num)}</div>) +
+            %(<div class="stat-label">#{h(label)}</div></div>)
+        }.join
+        %(<div class="stats-strip"><div class="stats-grid">#{cells}</div></div>)
+      end
+
+      def overview_contexts(contexts)
+        rows = Array(contexts).map { |c|
+          c = symize(c)
+          %(<tr><td>#{h(c[:key])}</td><td>#{h(c[:name])}</td><td>#{h(c[:members])}</td></tr>)
+        }.join
+        return "" if rows.empty?
+        %(<details class="enl-overview__contexts"><summary>contexts</summary>) +
+          %(<table><thead><tr><th>key</th><th>name</th><th>members</th></tr></thead>) +
+          %(<tbody>#{rows}</tbody></table></details>)
+      end
+
+      def overview_accuracy(accuracy)
+        rows = Array(accuracy).map { |a|
+          a = symize(a)
+          %(<tr><td>#{h(a[:facet])}</td><td>#{h(a[:tier])}</td>) +
+            %(<td>#{h(a[:audited])}</td><td>#{h(a[:supported_rate])}</td><td>#{h(a[:contradicted])}</td></tr>)
+        }.join
+        return "" if rows.empty?
+        %(<details class="enl-overview__accuracy"><summary>accuracy</summary>) +
+          %(<table class="enl-accuracy"><thead><tr><th>facet</th><th>tier</th><th>audited</th><th>supported</th><th>contradicted</th></tr></thead>) +
+          %(<tbody>#{rows}</tbody></table></details>)
+      end
+
+      # --- browse_subjects ---------------------------------------------------
+      # The subject-heading index: each heading's key, then its top values as
+      # term/count chips. values are [term, count] PAIRS. Up to 8 inline; the
+      # rest fold into a "show all" details. Approximate counts get a visible
+      # note (the v0.24 "≥" honesty). Empty headings → an honest empty state.
+      HEADINGS_INLINE = 8
+
+      def render_browse_subjects(result)
+        r = symize(result)
+        headings = Array(r[:headings])
+        body = if headings.empty?
+                 %(<div class="enl-headings__empty">no subject headings in this scope</div>)
+               else
+                 headings.map { |hd| heading_block(hd) }.join
+               end
+        %(<div class="enl-widget enl-widget--headings">#{body}</div>)
+      end
+
+      def heading_block(heading)
+        hd     = symize(heading)
+        values = Array(hd[:values])
+        inline, rest = values.first(HEADINGS_INLINE), values.drop(HEADINGS_INLINE)
+        approx = hd[:approximate] ? %( <span class="enl-headings__approx">≥ approximate counts</span>) : ""
+        more   = rest.empty? ? "" :
+                   %(<details class="enl-headings__more"><summary>show all (#{h(values.size)})</summary>) +
+                     %(<div class="enl-headings__vals">#{headvals(rest)}</div></details>)
+        %(<div class="enl-headings__heading"><div class="enl-headings__key">#{h(hd[:key])}#{approx}</div>) +
+          %(<div class="enl-headings__vals">#{headvals(inline)}</div>#{more}</div>)
+      end
+
+      def headvals(pairs)
+        Array(pairs).map { |pair|
+          term, count = Array(pair)
+          %(<span class="enl-headval">#{h(term)} <b>#{h(count)}</b></span>)
+        }.join
+      end
+
+      # --- vocabulary --------------------------------------------------------
+      # Per facet: name + a tier chip + a scheduled/unscheduled marker, then the
+      # term: meaning rows (required terms flagged). terms nil/absent → an
+      # explicit open-facet line (rule 3: a blank vocabulary is silence).
+      def render_vocabulary(result)
+        r = symize(result)
+        facets = Array(r[:facets]).map { |f| vocab_facet(f) }.join
+        %(<div class="enl-widget enl-widget--vocab">#{facets}</div>)
+      end
+
+      def vocab_facet(facet)
+        f        = symize(facet)
+        sched    = f[:scheduled] ? "scheduled" : "unscheduled"
+        required = Array(f[:required]).map(&:to_s)
+        head = %(<span class="enl-vocab__name">#{h(f[:facet])}</span>) +
+               %( <span class="chip tier">#{h(f[:tier])}</span>) +
+               %( <span class="enl-vocab__sched">#{h(sched)}</span>)
+        terms = f[:terms]
+        body  = if terms.is_a?(Hash) && !terms.empty?
+                  terms.map { |term, meaning| vocab_term(term, meaning, required) }.join
+                else
+                  %(<div class="enl-vocab__term">open facet (unconstrained vocabulary)</div>)
+                end
+        %(<div class="enl-vocab__facet"><div class="enl-vocab__head">#{head}</div>#{body}</div>)
+      end
+
+      def vocab_term(term, meaning, required)
+        klass = required.include?(term.to_s) ? "enl-vocab__term enl-vocab__term--req" : "enl-vocab__term"
+        m = meaning.nil? || meaning.to_s.empty? ? "" : ": #{h(meaning)}"
+        %(<span class="#{klass}">#{h(term)}#{m}</span>)
+      end
+
+      # --- recent_activity ---------------------------------------------------
+      # The diary card: the headline as a lead line, then visits-by-tier and
+      # failures behind collapsed details — each failure's error TEXT visible
+      # (rule 3). An honest empty state when the window was quiet.
+      def render_recent_activity(result)
+        r        = symize(result)
+        visits   = symize(r[:visits])
+        failures = symize(r[:failures])
+        quiet    = visits[:total].to_i.zero? && failures[:count].to_i.zero?
+
+        lead = %(<div class="enl-activity__headline">#{h(r[:headline])}</div>)
+        body = if quiet
+                 %(<div class="enl-activity__empty">no activity in this window</div>)
+               else
+                 activity_tiers(visits[:by_tier]) + activity_failures(failures)
+               end
+        %(<div class="enl-widget enl-widget--activity">#{lead}#{body}</div>)
+      end
+
+      def activity_tiers(by_tier)
+        by_tier = symize(by_tier)
+        return "" if by_tier.empty?
+        rows = by_tier.map { |tier, n| %(<li class="enl-activity__tier">#{h(tier)} <b>#{h(n)}</b></li>) }.join
+        %(<details class="enl-activity__visits"><summary>visits by tier</summary>) +
+          %(<ul class="enl-activity__tiers">#{rows}</ul></details>)
+      end
+
+      def activity_failures(failures)
+        f     = symize(failures)
+        count = f[:count].to_i
+        return "" if count.zero?
+        items = Array(f[:sample]).map { |s|
+          s = symize(s)
+          %(<li class="enl-activity__failure"><span class="enl-activity__where">#{h(s[:record])} · #{h(s[:facet])} · #{h(s[:tier])}</span>) +
+            %(<div class="enl-activity__error">#{h(s[:error])}</div></li>)
+        }.join
+        more = f[:truncated] ? %(<div class="enl-activity__truncated">…more failures than shown</div>) : ""
+        %(<details class="enl-activity__failures"><summary>failures (#{h(count)})</summary>) +
+          %(<ul class="enl-activity__failure-list">#{items}</ul>#{more}</details>)
       end
     end
   end
