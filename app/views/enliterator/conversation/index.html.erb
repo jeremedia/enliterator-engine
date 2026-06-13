@@ -1,12 +1,48 @@
+<% content_for :head do %>
+<style>
+  /* ── Chat view: welcoming (empty) → chatting (receded) ──────────────────────
+     The orientation chrome (heading, intro, scope banner, self-portrait) is a
+     welcoming empty state that RECEDES once a conversation starts — it is never
+     removed (the intro collapses but stays in the DOM; the self-portrait stays a
+     native <details>; the scope banner is never display:none, since the handoff
+     writes .enl-active-desk into it live). A single state class `.is-chatting`
+     on #chatview drives the recede. Tokens only — page-specific layout lives in
+     the view per the house rule. */
+  .enl-chrome { transition: margin .25s ease; }
+  .is-chatting h1 { font-size: var(--fs-lg); margin: 0 0 var(--s2); transition: font-size .25s ease, margin .25s ease; }
+  .enl-intro { max-height: 12rem; opacity: 1; overflow: hidden; transition: max-height .3s ease, opacity .2s ease, margin .25s ease; }
+  .is-chatting .enl-intro { max-height: 0; opacity: 0; margin: 0; visibility: hidden; transition: max-height .3s ease, opacity .2s ease, visibility 0s linear .3s, margin .25s ease; }
+  .enl-scope { transition: padding .2s ease, font-size .2s ease; }
+  .is-chatting .enl-scope.card { padding: var(--s2) var(--s3); font-size: var(--fs-sm); margin: 0; }
+  .is-chatting .enl-scope { font-size: var(--fs-sm); }
+  .enl-active-desk { color: var(--accent); font-weight: 600; }
+  .enl-portrait { transition: padding .2s ease, margin .2s ease; }
+  .is-chatting .enl-portrait { padding: 0; border: 0; box-shadow: none; margin: 0; background: transparent; }
+  .is-chatting .enl-portrait > summary { display: inline-flex; align-items: center; gap: var(--s1); cursor: pointer; font-size: var(--fs-xs); color: var(--accent); font-weight: 600; padding: var(--s1) var(--s3); border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--panel); list-style: none; }
+  .is-chatting .enl-portrait[open] > summary { background: var(--accent-soft); }
+  .is-chatting .enl-portrait[open] pre { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3); margin-top: var(--s2); box-shadow: var(--shadow); }
+  .is-chatting .enl-chrome { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); padding-bottom: var(--s2); margin-bottom: var(--s3); border-bottom: 1px solid var(--line); }
+  .thread:empty { display: none; }
+  .is-chatting .thread { min-height: 40vh; }
+  .is-chatting .prompts { margin-top: var(--s4); }
+  .is-chatting .ask textarea { box-shadow: var(--shadow); border-color: var(--accent-soft); }
+  @media (prefers-reduced-motion: reduce) {
+    .enl-chrome, .is-chatting h1, .enl-intro, .is-chatting .enl-intro, .enl-scope, .enl-portrait { transition: none; }
+  }
+</style>
+<% end %>
+
+<div id="chatview" class="enl-chatview">
+<div class="enl-chrome">
 <h1>Chat with the enliteration</h1>
-<p class="muted">A reference interview with the collection: ask about it as a whole, or about anything it has tended. Answers are grounded in the self-portrait below plus the records retrieved per question — follow a source chip to the record and ask again, the way discovery actually works.</p>
+<p class="muted enl-intro">A reference interview with the collection: ask about it as a whole, or about anything it has tended. Answers are grounded in the self-portrait below plus the records retrieved per question — follow a source chip to the record and ask again, the way discovery actually works.</p>
 
 <%# The scope banner. The context cookie persists silently across visits, and
     the selected context changes EVERYTHING about this page (the self-portrait,
     the retrieval pool, the claims read) — so the scope must be stated where
     the conversation happens, not only in the nav's small selector. %>
 <% if current_context %>
-  <div class="card" style="padding:.6rem 1.1rem; border-left:3px solid var(--accent)">
+  <div class="card enl-scope" style="padding:.6rem 1.1rem; border-left:3px solid var(--accent)">
     <strong<% if Enliterator.configuration.chat_federation %> id="enl-scope-banner"<% end %>>Asking within: <%= current_context.name %></strong>
     <span class="muted">— <%= @scope_count %> member record(s). Answers retrieve only this collection's
     members, read through its lens (plus inherited claims).</span>
@@ -14,16 +50,17 @@
                 class: "samples", style: "white-space:nowrap" %>
   </div>
 <% else %>
-  <p class="muted samples" style="margin-top:-.4rem"<% if Enliterator.configuration.chat_federation %> id="enl-scope-banner"<% end %>>
+  <p class="muted samples enl-scope" style="margin-top:-.4rem"<% if Enliterator.configuration.chat_federation %> id="enl-scope-banner"<% end %>>
     Asking the <strong>whole collection</strong> — every context's records are in the retrieval pool.
     <% if context_switcher_options.any? %>Narrow to one collection with the context selector in the nav.<% end %>
   </p>
 <% end %>
 
-<details class="card">
+<details class="card enl-portrait">
   <summary>What this collection knows about itself</summary>
   <pre class="mono" style="white-space:pre-wrap; margin:.6rem 0 0"><%= Enliterator::Synopsis.to_prompt(@synopsis) %></pre>
 </details>
+</div>
 
 <div id="thread" class="thread"></div>
 
@@ -39,6 +76,7 @@
   <textarea id="q" placeholder="e.g. What does this collection know about itself? Which records connect to X?" rows="2"></textarea>
   <button id="send" type="submit">Send</button>
 </form>
+</div>
 
 <script>
 (function () {
@@ -49,7 +87,21 @@
   var form = document.getElementById("ask");
   var input = document.getElementById("q");
   var send = document.getElementById("send");
+  var chatview = document.getElementById("chatview");
   var history = [];
+
+  // The one behavioral change for v0.31: once the patron asks the first
+  // question, the orientation chrome recedes (welcoming empty state → chat UI).
+  // Idempotent (only flips once, never reverts) and runs on BOTH the single-shot
+  // and federation paths. Collapsing an open self-portrait first keeps the recede
+  // tidy — its restyled summary becomes the affordance to reopen it.
+  function enterChatting() {
+    if (chatview && !chatview.classList.contains("is-chatting")) {
+      chatview.classList.add("is-chatting");
+      var p = chatview.querySelector(".enl-portrait[open]");
+      if (p) p.removeAttribute("open");
+    }
+  }
 
   // --- compact, safe markdown -> HTML (no deps). Escapes first, then formats the
   //     subset LLMs emit: headers, bold/italic, inline code, blockquotes, rules,
@@ -279,10 +331,11 @@
   });
 
   function submitQuestion(q) {
+    if (!q) return;          // guard — don't flip the chrome on an empty submit
+    enterChatting();         // recede the orientation chrome (both paths, before the federation early-return)
 <% if Enliterator.configuration.chat_federation %>
     return submitQuestionFederated(q);
 <% end %>
-    if (!q) return;
     userBubble(q);
     var els = assistantBubble();
     var state = { text: "", timer: null };
@@ -305,6 +358,7 @@
               history.push({ role: "user", content: q });
               history.push({ role: "assistant", content: state.text });
               send.disabled = false;
+              if (input) input.focus(); // ready the composer for a follow-up
               return;
             }
             buf += decoder.decode(res.value, { stream: true });
@@ -775,6 +829,8 @@
     // consulted (client-side, from the trace). Falls back to the static starters
     // when nothing was consulted — the prompt bar is never left blank (rule 3).
     refreshFollowups(els);
+    // Return focus to the composer so the patron can immediately type a follow-up.
+    if (input) input.focus();
   }
 
   // Send button working-state: a single source of truth so the catch, the
