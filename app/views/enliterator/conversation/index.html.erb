@@ -553,6 +553,10 @@
       card.appendChild(hint);
     }
 
+    // Mark the turn errored so finishTurnFederated's final flush won't overwrite
+    // this card with the (empty) accumulated answer text. The card IS the content.
+    els.errored = true;
+
     // Placement: prefer the answer container (so the error replaces/sits where
     // the answer would). ensureAnswer opens the bubble + sets els.md if absent;
     // if even that isn't available, fall back to the turn.
@@ -738,8 +742,12 @@
 
   function finishTurnFederated(els, state, q) {
     if (state.timer) { clearTimeout(state.timer); state.timer = null; }
-    ensureAnswer(els);
-    els.md.innerHTML = mdToHtml(state.text); // final flush
+    // If an error card was rendered this turn it IS the terminal content — do NOT
+    // overwrite it with the (empty) answer flush. Otherwise render the answer.
+    if (!els.errored) {
+      ensureAnswer(els);
+      els.md.innerHTML = mdToHtml(state.text); // final flush
+    }
     // v0.29 citations: the sources rail reflects what the desk actually
     // consulted (always-correct, even if no label matched in the prose); the
     // inline chips correlate the answer's text to those records (best-effort —
