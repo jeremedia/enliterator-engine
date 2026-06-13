@@ -32,7 +32,7 @@ module Enliterator
 
       # Drive the turn. Returns nothing meaningful; everything is emitted via the sink.
       def run(question)
-        messages = [ { "role" => "system", "content" => @agent.system_prompt },
+        messages = [ { "role" => "system", "content" => system_content },
                      { "role" => "user", "content" => question.to_s } ]
         # @steps is the CURRENT desk's step budget — reset on handoff (see handle_calls),
         # so a Frontdesk's triage never charges against the specialist's working room.
@@ -75,6 +75,7 @@ module Enliterator
           end
           if turn.tool_calls.empty?
             emit(:token, t: turn.text.to_s) unless streamed
+            emit_followups(turn.text) if Enliterator.configuration.chat_followups
             break
           end
           messages << (turn.assistant_message || { "role" => "assistant", "content" => nil })
@@ -118,7 +119,7 @@ module Enliterator
               @agent = agent
               # The handoff must FULLY switch the desk: messages[0] carried the prior
               # agent's persona — replace it so the specialist reasons as itself this turn.
-              messages[0] = { "role" => "system", "content" => @agent.system_prompt }
+              messages[0] = { "role" => "system", "content" => system_content }
               emit(:handoff, to: agent.name)
               messages << tool_result_message(call, { routed_to: agent.name })
               # The specialist gets its OWN step budget — the patron's triage at the
@@ -186,6 +187,28 @@ module Enliterator
         emit(:tool_call_error, **payload)
         Enliterator.logger&.warn("[enliterator] chat tool error: #{message}")
         messages << tool_result_message(call, { error: message })
+      end
+
+      # System content for the active agent. v0.35: when chat_followups is on,
+      # append the generic follow-up directive so the answering desk ends with the
+      # %%FOLLOWUPS%% block. Off ⇒ the bare persona (byte-identical to v0.34).
+      def system_content
+        base = @agent.system_prompt
+        return base unless Enliterator.configuration.chat_followups
+        "#{base}\n\n#{Enliterator::Chat::Followups::DIRECTIVE}"
+      end
+
+      # v0.35: parse the answer's trailing %%FOLLOWUPS%% block and surface the
+      # questions as a structured event (the client renders them as buttons). The
+      # raw tail still rides in the :token stream — the client strips it for display;
+      # this event is the authoritative button source. Always log the outcome so the
+      # experiment can measure emission reliability (rule 3: emitted=false is logged too).
+      def emit_followups(text)
+        items = Enliterator::Chat::Followups.parse(text)
+        emit(:followups, items: items) if items.any?
+        Enliterator.logger&.info(
+          "[enliterator] followups agent=#{@agent.name} emitted=#{items.any?} " \
+          "count=#{items.size} items=#{items.inspect}")
       end
 
       def emit(event, data) = @sink.call(event, data)

@@ -163,6 +163,12 @@ module Enliterator
     # routing through the Chat::Agent registry.
     attr_accessor :chat_federation
 
+    # v0.35 Stage C. nil/false ⇒ no follow-up directive is injected and no
+    # :followups event is emitted (byte-identical to v0.34). true ⇒ the Loop asks
+    # the model for an inline %%FOLLOWUPS%% block, parses it, emits :followups, and
+    # logs the outcome. Nests under chat_federation (the Loop only runs when that is on).
+    attr_accessor :chat_followups
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -205,6 +211,7 @@ module Enliterator
       @escalation_threshold = 0.6
       @suggestion_sink = nil
       @chat_federation = nil
+      @chat_followups = nil
       @error_detail = nil
       @allow_null_llm = false
       @conversation_tier = nil
