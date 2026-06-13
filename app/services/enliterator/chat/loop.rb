@@ -9,7 +9,8 @@ module Enliterator
     class Loop
       ROUTE_TO = "route_to"
 
-      def initialize(agent:, llm: nil, sink:, step_cap: 4, wall_budget: 90, clock: nil, context_resolver: nil)
+      def initialize(agent:, llm: nil, sink:, step_cap: 4, wall_budget: 90, clock: nil, context_resolver: nil,
+                     error_detail: Enliterator.configuration.error_detail?)
         @agent   = agent
         # An injected adapter (specs) overrides per-tier resolution entirely; otherwise
         # resolve + cache one adapter PER TIER so a route_to to a higher-tier specialist
@@ -22,6 +23,11 @@ module Enliterator
         # Maps a context key → the value tools expect (the key string). Server-side,
         # never the cookie. Default: identity.
         @resolve = context_resolver || ->(key) { key }
+        # v0.30: gates whether the emitted :error / :tool_call_error payloads carry
+        # ACTIONABLE detail (class/message, where, hint) past the generic floor. The
+        # default reads the resolver (dev-on) so existing callers/tests get the right
+        # behavior; the controller passes it explicitly per-request in a later task.
+        @error_detail = error_detail
       end
 
       # Drive the turn. Returns nothing meaningful; everything is emitted via the sink.
@@ -52,7 +58,9 @@ module Enliterator
           begin
             turn = llm.converse_with_tools(messages: messages, tools: tool_defs_with_route)
           rescue StandardError => e
-            emit(:token, t: "I hit an error reaching the model — please try again.")
+            emit(:error, Enliterator::Chat::ErrorReport.build(
+              e, where: { stage: "model call", agent: @agent.name, tier: @agent.tier },
+              detail: @error_detail, message: "I hit an error reaching the model — please try again."))
             Enliterator.logger&.warn("[enliterator] chat loop model error: #{e.class}: #{e.message}")
             break
           end
@@ -128,7 +136,7 @@ module Enliterator
             emit(:tool_call_result, name: call[:name], html: Enliterator::Chat::Widget.render(call[:name], result))
             messages << tool_result_message(call, result)
           rescue StandardError => e
-            tool_error(call, messages, "couldn't consult #{call[:name]}: #{e.message}")
+            tool_error(call, messages, "couldn't consult #{call[:name]}: #{e.message}", error: e)
           end
         end
       end
@@ -150,8 +158,20 @@ module Enliterator
         { "role" => "tool", "tool_call_id" => call[:id], "content" => result.to_json }
       end
 
-      def tool_error(call, messages, message)
-        emit(:tool_call_error, name: call[:name], message: message)
+      # The terminal event for a tool that could not be honored. `message` is the
+      # generic floor (always emitted, never derived from the exception). When an
+      # `error` is given AND detail is enabled, the actionable fields (detail/where/
+      # hint) from ErrorReport are merged in — MINUS its :message, since the floor
+      # message already stands. The allow-list rejection passes no `error:` (no
+      # exception to detail), so it stays message-only even in dev.
+      def tool_error(call, messages, message, error: nil)
+        payload = { name: call[:name], message: message }
+        if @error_detail && error
+          rep = Enliterator::Chat::ErrorReport.build(
+            error, where: { stage: "tool", tool: call[:name] }, detail: true, message: message)
+          payload.merge!(rep.slice(:detail, :where, :hint))
+        end
+        emit(:tool_call_error, **payload)
         Enliterator.logger&.warn("[enliterator] chat tool error: #{message}")
         messages << tool_result_message(call, { error: message })
       end
