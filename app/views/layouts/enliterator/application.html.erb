@@ -415,6 +415,16 @@
     .enl-sources__num { flex: none; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
     .enl-chat-error { background: var(--warn-soft); color: var(--warn); border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: var(--fs-sm); margin: var(--s2) 0; }
 
+    /* ── Actionable error card (v0.30, client-JS target) ─────────────────────
+       A structured alert: the headline always, then (dev/detail-on only) the
+       exception detail, where it happened, and an actionable hint. Like an
+       alert — a warn-tinted card; the hint is highlighted as the line to act on. */
+    .enl-error { background: var(--warn-soft); border: 1px solid var(--warn); border-left: 3px solid var(--warn); border-radius: var(--r-sm); padding: var(--s3); margin: var(--s2) 0; }
+    .enl-error__msg { color: var(--warn); font-weight: 600; font-size: var(--fs-sm); }
+    .enl-error__detail { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-xs); color: var(--muted); margin-top: var(--s2); white-space: pre-wrap; word-break: break-word; }
+    .enl-error__where { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--s1); }
+    .enl-error__hint { font-size: var(--fs-sm); color: var(--accent); background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: var(--s2) var(--s3); margin-top: var(--s3); }
+
     /* ── Motion ────────────────────────────────────────────────────────────── */
     @keyframes enl-spin { to { transform: rotate(360deg); } }
     @keyframes enl-blink { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
