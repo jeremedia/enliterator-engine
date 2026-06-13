@@ -1961,3 +1961,139 @@ are ONLY inside the server-rendered federation gate.
   `Audit.accuracy` cache (last-write + count key); federation-gated `ConversationController#stream`
   (5 new SSE event types, byte-identical off-path). **572 green.**
 - SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.29 — The Reference Desk, Made Legible (the agentic surface, elevated)
+
+## Why
+v0.28 built the reference desk into the engine — agentic, federated, gated — but the
+patron couldn't *see* it work. A turn was a single bubble; tool calls were invisible or
+dumped as raw JSON; a handoff to a specialist passed silently; the prose claimed sources
+it never linked. The desk was governed but illegible. And the surrounding pages, while
+honest, read as a developer's scaffold rather than a reading room. v0.29 makes the
+agentic exchange *readable as a reference interview* — a live work-trace, structured tool
+widgets, a visible handoff, inline provenance you can click — and lifts the whole engine
+into a scholarly visual register. No new behavior on the wire; the same governed loop,
+finally shown.
+
+## What
+
+### Global design language (the reading-room register)
+`app/views/layouts/enliterator/application.html.erb` (the one quiet component system,
+v0.19) gains a scholarly type and depth vocabulary, applied engine-wide:
+- A **system-serif display face** (`--font-display`) for `h1`, `h2`, and `.section-head`
+  only — body copy stays the system sans. A refined scale (`--fs-display`) gives the
+  headings a librarian's gravity without a single web-font byte (hard rule 1).
+- Restrained depth tokens (`--shadow`, `--shadow-pop`) and an `--accent-dark` token for a
+  consistent hover/active treatment; focus rings unified; all motion guarded by
+  `prefers-reduced-motion`.
+- The About page's stat-strip is promoted to a **shared component** (`.stats-strip` et al)
+  so Status / Catalog / Atlas / About / Chat report counts in one congruent dialect.
+
+This rippled to every surface — a coherence pass, not a chat-only change.
+
+### `enl-*` widget CSS system (the tool-widget chassis)
+Same layout file. The v0.28 tool widgets rendered self-contained HTML but the layout owned
+no CSS for them — they were unstyled. v0.29 adds a fully namespaced component system: a
+card chassis (`.enl-widget`) plus eight structured variants (overview, headings, vocab,
+activity, results, provenance, trajectory, quote/edges), the working-trace timeline
+(`.enl-trace*`: dot → spinner → ✓), the handoff divider (`.enl-handoff`), and the citation
+furniture (`.enl-cite` chip + `.enl-cite__pop` popover + `.enl-sources` rail). Every
+selector is `enl-`-namespaced, so on a federation-OFF page — which emits no `enl-*` DOM —
+the rules select **nothing**. The CSS is inert, not absent; the *markup* is what the gate
+withholds.
+
+### Four new widget renderers
+`app/services/enliterator/chat/widget.rb` gains renderers for the four tools that v0.28
+left as raw-JSON dumps: `collection_overview` (a stat-strip dashboard), `browse_subjects`
+(a subject-heading index), `vocabulary` (facet rows), and `recent_activity` (a diary).
+Same discipline as v0.28: pure functions, class-names only, all tool data HTML-escaped.
+The unknown-tool JSON fallback is collapsed into a `<details>` so an unrecognized tool is
+inspectable but not loud.
+
+### The agentic turn model (federation-gated)
+`app/views/enliterator/conversation/index.html.erb`. When `config.chat_federation` is on, a
+turn renders top-to-bottom as a narrative:
+1. a **live work-trace** — one row per tool call, status animating spinner → ✓ (human
+   labels, not method names), each tool's widget tucked into a `<details>` so the trace
+   stays scannable;
+2. the **answer**, created lazily on the first token so it lands *under* the trace;
+3. a **sources rail** — the records consulted that turn, numbered, linking to the status
+   browser.
+The handoff is now a **visible divider** (`.enl-handoff`) plus a non-destructive update to
+the scope banner (`#enl-scope-banner`) — the patron sees which desk is answering without
+the page reflowing out from under them.
+
+### Markdown extension (golden-guarded)
+The shared client-side `mdToHtml` (used by BOTH the single-shot and federated paths) now
+renders blockquotes, horizontal rules, GitHub pipe tables, and nested lists. Because it is
+shared, extending it is the highest-regression-risk change in the upgrade — so it is frozen
+by a golden-output test (`spec/javascript/md_golden.test.js`) that proves every
+pre-existing markdown shape renders **byte-identical** after the extension, with negative
+guards so the new matchers don't fire on look-alike input (a bare `--` is not an `<hr>`; a
+pipe line without a delimiter row is not a table; HTML inside a quote or cell stays
+escaped).
+
+### Input + follow-ups (federation-gated)
+Same view. The composer gains textarea autosize (`.enl-autosize` up to `.enl-ta-max`),
+Enter-submits / Shift+Enter-newline, a typing indicator (`.enl-typing`) during the
+~20s Bedrock turns, and **dynamic follow-up suggestions** derived from the records actually
+consulted that turn (not a static list).
+
+### Citations (federation-gated)
+`widget.rb` emits per-record data attributes (type / id / label / entry path); the view
+correlates them, client-side, from the streamed tool data. The result is two-fold:
+- a **"Sources consulted" rail** under the answer — numbered, click-through to
+  `/enliterator/status/<Type>/<id>`;
+- **inline numbered citation chips** woven into the prose (a label match becomes a
+  superscript `<button class="enl-cite">`; hover → a popover with the record's label +
+  type, click → the record). The chip placement is text-node-only and never wraps text
+  already inside a link — load-bearing safety properties frozen by
+  `spec/javascript/cite_logic.test.js`.
+
+### Grounding note (deployment-side, NOT an engine change)
+The CHDS specialist's *prompt* (HSDL-side, in the host app) gained a **decisiveness
+directive** so it composes after a focused set of retrievals rather than over-exploring.
+This is grounding tuning at the deployment, not a change to the engine's loop or budget.
+
+## Honesty notes
+- **Citations are client-correlated, today.** The numbered chips and the sources rail are
+  built in the browser by matching record labels emitted in the streamed tool data. The
+  foundation is shipped; the *future* is a first-class structured `sources` SSE event plus
+  a `DocMetum` → human-readable type-label map, so the server names the citation rather
+  than the client inferring it. Deferred, named, not pretended.
+- **The loop is unchanged.** No `tool_call_start` payload enrichment, no new SSE event
+  type — the citation and trace data ride the existing v0.28 events. Enriching
+  `tool_call_start` with structured record metadata (so the trace needn't re-derive it) is
+  a future loop change, deliberately deferred to keep v0.29 a pure surface elevation.
+- **Federation OFF emits no new DOM, JS, or CSS-bearing markup.** The trace, the widgets,
+  the citation chips, the sources rail, the autosize/typing/follow-up behavior, and the
+  federated JS (`handleFrameFederated`, `submitQuestionFederated`, `finishTurnFederated`,
+  `annotateCites`, `makeCiteChip`, `buildCitePop`, `wrapFirstMatch`) are ALL inside the
+  `config.chat_federation` server-rendered gate. The single-shot stream contract
+  (`token` / `provenance` / `done`) is byte-identical to v0.27. This byte-identity is no
+  longer only manually verified — a request spec
+  (`spec/requests/enliterator/conversation_federation_spec.rb`) asserts the OFF-path body
+  contains none of the `enl-*` agentic classes and none of the federated function names.
+- **100% inline vanilla, still.** No CDN, npm, gem, asset-pipeline entry, or web-font was
+  added. Serif headings use a system-serif stack; every widget, animation, and citation
+  behavior is inline CSS/JS in the layout and the view (hard rule 1, held).
+- No silent failures: a tool error still becomes a visible terminal step in the trace
+  (rule 3), and the markdown/citation extensions degrade to plain rendering rather than
+  throwing.
+
+## Done = all of:
+- Global design language (`--font-display` serif headings on h1/h2/.section-head, `--fs-display`,
+  `--shadow`/`--shadow-pop`, `--accent-dark`, unified focus/hover, `prefers-reduced-motion`,
+  shared `.stats-strip`); the `enl-*` widget/trace/handoff/citation CSS system (namespaced,
+  inert on the OFF page); four new widget renderers (`collection_overview` / `browse_subjects` /
+  `vocabulary` / `recent_activity`) + JSON-fallback collapsed into `<details>`; the agentic
+  turn model (live trace → answer → sources rail, visible handoff + non-destructive scope
+  banner); `mdToHtml` extension (blockquotes, rules, GitHub tables, nested lists) frozen by
+  `md_golden.test.js`; composer autosize + Enter-submits + typing indicator + dynamic
+  follow-ups; client-correlated citations (sources rail + inline chips) frozen by
+  `cite_logic.test.js`. Federation OFF byte-identical — codified by an off-view regression
+  spec. **All hard constraints held: inline vanilla only; single-shot contract unchanged;
+  no silent failures.**
+- SPEC, README, CLAUDE.md, About colophon.

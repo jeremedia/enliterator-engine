@@ -178,6 +178,42 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.29 — the Reference Desk, made legible (the agentic surface, elevated)**: a pure
+  SURFACE elevation of v0.28's agentic chat + an engine-wide design-language pass. NO loop
+  change, NO new SSE event — the same governed loop, finally shown. (1) Global design
+  language in `app/views/layouts/enliterator/application.html.erb`: system-serif display
+  headings via `--font-display` (applied ONLY to h1/h2/.section-head), `--fs-display` scale,
+  depth tokens `--shadow`/`--shadow-pop`, `--accent-dark` hover token, unified focus/hover,
+  `prefers-reduced-motion` guard, and the About stat-strip promoted to a shared `.stats-strip`
+  component (rippled to Status/Catalog/Atlas/About/Chat). (2) The **`enl-*` widget CSS system**
+  lives in that SAME layout file — card chassis + 8 structured variants, the `.enl-trace*`
+  timeline, `.enl-handoff` divider, `.enl-cite`/`.enl-cite__pop`/`.enl-sources` citation
+  furniture. NAMESPACED so it selects nothing on a federation-OFF page (the CSS is inert, not
+  absent — the gate withholds the MARKUP). (3) Four new widget renderers in
+  `app/services/enliterator/chat/widget.rb`: `collection_overview` (stat-strip),
+  `browse_subjects` (heading index), `vocabulary` (facet rows), `recent_activity` (diary);
+  JSON fallback collapsed into `<details>`. (4) Agentic turn model in
+  `app/views/enliterator/conversation/index.html.erb` (federation-gated): turn = live
+  work-trace (per-tool spinner→✓, human labels, widget in a `<details>`) → answer (lazy, lands
+  under the trace) → sources rail; handoff = visible divider + NON-destructive
+  `#enl-scope-banner` update. (5) Shared `mdToHtml` extended (blockquotes, HRs, GitHub pipe
+  tables, nested lists) — frozen by `spec/javascript/md_golden.test.js` (pre-existing output
+  byte-identical; negative guards). (6) Composer: autosize, Enter-submits/Shift+Enter, typing
+  indicator, dynamic follow-ups from records consulted. (7) Citations: `widget.rb` data attrs
+  + view client-correlates → numbered sources rail (→ `/enliterator/status/<Type>/<id>`) + inline
+  `.enl-cite` chips (hover popover, click record); safety frozen by
+  `spec/javascript/cite_logic.test.js` (text-node-only, never inside an `<a>`). RULES THAT BITE:
+  100% inline vanilla (no CDN/npm/gem/asset-pipeline/web-font — serif is a SYSTEM stack);
+  federation OFF emits NO `enl-*` DOM and NONE of the federated JS (`handleFrameFederated`,
+  `submitQuestionFederated`, `finishTurnFederated`, `annotateCites`, `makeCiteChip`,
+  `buildCitePop`, `wrapFirstMatch`) — single-shot contract (`token`/`provenance`/`done`)
+  byte-identical, now CODIFIED by
+  `spec/requests/enliterator/conversation_federation_spec.rb` (off-view body asserts none of
+  `enl-trace`/`enl-result`/`enl-cite`/`enl-sources`/`enl-handoff` + no federated fn names).
+  DEFERRED (honest): citations are client-correlated today — a structured `sources` SSE event
+  + `DocMetum`→human type-label map is the future; `tool_call_start` payload enrichment also
+  deferred. NOT-in-engine: a decisiveness directive on the CHDS specialist PROMPT (HSDL-side,
+  uncommitted) — deployment grounding, not an engine change. ≥606 examples.
 - **v0.28 — the Reference Desk (Plan A: the agentic core)**: Plan A built under
   `Enliterator::Chat` — `Gateway#converse_with_tools` (optional-multi-tool adapter
   primitive; `ToolTurn` return; Null/Bedrock raise `NotImplementedError` — loud fail on

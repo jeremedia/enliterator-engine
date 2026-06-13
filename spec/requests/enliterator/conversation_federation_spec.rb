@@ -58,4 +58,65 @@ RSpec.describe "Conversation federation", type: :request do
     expect { post "/enliterator/chat/stream", params: { question: "hi" } }.not_to raise_error
     expect(response).to have_http_status(:ok)
   end
+
+  # The OFF-view byte-identity guarantee, codified. The implementers proved by
+  # literal diff that with federation OFF the server-rendered chat page emits
+  # NONE of the agentic surface: no trace/widget/citation DOM, and none of the
+  # federation-only JS. The whole agentic block lives behind a single ERB gate
+  # (`<% if Enliterator.configuration.chat_federation %>`) in the view, so OFF
+  # withholds the MARKUP entirely. This freezes that contract so a future refactor
+  # that leaks federated markup or JS onto the OFF page fails loudly here.
+  #
+  # CRITICAL DISTINCTION — the `enl-*` CSS is intentionally NOT withheld. The
+  # namespaced widget/trace/citation CSS lives in the shared layout's <style>
+  # block and renders on EVERY page (it is `enl-*`-scoped, so it selects nothing
+  # when no element carries those classes — inert by namespace, present by
+  # design; see the layout's own note). So "the agentic surface is absent" means
+  # absent from the DOM and JS, not absent from the inert CSS selector text. We
+  # therefore assert against the page body with the layout <style> block stripped:
+  # what remains is the markup + the page script, which is exactly the surface the
+  # federation gate governs.
+  describe "GET /enliterator/chat with federation OFF (the agentic surface is absent)" do
+    # The agentic DOM classes (trace timeline, tool-result rows, inline citation
+    # chips, sources rail, handoff divider) — every one is emitted as MARKUP only
+    # inside the federation gate.
+    AGENTIC_DOM = %w[enl-trace enl-result enl-cite enl-sources enl-handoff].freeze
+    # The federation-only JS: both the entrypoint shims and the turn-model
+    # helpers. None is defined or called on the OFF path.
+    FEDERATED_JS = %w[
+      handleFrameFederated submitQuestionFederated finishTurnFederated
+      annotateCites makeCiteChip buildCitePop wrapFirstMatch
+    ].freeze
+
+    before { Enliterator.configuration.chat_federation = nil }
+
+    # The page minus the shared layout's inert <style> block (the CSS that is
+    # present-by-design on every page). What's left is the DOM + the page script.
+    def body_without_layout_css
+      response.body.gsub(%r{<style\b[^>]*>.*?</style>}m, "")
+    end
+
+    it "renders the chat page but emits none of the agentic DOM or federated JS" do
+      get "/enliterator/chat"
+      expect(response).to have_http_status(:ok)
+      # POSITIVE: it IS the chat page (the single-shot surface still renders).
+      expect(response.body).to include("Chat with the enliteration")
+      # Sanity: the strip removed the inert CSS (those selectors WERE present in
+      # the layout's <style>), so a leak we catch below is a real DOM/JS leak.
+      expect(response.body).to include(".enl-trace")               # inert CSS, in <style>
+      expect(body_without_layout_css).not_to include(".enl-trace") # ...and only there
+
+      page = body_without_layout_css
+      # NEGATIVE: not one agentic class in the DOM, not one federated function name.
+      AGENTIC_DOM.each do |cls|
+        expect(page).not_to include(cls), "OFF view leaked agentic DOM class #{cls}"
+      end
+      FEDERATED_JS.each do |fn|
+        expect(page).not_to include(fn), "OFF view leaked federated JS #{fn}"
+      end
+      # The federation-only scope-banner id is also withheld (it is added as an
+      # element attribute only inside the gate — never a CSS selector).
+      expect(response.body).not_to include("enl-scope-banner")
+    end
+  end
 end
