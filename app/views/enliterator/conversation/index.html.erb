@@ -63,10 +63,17 @@
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function inline(s) {
-    // s is already HTML-escaped, so the link URL ($2) cannot contain a raw quote.
+    // s is already HTML-escaped, so a link URL cannot contain a raw quote. We
+    // ALSO reject non-http(s)/mailto schemes (javascript:, data:, vbscript:) so
+    // untrusted document text the model may echo into a [label](url) can never
+    // become a live javascript: href. Scheme-less (relative/anchor) URLs pass.
     return s
       .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_m, text, url) {
+        var sch = url.match(/^([a-z][a-z0-9+.\-]*):/i);
+        var ok = !sch || /^(https?|mailto)$/i.test(sch[1]);
+        return ok ? '<a href="' + url + '" target="_blank" rel="noopener">' + text + "</a>" : text;
+      })
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>")
       .replace(/(^|[\s(])_([^_\n]+)_/g, "$1<em>$2</em>");
@@ -607,7 +614,11 @@
     else if (ev === "tool_call_start") {
       var step = traceStep(toolLabel(payload.name), els.activeDesk);
       els.steps.appendChild(step);
-      els.toolSteps[payload.name] = step; // last writer wins for repeats; result resolves it
+      // Keyed by tool name. Safe because the loop emits start→result synchronously
+      // around one Mcp.dispatch, so same-name calls never overlap (the result clears
+      // the key before the next same-name start). If parallel/batched same-name tool
+      // calls ever land, key by a unique call id instead, or the earlier step orphans.
+      els.toolSteps[payload.name] = step;
       thread.scrollTop = thread.scrollHeight;
     }
     else if (ev === "tool_call_result") {
