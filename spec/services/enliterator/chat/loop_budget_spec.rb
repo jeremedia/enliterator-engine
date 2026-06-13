@@ -32,7 +32,7 @@ RSpec.describe Enliterator::Chat::Loop do
     expect(events.last).to eq([ :done, {} ])
   end
 
-  it "turns a gateway/adapter raise mid-loop into a VISIBLE terminal event + :done (never propagates)" do
+  it "turns a gateway/adapter raise mid-loop into a VISIBLE terminal :error event + :done (never propagates)" do
     events = []
     boom = Object.new
     def boom.converse_with_tools(**) = raise(StandardError, "gateway 500")
@@ -40,8 +40,7 @@ RSpec.describe Enliterator::Chat::Loop do
       described_class.new(agent: Enliterator::Chat.frontdesk, llm: boom,
                           sink: ->(e, d) { events << [ e, d ] }).run("hi")
     }.not_to raise_error
-    err = events.find { |e| e.first == :token && e.last[:t].to_s.match?(/error/i) } ||
-          events.find { |e| e.first == :tool_call_error }
+    err = events.find { |e| e.first == :error }
     expect(err).not_to be_nil
     expect(events.last).to eq([ :done, {} ])
   end
