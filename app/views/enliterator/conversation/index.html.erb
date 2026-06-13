@@ -745,13 +745,19 @@
       }
       s.className = "enl-trace__step enl-trace__step--done";
       delete els.toolSteps[payload.name];
-      var det = document.createElement("details");
-      var sum = document.createElement("summary"); sum.textContent = "view";
       var body = document.createElement("div"); body.innerHTML = payload.html || "";
-      det.appendChild(sum); det.appendChild(body);
-      s.appendChild(det);
+      harvestCites(els, body); // v0.29: register any [data-enl-id] records (no-op when empty)
+      // Only offer "view" when the widget actually rendered something. An empty
+      // result (e.g. a subject lookup that matched nothing) yields a blank widget —
+      // suppress the disclosure rather than show an empty box; the ✓ label already
+      // says the step ran.
+      if (body.textContent.trim() !== "") {
+        var det = document.createElement("details");
+        var sum = document.createElement("summary"); sum.textContent = "view";
+        det.appendChild(sum); det.appendChild(body);
+        s.appendChild(det);
+      }
       els.sourceCount++;
-      harvestCites(els, body); // v0.29: register any [data-enl-id] records from this widget
       thread.scrollTop = thread.scrollHeight;
     }
     else if (ev === "tool_call_error") {
@@ -796,6 +802,8 @@
 
   function finishTurnFederated(els, state, q) {
     if (state.timer) { clearTimeout(state.timer); state.timer = null; }
+    if (els.elapsedTimer) { clearInterval(els.elapsedTimer); els.elapsedTimer = null; }
+    var elapsed = els.startedAt ? Math.round((Date.now() - els.startedAt) / 1000) : null;
     // If an error card was rendered this turn it IS the terminal content — do NOT
     // overwrite it with the (empty) answer flush. Otherwise render the answer.
     if (!els.errored) {
@@ -820,7 +828,8 @@
     // Collapse the trace to its head summary; the head re-expands on click.
     els.trace.setAttribute("data-state", "done");
     var n = els.sourceCount;
-    els.head.textContent = "Worked through " + n + " source" + (n === 1 ? "" : "s") + " ▸";
+    els.head.textContent = "Worked through " + n + " source" + (n === 1 ? "" : "s") +
+                           (elapsed != null ? " · " + elapsed + "s" : "") + " ▸";
     els.head.addEventListener("click", function () { els.trace.classList.toggle("is-open"); });
     history.push({ role: "user", content: q });
     history.push({ role: "assistant", content: state.text });
@@ -857,6 +866,18 @@
     var state = { text: "", timer: null };
     input.value = ""; resetTextarea(); sendBusy(true);
 
+    // Thinking indicator: a live elapsed-seconds counter in the trace head while
+    // the desk works, so a long turn (Bedrock calls run ~20s each) reads as "still
+    // going" rather than "broken". Cleared in finishTurnFederated / the catch.
+    els.startedAt = Date.now();
+    var tick = function () {
+      if (els.head && els.trace.getAttribute("data-state") === "working") {
+        els.head.textContent = "Working… " + Math.round((Date.now() - els.startedAt) / 1000) + "s";
+      }
+    };
+    tick(); // show "Working… 0s" immediately (no 1s blank)
+    els.elapsedTimer = setInterval(tick, 1000);
+
     var body = new FormData();
     body.append("question", q);
     body.append("history", JSON.stringify(history));
@@ -879,6 +900,7 @@
         return pump();
       })
       .catch(function () {
+        if (els.elapsedTimer) { clearInterval(els.elapsedTimer); els.elapsedTimer = null; }
         // v0.30: a transport failure has no server payload — render a
         // message-only card (which is correct: no detail is available client-side).
         renderErrorCard(els, { message: "I lost the connection — please try again." });
