@@ -103,6 +103,22 @@
     }
   }
 
+  // v0.34: follow-the-stream auto-scroll. The PAGE scrolls (not #thread — it has no
+  // overflow), so we scroll the window. autoScroll follows the bottom while content
+  // streams; the moment the patron scrolls UP we stop (so they can read back), and
+  // returning to the bottom re-engages. A new turn re-enables it (set in submitQuestion).
+  var autoScroll = true;
+  var SCROLL_SLOP = 80; // px from the bottom still counted as "at the bottom"
+  function nearBottom() {
+    return (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - SCROLL_SLOP);
+  }
+  function followStream() { if (autoScroll) window.scrollTo(0, document.documentElement.scrollHeight); }
+  // Recompute on scroll (programmatic scroll keeps us at the bottom → stays engaged;
+  // a user scroll-up moves away → disengages; scrolling back re-engages). A wheel-up
+  // gesture disengages immediately, so a render mid-gesture can't yank the patron down.
+  window.addEventListener("scroll", function () { autoScroll = nearBottom(); }, { passive: true });
+  window.addEventListener("wheel", function (e) { if (e.deltaY < 0) autoScroll = false; }, { passive: true });
+
   // --- compact, safe markdown -> HTML (no deps). Escapes first, then formats the
   //     subset LLMs emit: headers, bold/italic, inline code, blockquotes, rules,
   //     bullet/numbered lists (incl. nested), pipe tables, links, paragraphs.
@@ -260,14 +276,14 @@
     el.className = "bubble user";
     el.textContent = text;
     thread.appendChild(el);
-    thread.scrollTop = thread.scrollHeight;
+    followStream();
   }
   function assistantBubble() {
     var el = document.createElement("div"); el.className = "bubble assistant";
     var md = document.createElement("div"); md.className = "md"; md.textContent = "…";
     var prov = document.createElement("div"); prov.className = "provenance";
     el.appendChild(md); el.appendChild(prov);
-    thread.appendChild(el); thread.scrollTop = thread.scrollHeight;
+    thread.appendChild(el); followStream();
     return { md: md, prov: prov };
   }
 
@@ -296,7 +312,7 @@
     state.timer = setTimeout(function () {
       state.timer = null;
       els.md.innerHTML = mdToHtml(state.text);
-      thread.scrollTop = thread.scrollHeight;
+      followStream();
     }, 70);
   }
 
@@ -333,6 +349,7 @@
   function submitQuestion(q) {
     if (!q) return;          // guard — don't flip the chrome on an empty submit
     enterChatting();         // recede the orientation chrome (both paths, before the federation early-return)
+    autoScroll = true;       // a new turn re-engages follow-the-stream (even if the patron had scrolled up)
 <% if Enliterator.configuration.chat_federation %>
     return submitQuestionFederated(q);
 <% end %>
@@ -439,17 +456,21 @@
     }
   }
 
-  // The sources rail: one numbered item per consulted record. Empty registry →
-  // leave .enl-sources empty (no orphan header). Built with textContent + DOM
+  // The sources rail: one numbered item per consulted record, inside a CLOSED
+  // <details> by default — the list can run long (every record the desk touched),
+  // so it recedes until asked for. Summary carries the count. Empty registry →
+  // leave .enl-sources empty (no orphan disclosure). Built with textContent + DOM
   // nodes (never innerHTML of record data) — escaping by construction.
   function renderSourcesRail(els) {
     var sources = els.sources;
     if (!sources || !els.cites.list.length) return; // empty → no rail (clean, rule 3)
     sources.textContent = "";
-    var head = document.createElement("div");
+    var box = document.createElement("details");
+    box.className = "enl-sources__disclosure"; // closed by default (no `open`)
+    var head = document.createElement("summary");
     head.className = "enl-sources__head";
-    head.textContent = "Sources consulted";
-    sources.appendChild(head);
+    head.textContent = "Sources consulted (" + els.cites.list.length + ")";
+    box.appendChild(head);
     els.cites.list.forEach(function (rec, idx) {
       var item = document.createElement("div");
       item.className = "enl-sources__item";
@@ -465,8 +486,9 @@
       item.appendChild(num);
       item.appendChild(link);
       item.appendChild(type);
-      sources.appendChild(item);
+      box.appendChild(item);
     });
+    sources.appendChild(box);
   }
 
   // Inline chips: post-process the rendered answer to superscript a numbered
@@ -656,7 +678,7 @@
     } else {
       thread.appendChild(card);
     }
-    thread.scrollTop = thread.scrollHeight;
+    followStream();
     return card;
   }
 
@@ -685,7 +707,7 @@
     // BETWEEN the trace and the sources zone.
     turn.appendChild(sources);
     thread.appendChild(turn);
-    thread.scrollTop = thread.scrollHeight;
+    followStream();
     return { turn: turn, trace: trace, head: head, steps: steps, sources: sources };
   }
 
@@ -704,7 +726,7 @@
     bubble.appendChild(md); bubble.appendChild(prov);
     els.trace.insertAdjacentElement("afterend", bubble);
     els.md = md; els.prov = prov;
-    thread.scrollTop = thread.scrollHeight;
+    followStream();
   }
 
   function traceStep(label, activeDesk) {
@@ -766,7 +788,7 @@
       // the key before the next same-name start). If parallel/batched same-name tool
       // calls ever land, key by a unique call id instead, or the earlier step orphans.
       els.toolSteps[payload.name] = step;
-      thread.scrollTop = thread.scrollHeight;
+      followStream();
     }
     else if (ev === "tool_call_result") {
       var s = els.toolSteps[payload.name];
@@ -789,7 +811,7 @@
         s.appendChild(det);
       }
       els.sourceCount++;
-      thread.scrollTop = thread.scrollHeight;
+      followStream();
     }
     else if (ev === "tool_call_error") {
       var es = els.toolSteps[payload.name];
@@ -817,7 +839,7 @@
         thint.textContent = "→ " + payload.hint;
         es.appendChild(thint);
       }
-      thread.scrollTop = thread.scrollHeight;
+      followStream();
     }
     else if (ev === "handoff") {
       var to = payload.to || "another";
@@ -826,7 +848,7 @@
       els.steps.appendChild(hand);
       els.activeDesk = to;
       noteActiveDesk(to);
-      thread.scrollTop = thread.scrollHeight;
+      followStream();
     }
     // ev === "done" is handled by the reader-done path in submitQuestionFederated.
   }
@@ -1036,7 +1058,7 @@
       wirePrompt(btn);
       promptsEl.appendChild(btn);
     });
-    thread.scrollTop = thread.scrollHeight;
+    followStream();
   }
 <% end %>
 })();
