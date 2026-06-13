@@ -163,6 +163,22 @@ module Enliterator
     # routing through the Chat::Agent registry.
     attr_accessor :chat_federation
 
+    # ---- v0.30 Actionable error reporting --------------------------------
+
+    # 3-state switch for surfacing ACTIONABLE error detail (exception
+    # class/message, where, a remediation hint) to the chat frontend:
+    #   nil   = auto (on in dev — see error_detail_auto)
+    #   true  = force on
+    #   false = force off
+    # Read through error_detail?, never directly. The auto predicate is
+    # host-overridable via error_detail_auto= (below) for a host that keeps its
+    # error policy strictly env-free.
+    attr_accessor :error_detail
+
+    # Optional host override for the auto predicate (a callable returning truthy
+    # when detail should show). nil ⇒ the default env guard (Rails.env.development?).
+    attr_writer :error_detail_auto
+
     # ---- v0.5 Silent-failure hardening -----------------------------------
 
     # When false (the default), a real tend that resolves to the inert Null LLM
@@ -189,6 +205,7 @@ module Enliterator
       @escalation_threshold = 0.6
       @suggestion_sink = nil
       @chat_federation = nil
+      @error_detail = nil
       @allow_null_llm = false
       @conversation_tier = nil
       @considerer_tier = nil
@@ -211,6 +228,19 @@ module Enliterator
 
     def logger
       @logger || (defined?(Rails) && Rails.respond_to?(:logger) ? Rails.logger : nil)
+    end
+
+    # Whether to surface ACTIONABLE error detail (exception class/message, where, a
+    # remediation hint) to the chat frontend. 3-state: nil = auto (on in dev), true =
+    # force on, false = force off. The auto predicate is host-overridable via
+    # error_detail_auto= so a strictly env-policy-free host can replace it.
+    def error_detail?
+      return !!@error_detail unless @error_detail.nil?
+      !!error_detail_auto.call
+    end
+
+    def error_detail_auto
+      @error_detail_auto || -> { defined?(Rails) && Rails.respond_to?(:env) && Rails.env.development? }
     end
   end
 
