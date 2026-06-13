@@ -1,0 +1,17 @@
+{
+  "atx headers h1..h6": "<h2>One</h2><h3>Two</h3><h4>Three</h4><h5>Four</h5><h6>Five</h6><h6>Six</h6>",
+  "bold and italic (star + underscore)": "<p>A <strong>bold</strong> word, an <em>em</em> word, and an <em>under</em> word.</p>",
+  "inline code": "<p>Call <code>tend!(facet:)</code> to begin.</p>",
+  "a markdown link": "<p>See <a href=\"https://example.com/about\" target=\"_blank\" rel=\"noopener\">the about page</a> for the thesis.</p>",
+  "unordered list (dash and star)": "<ul><li>first</li><li>second</li><li>third</li></ul>",
+  "ordered list": "<ol><li>alpha</li><li>beta</li><li>gamma</li></ol>",
+  "paragraphs separated by a blank line": "<p>First paragraph here.</p><p>Second paragraph here.</p>",
+  "mixed: header, paragraph, list, paragraph": "<h3>Findings</h3><p>The collection shows three themes.</p><ul><li>theme one</li><li>theme two</li></ul><p>And a closing line.</p>",
+  "html-significant characters get escaped": "<p>Use &lt;script&gt; &amp; &quot;quotes&quot; and a &lt; b &gt; c to test escaping.</p>",
+  "list immediately following a paragraph (no blank line)": "<p>Here are the items:</p><ul><li>a</li><li>b</li></ul>",
+  "ordered then unordered (list type switch)": "<ol><li>one</li><li>two</li></ol><ul><li>bullet</li><li>bullet two</li></ul>",
+  "empty string": "",
+  "only whitespace lines": "",
+  "bold containing escaped angle in text": "<p><strong>&lt;b&gt;not html&lt;/b&gt;</strong> stays literal.</p>",
+  "link text with inline code-ish and asterisks (no nesting expected)": "<p>A <a href=\"https://x.test\" target=\"_blank\" rel=\"noopener\">link with <em>stars</em></a> here.</p>"
+}
