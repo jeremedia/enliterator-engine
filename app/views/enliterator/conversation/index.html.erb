@@ -415,6 +415,22 @@
   };
   function toolLabel(name) { return TOOL_LABELS[name] || ("Consulting " + (name || "a tool")); }
 
+  // v0.35: return the displayable prose — everything before the %%FOLLOWUPS%% block.
+  // During streaming the sentinel arrives token-by-token, so also withhold any trailing
+  // run that is a prefix of the sentinel — otherwise "%%FOLL" would flash before the rest
+  // arrives. The final flush passes the COMPLETE text, so nothing is permanently lost.
+  // Self-contained (the sentinel literal lives inside) so the JS golden can lift it alone.
+  function proseOf(text) {
+    var S = "%%FOLLOWUPS%%";
+    var i = text.indexOf(S);
+    if (i !== -1) return text.slice(0, i);
+    var max = Math.min(text.length, S.length - 1);
+    for (var k = max; k > 0; k--) {
+      if (text.slice(text.length - k) === S.slice(0, k)) return text.slice(0, text.length - k);
+    }
+    return text;
+  }
+
   // ── Citations: the "infrastructure is the argument" surface ──────────────
   // A grounded answer connects to the records the desk actually consulted. As
   // tool widgets stream into the trace, every [data-enl-id] element registers a
