@@ -406,6 +406,10 @@
     /* ── Citations (client-JS target) ──────────────────────────────────────── */
     .enl-cite { font: inherit; vertical-align: super; font-size: .7em; line-height: 0; min-width: 16px; height: 16px; padding: 0 4px; margin: 0 1px; border: 1px solid var(--accent-soft); border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent); cursor: pointer; font-variant-numeric: tabular-nums; }
     .enl-cite:hover, .enl-cite:focus-visible { background: var(--accent); color: #fff; outline: none; }
+    /* v0.32: a navigable phrase in the answer — click populates the composer with a
+       follow-up question (distinct from the superscript cite, which opens the record). */
+    .enl-ask { cursor: pointer; color: inherit; border-bottom: 1px dashed var(--accent); border-radius: 2px; }
+    .enl-ask:hover, .enl-ask:focus-visible { background: var(--accent-soft); outline: none; }
     .enl-cite__pop { position: absolute; z-index: 20; max-width: 22rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-pop); padding: var(--s3); font-size: var(--fs-sm); line-height: 1.45; }
     .enl-cite__pop .label { font-weight: 600; display: block; margin-bottom: var(--s1); }
     .enl-cite__pop .type { font-size: var(--fs-xs); color: var(--muted); }
