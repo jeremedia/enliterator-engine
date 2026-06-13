@@ -111,8 +111,21 @@ mount Enliterator::Engine => "/enliterator"
   **Reference Desk** — a Frontdesk that triages and routes to grounded specialists, a
   governed loop that enforces the allow-list and shows every tool call inline as a
   provenance widget, and handoff events so the patron sees which desk is answering.
-  The public accountless desk (Plan B — sessionless, link-token, rate-limited) is the
-  forthcoming horizon.
+  In **v0.29** that desk is made *legible*: a federated turn reads top-to-bottom as a
+  narrative — a **live work-trace** (one row per tool call, status animating spinner → ✓,
+  human labels, each tool's structured widget tucked into a `<details>`), then the
+  **answer**, then a **"Sources consulted" rail** linking each consulted record to its
+  status entry. The prose carries **inline numbered citation chips** (hover → a popover
+  with the record's label and type, click → the record). A handoff is a visible divider
+  plus a non-destructive scope-banner update. The composer autosizes, submits on Enter
+  (Shift+Enter for a newline), shows a typing indicator, and offers follow-up suggestions
+  derived from the records actually consulted. The whole engine also lifts into a scholarly
+  visual register in v0.29 — system-serif display headings, restrained depth, and a shared
+  stat-strip across Status / Catalog / Atlas / About / Chat — with no CDN, npm, gem, or
+  web-font added (100% inline vanilla, the standing hard rule). Federation OFF emits none of
+  the trace/widget/citation DOM or JS; the single-shot stream contract is byte-identical and
+  guarded by a regression spec. The public accountless desk (Plan B — sessionless,
+  link-token, rate-limited) is the forthcoming horizon.
 - `/enliterator/suggestions` — the governed-vocabulary review queue: when the model proposes a
   term a facet's contract doesn't cover, a curator approves it, maps it onto an existing key
   (a synonym), or rejects it. The ontology tends itself. The queue ranks by accumulated **pressure**
