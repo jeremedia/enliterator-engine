@@ -136,7 +136,10 @@ module Enliterator
             emit(:tool_call_result, name: call[:name], html: Enliterator::Chat::Widget.render(call[:name], result))
             messages << tool_result_message(call, result)
           rescue StandardError => e
-            tool_error(call, messages, "couldn't consult #{call[:name]}: #{e.message}", error: e)
+            # Floor message is STATIC (no e.message) so a tool failure never leaks the
+            # raw exception in prod via :tool_call_error — the exception goes ONLY into
+            # the error_detail-gated detail/hint (built from `error:` inside tool_error).
+            tool_error(call, messages, "couldn't consult #{call[:name]}.", error: e)
           end
         end
       end

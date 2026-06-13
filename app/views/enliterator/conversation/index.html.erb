@@ -755,7 +755,9 @@
     // mdToHtml flush so they see the complete answer. Order: rail first (so the
     // chips can index into the same numbered list).
     renderSourcesRail(els);
-    annotateCites(els);
+    // Skip inline-chip annotation on an error turn — els.md holds the error card,
+    // not answer prose, so there's nothing to correlate (and nothing to corrupt).
+    if (!els.errored) annotateCites(els);
     // Any tool step still spinning (no result arrived) resolves to done so the
     // trace never strands a spinner (rule 3: no silent in-progress state).
     Object.keys(els.toolSteps).forEach(function (n) {

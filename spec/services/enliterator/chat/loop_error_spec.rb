@@ -101,6 +101,9 @@ RSpec.describe Enliterator::Chat::Loop do
       expect(err).not_to be_nil
       expect(err.last).not_to have_key(:detail)
       expect(err.last).not_to have_key(:hint)
+      # the leak fix: the static floor message NEVER carries the raw exception in prod
+      expect(err.last[:message]).to eq("couldn't consult search.")
+      expect(err.last[:message]).not_to match(/ReadTimeout|timed out/)
       expect(events.last).to eq([ :done, {} ])
     end
   end
