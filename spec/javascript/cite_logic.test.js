@@ -29,6 +29,10 @@ function lift(name) {
 const factory = new Function(
   "SOURCE_PATH_BASE", "encodeURIComponent", "document", "NodeFilter", "window",
   lift("citeUrl") + "\n" + lift("wrapFirstMatch") + "\n" + lift("makeCiteChip") + "\n" + lift("buildCitePop") + "\n" +
+  // v0.32: wrapFirstMatch now wraps the match via makeAskLink. Lift it too; its
+  // click handler (go → askInComposer) is never invoked here, so input/autosize
+  // need not be provided.
+  lift("makeAskLink") + "\n" +
   "return { citeUrl: citeUrl, wrapFirstMatch: wrapFirstMatch };"
 );
 
@@ -73,6 +77,11 @@ function makeDom() {
   Element.prototype.setAttribute = function (k, v) { this.attrs[k] = v; };
   Element.prototype.getAttribute = function (k) { return this.attrs[k]; };
   Element.prototype.addEventListener = function (e, f) { (this._listeners[e] = this._listeners[e] || []).push(f); };
+  Element.prototype.replaceChild = function (newN, oldN) {
+    const idx = this.childNodes.indexOf(oldN);
+    if (idx !== -1) { newN.parentNode = this; this.childNodes.splice(idx, 1, newN); oldN.parentNode = null; }
+    return oldN;
+  };
   Object.defineProperty(Element.prototype, "textContent", {
     get() { return this.childNodes.map(c => c.nodeType === 3 ? c.nodeValue : c.textContent).join(""); },
     set(v) { this.childNodes = [ Object.assign(new Text(v), { parentNode: this }) ]; }
@@ -80,11 +89,13 @@ function makeDom() {
   // closest: walk up matching tagName 'a' or className containing enl-cite
   Element.prototype.closest = function (sel) {
     let n = this;
-    const wantA = sel.indexOf("a") !== -1, wantCite = sel.indexOf("enl-cite") !== -1;
+    const wantA = sel.indexOf("a") !== -1, wantCite = sel.indexOf("enl-cite") !== -1,
+          wantAsk = sel.indexOf("enl-ask") !== -1;
     while (n) {
       if (n.nodeType === 1) {
         if (wantA && n.tagName === "A") return n;
         if (wantCite && (n.className || "").indexOf("enl-cite") !== -1) return n;
+        if (wantAsk && (n.className || "").indexOf("enl-ask") !== -1) return n;
       }
       n = n.parentNode;
     }
@@ -122,6 +133,11 @@ function makeDom() {
   // the original text is intact, just split around the chip
   ok(root.textContent === "see United States Coast Guard1 here",
      "text preserved, chip placed immediately after the match");
+  // v0.32: the matched label is now ALSO wrapped as an "ask about this" affordance
+  const asks = root.childNodes.filter(n => n.nodeType === 1 && (n.className || "").indexOf("enl-ask") !== -1);
+  ok(asks.length === 1, "the matched label is wrapped as one enl-ask affordance");
+  ok(asks[0].textContent === "United States Coast Guard", "ask span carries the matched text (original case)");
+  ok(asks[0].getAttribute("title").indexOf("United States Coast Guard") !== -1, "ask carries the follow-up question");
 
   // never matches inside a link
   const dom2 = makeDom();

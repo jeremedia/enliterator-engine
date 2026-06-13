@@ -11,6 +11,17 @@ RSpec.describe Enliterator::Chat::Widget do
     expect(html).to include("12")
   end
 
+  it "renders search hits emitted under :records (the real tool contract) with data-enl-* identity" do
+    # The search/subject_search tools return hits under :records — render_search MUST
+    # read that key (it previously read :results → empty widget → no cites/asks).
+    result = { records: [ { label: "Port Security Grant Program", type: "DocMetum", id: "9",
+                            entry: "/enliterator/status/DocMetum/9", excerpt: "evaluates the PSGP" } ] }
+    html = described_class.render("search", result)
+    expect(html).to include("Port Security Grant Program")
+    expect(html).to include("evaluates the PSGP")
+    expect(html).to include('data-enl-id="9"')   # harvestable → becomes a citation + ask-link
+  end
+
   it "renders quote with the located passage and a not-located fallback flag" do
     located = described_class.render("quote", { located: true, passage: "the tabulation showed" })
     expect(located).to include("the tabulation showed")

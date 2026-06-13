@@ -116,7 +116,11 @@ module Enliterator
 
       # --- search / subject_search (same card-list shape) ---------------------
       def render_search(result)
-        cards = Array(symize(result)[:results]).map do |item|
+        # The search/subject_search tools emit hits under :records (NOT :results) —
+        # reading the wrong key rendered an empty widget, so search-surfaced records
+        # never cited/linked (only record_entry did). Read :records, :results fallback.
+        r = symize(result)
+        cards = Array(r[:records] || r[:results]).map do |item|
           i = symize(item)
           counts = [ ("#{h(i[:claim_count])} claims" if i[:claim_count]),
                      ("#{h(i[:visit_count])} visits" if i[:visit_count]) ].compact.join(" · ")

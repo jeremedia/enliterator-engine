@@ -510,11 +510,16 @@
     while ((node = walker.nextNode())) {
       var parent = node.parentNode;
       if (!parent) continue;
-      if (parent.closest && parent.closest("a, .enl-cite")) continue; // never inside a link/chip
+      if (parent.closest && parent.closest("a, .enl-cite, .enl-ask")) continue; // never inside a link/chip/ask
       var hay = node.nodeValue;
       var at = hay.toLowerCase().indexOf(lc);
       if (at === -1) continue;
-      var after = node.splitText(at + needle.length); // node now ends at the match; `after` is the tail
+      // Isolate the matched text as its own node, then (v0.32) turn it into an
+      // "ask about this" affordance and keep the citation superscript right after.
+      var match = node.splitText(at);              // `match` begins at the matched text
+      var after = match.splitText(needle.length);  // `after` is the text after; `match` IS the matched text
+      var ask = makeAskLink(match.nodeValue, 'Tell me more about "' + (cand.rec.label || match.nodeValue) + '".');
+      parent.replaceChild(ask, match);
       var chip = makeCiteChip(cand);
       parent.insertBefore(chip, after);
       return true;
@@ -566,6 +571,32 @@
     pop.appendChild(label);
     pop.appendChild(type);
     return pop;
+  }
+
+  // v0.32 (Stage A): conversation navigation. A navigable phrase in the answer —
+  // click POPULATES the composer with a follow-up question (the patron edits/sends;
+  // never auto-send, per the design). The phrase text is set via textContent (record
+  // data → never innerHTML). Stage C will reuse makeAskLink for the model's reasoned
+  // topic/theme phrases too; this is the shared affordance.
+  function askInComposer(question) {
+    input.value = question;
+    autosize();            // grow the composer to fit the populated question
+    input.focus();
+    input.scrollIntoView({ block: "nearest" });
+  }
+  function makeAskLink(text, question) {
+    var span = document.createElement("span");
+    span.className = "enl-ask";
+    span.textContent = text;                 // matched answer text — textContent, XSS-safe
+    span.setAttribute("role", "button");
+    span.setAttribute("tabindex", "0");
+    span.setAttribute("title", "Ask: " + question);
+    function go() { askInComposer(question); }
+    span.addEventListener("click", go);
+    span.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+    });
+    return span;
   }
 
   // ── Actionable error card (v0.30) ───────────────────────────────────────
