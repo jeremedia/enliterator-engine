@@ -514,6 +514,63 @@
     return pop;
   }
 
+  // ── Actionable error card (v0.30) ───────────────────────────────────────
+  // Render a structured :error payload as a readable card. The server sends
+  // {message:} always, plus {detail:, where:, hint:} when error_detail is on
+  // (dev). EVERY payload value is written via textContent — NEVER innerHTML —
+  // so an injected <script>/<img onerror> in any field is inert text, not live
+  // markup (the payload is server JSON but treated as untrusted; hard rule 2).
+  // The card lands where the answer renders: if the turn already has an answer
+  // bubble (els.md) we append into it (so a model-call error sits in the answer
+  // position, below the trace); otherwise we open the answer bubble and use it;
+  // a bare fallback appends to the turn so the card is always visible (rule 3).
+  function renderErrorCard(els, payload) {
+    payload = payload || {};
+    var card = document.createElement("div");
+    card.className = "enl-error";
+
+    var msg = document.createElement("div");
+    msg.className = "enl-error__msg";
+    msg.textContent = payload.message || "Something went wrong";
+    card.appendChild(msg);
+
+    if (payload.detail) {
+      var detail = document.createElement("div");
+      detail.className = "enl-error__detail";
+      detail.textContent = payload.detail; // "Class: message" — textContent, inert
+      card.appendChild(detail);
+    }
+    if (payload.where) {
+      var where = document.createElement("div");
+      where.className = "enl-error__where";
+      where.textContent = payload.where; // "model call · CHDS Theses · bedrock-sonnet"
+      card.appendChild(where);
+    }
+    if (payload.hint) {
+      var hint = document.createElement("div");
+      hint.className = "enl-error__hint";
+      hint.textContent = "→ " + payload.hint; // the actionable remediation
+      card.appendChild(hint);
+    }
+
+    // Placement: prefer the answer container (so the error replaces/sits where
+    // the answer would). ensureAnswer opens the bubble + sets els.md if absent;
+    // if even that isn't available, fall back to the turn.
+    if (typeof ensureAnswer === "function" && !els.md) ensureAnswer(els);
+    if (els.md) {
+      // The answer bubble may still hold the typing-indicator placeholder
+      // (innerHTML set in ensureAnswer); clear it so the card stands alone.
+      els.md.textContent = "";
+      els.md.appendChild(card);
+    } else if (els.turn) {
+      els.turn.appendChild(card);
+    } else {
+      thread.appendChild(card);
+    }
+    thread.scrollTop = thread.scrollHeight;
+    return card;
+  }
+
   // Build the ordered turn container. style="position:relative" gives a later
   // task's citation popover a positioned ancestor.
   function buildTurn() {
@@ -607,9 +664,10 @@
       renderProvenance(els.prov, payload.records, payload.context);
     }
     else if (ev === "error") {
-      ensureAnswer(els);
-      state.text += "\n\n_[" + (payload.message || "error") + "]_";
-      scheduleRender(els, state);
+      // v0.30: render the structured payload as an actionable card (replaces the
+      // old inline-italic-into-the-answer). message-only in prod, +detail/where/
+      // hint in dev — all via textContent (renderErrorCard).
+      renderErrorCard(els, payload);
     }
     else if (ev === "tool_call_start") {
       var step = traceStep(toolLabel(payload.name), els.activeDesk);
@@ -649,6 +707,21 @@
       // surface the actual message in the label (rule 3: no silent failure)
       es.querySelector(".enl-trace__label").textContent =
         toolLabel(payload.name) + " — " + (payload.message || "tool error");
+      // v0.30: when error_detail is on, a failed tool in the trace shows WHY —
+      // the exception detail and the actionable hint, appended under the step.
+      // textContent only (payload values are untrusted; XSS-safe).
+      if (payload.detail) {
+        var tdet = document.createElement("div");
+        tdet.className = "enl-error__detail";
+        tdet.textContent = payload.detail;
+        es.appendChild(tdet);
+      }
+      if (payload.hint) {
+        var thint = document.createElement("div");
+        thint.className = "enl-error__hint";
+        thint.textContent = "→ " + payload.hint;
+        es.appendChild(thint);
+      }
       thread.scrollTop = thread.scrollHeight;
     }
     else if (ev === "handoff") {
@@ -740,8 +813,9 @@
         return pump();
       })
       .catch(function () {
-        ensureAnswer(els);
-        els.md.innerHTML = mdToHtml(state.text + "\n\n_[connection error]_");
+        // v0.30: a transport failure has no server payload — render a
+        // message-only card (which is correct: no detail is available client-side).
+        renderErrorCard(els, { message: "I lost the connection — please try again." });
         els.trace.setAttribute("data-state", "done");
         sendBusy(false);
       });

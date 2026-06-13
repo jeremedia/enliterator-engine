@@ -177,7 +177,7 @@ RSpec.describe "Conversation federation", type: :request do
     # helpers. None is defined or called on the OFF path.
     FEDERATED_JS = %w[
       handleFrameFederated submitQuestionFederated finishTurnFederated
-      annotateCites makeCiteChip buildCitePop wrapFirstMatch
+      annotateCites makeCiteChip buildCitePop wrapFirstMatch renderErrorCard
     ].freeze
 
     before { Enliterator.configuration.chat_federation = nil }
