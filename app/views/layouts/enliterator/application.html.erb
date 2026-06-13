@@ -64,6 +64,12 @@
                                  can report "this collection, right now"
          .muted .samples .mono .warn .big   typographic utilities
 
+       REFERENCE DESK (v0.29)
+         The enl-* widget / trace / citation system lives at the BOTTOM of this
+         block (chat tool-widgets, the working-trace timeline, inline citations).
+         Composed from the tokens; enl-*-scoped so it selects nothing off the chat
+         surface even though it ships on every page.
+
        Page-specific styles still in their views (by design): About (TOC +
        prose grid), Chat (.thread/.bubble/.prompts/.ask — also JS hooks),
        Heartbeat (.pulse-* monitor — also JS hooks).
@@ -263,6 +269,144 @@
        and low-risk, but the preference is a deliverable, so respect it.) */
     @media (prefers-reduced-motion: reduce) {
       a, .field, .btn, button.prompt, .ask button { transition: none; }
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       REFERENCE DESK — enl-* widget / trace / citation system (v0.29)
+       ────────────────────────────────────────────────────────────────────────
+       The chat tool-widgets, the working-trace timeline, and the inline citation
+       affordances. Composed entirely from the :root tokens above. Every selector
+       is enl-*-scoped (or the shared stat-strip / .enl-accuracy / .facet-chip
+       classes defined earlier) so this block selects NOTHING outside the chat
+       surface — it renders on every page (shared layout) but is inert with
+       federation off. Widget HTML is emitted by app/services/enliterator/chat/
+       widget.rb; the trace/citation/sources/typing/handoff classes are targets
+       for the later client-JS (no server renderer emits them yet).
+       Only literal allowed: #fff (white-on-accent text). Everything else: tokens.
+       ════════════════════════════════════════════════════════════════════════ */
+
+    /* ── Reference Desk: working trace (client-JS target) ──────────────────── */
+    .enl-trace { border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); margin: 0 0 var(--s3); overflow: hidden; }
+    .enl-trace__head { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); font-size: var(--fs-sm); color: var(--muted); font-weight: 600; cursor: default; }
+    .enl-trace[data-state="done"] .enl-trace__head { cursor: pointer; }
+    .enl-trace[data-state="done"] .enl-trace__steps { display: none; }
+    .enl-trace[data-state="done"].is-open .enl-trace__steps { display: block; }
+    .enl-trace__steps { padding: 0 var(--s3) var(--s2); display: flex; flex-direction: column; gap: var(--s1); }
+    /* NOTE: trace steps are .enl-trace__step (NOT .enl-step — that belongs to the trajectory widget, below) */
+    .enl-trace__step { display: flex; align-items: flex-start; gap: var(--s2); font-size: var(--fs-sm); color: var(--ink); padding: var(--s1) 0; }
+    .enl-trace__step .enl-trace__dot { flex: none; width: 14px; height: 14px; margin-top: 2px; border-radius: var(--r-pill); border: 2px solid var(--line); }
+    .enl-trace__step--working .enl-trace__dot { border-color: var(--accent); border-top-color: transparent; animation: enl-spin .8s linear infinite; }
+    .enl-trace__step--done .enl-trace__dot { border-color: var(--accent); background: var(--accent); position: relative; }
+    .enl-trace__step--done .enl-trace__dot::after { content: "✓"; position: absolute; inset: 0; color: #fff; font-size: 9px; line-height: 10px; text-align: center; }
+    .enl-trace__step--error .enl-trace__dot { border-color: var(--warn); background: var(--warn); }
+    .enl-trace__label { flex: 1; }
+    .enl-trace__label .desk { color: var(--muted); }
+    .enl-trace__step > details { flex-basis: 100%; margin-top: var(--s1); }
+    .enl-trace__step > details > summary { cursor: pointer; color: var(--accent); font-size: var(--fs-xs); list-style: none; }
+    .enl-handoff { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-xs); color: var(--accent); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin: var(--s2) 0; }
+    .enl-handoff::before, .enl-handoff::after { content: ""; flex: 1; height: 1px; background: var(--accent-soft); }
+    .enl-typing { display: inline-flex; gap: 4px; }
+    .enl-typing span { width: 6px; height: 6px; border-radius: var(--r-pill); background: var(--muted); opacity: .4; }
+
+    /* ── Widget chassis + structured variants ──────────────────────────────── */
+    .enl-widget { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); padding: var(--s3); margin: var(--s2) 0; font-size: var(--fs-sm); }
+    .enl-widget__head { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2); }
+    .enl-widget__json { background: var(--bg); border-radius: var(--r-sm); padding: var(--s2); margin: 0; max-height: 16rem; overflow: auto; white-space: pre-wrap; font-size: var(--fs-xs); }
+    .enl-widget__facet { margin: 0 0 var(--s2); }
+    .enl-widget__facet-name { font-weight: 600; color: var(--accent); font-size: var(--fs-xs); text-transform: capitalize; margin-bottom: var(--s1); }
+    .enl-claim { padding: var(--s1) 0; border-bottom: 1px solid var(--line); line-height: 1.45; }
+    .enl-claim:last-child { border-bottom: 0; }
+    .enl-claim__key { color: var(--muted); }
+    .enl-claim__value { color: var(--ink); }
+    .enl-claim__conf, .enl-claim__verdict { display: inline-block; margin-left: var(--s1); font-size: var(--fs-xs); padding: 0 .4rem; border-radius: var(--r-pill); background: var(--chip); color: var(--muted); }
+    .enl-claim__verdict { background: var(--accent-soft); color: var(--accent); }
+    .enl-prov__claim { font-weight: 600; margin-bottom: var(--s1); }
+    .enl-prov__visit { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--s2); }
+    .enl-prov__audits { list-style: none; margin: 0; padding: 0; }
+    .enl-prov__audit { padding: var(--s1) 0; border-top: 1px solid var(--line); line-height: 1.45; }
+    .enl-accuracy__anchor { margin-top: var(--s2); font-size: var(--fs-xs); color: var(--accent); }
+    /* trajectory: render_trajectory emits .enl-step / __at / __tier / __ops (NOT .enl-trace__step) */
+    .enl-traj { list-style: none; margin: 0; padding: 0; }
+    .enl-traj .enl-step { padding: var(--s1) 0; border-bottom: 1px solid var(--line); line-height: 1.45; }
+    .enl-traj .enl-step:last-child { border-bottom: 0; }
+    .enl-step__at { font-family: ui-monospace, Menlo, monospace; color: var(--muted); font-size: var(--fs-xs); }
+    .enl-step__tier { display: inline-block; background: var(--accent-soft); color: var(--accent); border-radius: var(--r-pill); padding: 0 .45rem; font-size: var(--fs-xs); margin: 0 var(--s1); }
+    .enl-step__ops { color: var(--ink); }
+    .enl-results { list-style: none; margin: 0; padding: 0; }
+    .enl-result { padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+    .enl-result:last-child { border-bottom: 0; }
+    .enl-result__label { font-weight: 600; }
+    .enl-result__type { display: inline-block; margin-left: var(--s1); font-size: var(--fs-xs); color: var(--muted); background: var(--chip); border-radius: var(--r-pill); padding: 0 .45rem; }
+    .enl-result__excerpt { color: var(--muted); margin: var(--s1) 0; line-height: 1.45; }
+    .enl-result__counts { font-size: var(--fs-xs); color: var(--muted); }
+    .enl-quote { margin: 0; padding: var(--s2) var(--s3); border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-style: italic; line-height: 1.5; }
+    .enl-widget--quote-unlocated .enl-quote { border-left-color: var(--muted); background: var(--bg); font-style: normal; }
+    .enl-quote__flag { font-size: var(--fs-xs); color: var(--warn); margin-bottom: var(--s1); }
+    .enl-edges { list-style: none; margin: 0 0 var(--s2); padding: 0; }
+    .enl-edge { padding: var(--s1) 0; }
+    .enl-edge__key { color: var(--accent); font-weight: 600; }
+    .enl-edge__degraded { font-size: var(--fs-xs); color: var(--warn); background: var(--warn-soft); border-radius: var(--r-sm); padding: var(--s1) var(--s2); }
+    .enl-neighbor { padding: var(--s1) 0; color: var(--ink); }
+    /* overview: render_collection_overview wraps the context tree + accuracy table in collapsed details */
+    .enl-overview__contexts, .enl-overview__accuracy { margin-top: var(--s2); }
+    .enl-overview__contexts > summary, .enl-overview__accuracy > summary { cursor: pointer; color: var(--accent); font-size: var(--fs-xs); font-weight: 600; }
+
+    /* ── Raw-tool cards (browse_subjects / vocabulary / recent_activity) ───── */
+    /* browse_subjects: per-heading block → key (+ approximate note) → term/count chips → "show all" */
+    .enl-headings__empty { color: var(--muted); font-size: var(--fs-sm); }
+    .enl-headings__heading { padding: var(--s1) 0; border-bottom: 1px solid var(--line); }
+    .enl-headings__heading:last-child { border-bottom: 0; }
+    .enl-headings__key { font-weight: 600; color: var(--accent); margin: var(--s2) 0 var(--s1); text-transform: capitalize; }
+    .enl-headings__vals { display: flex; flex-wrap: wrap; gap: var(--s1); }
+    .enl-headval { background: var(--chip); border-radius: var(--r-pill); padding: .1rem .55rem; font-size: var(--fs-xs); color: var(--ink); }
+    .enl-headval b { color: var(--accent); font-variant-numeric: tabular-nums; margin-left: .25rem; }
+    .enl-headings__approx { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--s1); }
+    .enl-headings__more { margin-top: var(--s1); }
+    .enl-headings__more > summary { cursor: pointer; color: var(--accent); font-size: var(--fs-xs); }
+    /* vocabulary: per facet → name + tier chip + scheduled marker (the .enl-vocab__head row), then term rows */
+    .enl-vocab__facet { padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+    .enl-vocab__facet:last-child { border-bottom: 0; }
+    .enl-vocab__head { margin-bottom: var(--s1); }
+    .enl-vocab__name { font-weight: 600; text-transform: capitalize; margin-right: var(--s1); }
+    .enl-vocab__sched { font-size: var(--fs-xs); color: var(--muted); margin-left: var(--s1); }
+    .enl-vocab__term { display: block; font-size: var(--fs-xs); color: var(--muted); padding: var(--s1) 0 0; }
+    .enl-vocab__term--req::before { content: "• "; color: var(--accent); }
+    /* recent_activity: the headline lead line, then visits-by-tier + failures behind collapsed details */
+    .enl-activity__headline { font-weight: 600; margin-bottom: var(--s1); }
+    .enl-activity__empty { color: var(--muted); font-size: var(--fs-sm); }
+    .enl-activity__visits, .enl-activity__failures { margin-top: var(--s2); }
+    .enl-activity__visits > summary, .enl-activity__failures > summary { cursor: pointer; color: var(--accent); font-size: var(--fs-xs); font-weight: 600; }
+    .enl-activity__tiers, .enl-activity__failure-list { list-style: none; margin: var(--s1) 0 0; padding: 0; }
+    .enl-activity__tier { padding: var(--s1) 0; font-size: var(--fs-sm); }
+    .enl-activity__tier b { color: var(--accent); font-variant-numeric: tabular-nums; margin-left: var(--s1); }
+    .enl-activity__failure { padding: var(--s1) 0; border-top: 1px solid var(--line); }
+    .enl-activity__where { font-size: var(--fs-xs); color: var(--muted); }
+    .enl-activity__error { font-size: var(--fs-xs); color: var(--warn); font-family: ui-monospace, Menlo, monospace; }
+    .enl-activity__truncated { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--s1); }
+
+    /* ── Citations (client-JS target) ──────────────────────────────────────── */
+    .enl-cite { font: inherit; vertical-align: super; font-size: .7em; line-height: 0; min-width: 16px; height: 16px; padding: 0 4px; margin: 0 1px; border: 1px solid var(--accent-soft); border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent); cursor: pointer; font-variant-numeric: tabular-nums; }
+    .enl-cite:hover, .enl-cite:focus-visible { background: var(--accent); color: #fff; outline: none; }
+    .enl-cite__pop { position: absolute; z-index: 20; max-width: 22rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-pop); padding: var(--s3); font-size: var(--fs-sm); line-height: 1.45; }
+    .enl-cite__pop .label { font-weight: 600; display: block; margin-bottom: var(--s1); }
+    .enl-cite__pop .type { font-size: var(--fs-xs); color: var(--muted); }
+    .enl-sources { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
+    .enl-sources__head { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2); }
+    .enl-sources__item { display: flex; gap: var(--s2); padding: var(--s1) 0; font-size: var(--fs-sm); }
+    .enl-sources__num { flex: none; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .enl-chat-error { background: var(--warn-soft); color: var(--warn); border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: var(--fs-sm); margin: var(--s2) 0; }
+
+    /* ── Motion ────────────────────────────────────────────────────────────── */
+    @keyframes enl-spin { to { transform: rotate(360deg); } }
+    @keyframes enl-blink { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+    @media (prefers-reduced-motion: no-preference) {
+      .enl-typing span { animation: enl-blink 1.2s ease-in-out infinite; }
+      .enl-typing span:nth-child(2) { animation-delay: .2s; }
+      .enl-typing span:nth-child(3) { animation-delay: .4s; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .enl-trace__step--working .enl-trace__dot { animation: none; border-top-color: var(--accent); }
+      .enl-typing span { opacity: .6; }
     }
   </style>
 </head>
