@@ -72,7 +72,8 @@ bin/rails db:migrate
 
 ### Mounting the UI (v0.6)
 
-Mount the engine in the host's routes to get ten web surfaces — a **status
+Mount the engine in the host's routes to get ten web surfaces (twelve with the reference
+desk's optional features enabled) — a **status
 browser**, a **catalog** (browse and search the enliterated holdings — semantic search
 through the retrieval pool, subject-heading browse over the vocabulary in use, and a
 "wander" link for open-stacks serendipity), a **conversation UI** (with a scope banner
@@ -82,7 +83,9 @@ quality-review queue** (the audit's human anchor), a **context tree**, an **atla
 carrying its provenance and asserted-at date; replay it to watch the collection learn,
 or export a self-contained HTML copy with `rake enliterator:atlas`), a **heartbeat
 pulse monitor** (trigger one tending cycle and watch it live), an **About explainer**,
-and a **Settings** surface —
+and a **Settings** surface — plus, when the reference desk's optional features are enabled,
+a **persona editor** for the desks (versioned, with rollback and reset-to-seed) and a
+**conversations** browser (retained, replayable exchanges) —
 all styled by one inline component system (no asset pipeline, no style dependency) — for free:
 
 ```ruby
@@ -119,7 +122,7 @@ mount Enliterator::Engine => "/enliterator"
   with the record's label and type, click → the record). A handoff is a visible divider
   plus a non-destructive scope-banner update. The composer autosizes, submits on Enter
   (Shift+Enter for a newline), shows a typing indicator, and offers follow-up suggestions
-  derived from the records actually consulted. The whole engine also lifts into a scholarly
+  (made agent-reasoned in v0.35 — see below). The whole engine also lifts into a scholarly
   visual register in v0.29 — system-serif display headings, restrained depth, and a shared
   stat-strip across Status / Catalog / Atlas / About / Chat — with no CDN, npm, gem, or
   web-font added (100% inline vanilla, the standing hard rule). Federation OFF emits none of
@@ -129,8 +132,25 @@ mount Enliterator::Engine => "/enliterator"
   `config.error_detail` permits) it names the exception, where it happened
   (stage · agent · tier), and a hint for the likely fix — an expired AWS SSO session,
   a slow tier, an unreachable gateway. In production the card carries only a generic
-  message; detail never leaks. The public accountless desk (Plan B — sessionless,
-  link-token, rate-limited) is the forthcoming horizon.
+  message; detail never leaks. From **v0.31 on** the desk became fluent and tendable: the
+  chat chrome recedes once a conversation starts, with a live "Working… Ns" indicator while
+  the desk thinks (v0.31); a consulted record becomes a clickable door back into the
+  conversation (v0.32); the **agentic answer streams token-by-token** — the loop assembles
+  tool-calls from the stream so grounding survives (v0.33) — the page follows the stream and
+  the sources rail collapses to a closed `<details>` (v0.34). The desk **reasons its own
+  follow-up questions** from the answer it just gave, rendered as clickable next questions
+  (v0.35, opt-in via `config.chat_followups`). Its **voice is governable**: an engine-owned
+  institutional **register** sits beneath each desk's **persona** (v0.36), and that persona is
+  curator-editable, versioned, rollback-able, and resettable to its registered seed on a
+  `/enliterator/desks` surface (v0.37 + v0.41, `config.chat_persona_editing`) — the same
+  authority control the vocabulary uses, *code seeds, the store governs* — and it is safe to
+  hand over because the **loop, not the prompt, enforces** grounding, the read-only allow-list,
+  and provenance. Every conversation is **retained as a first-class artifact, replayable from
+  its own event stream** (v0.39, `config.chat_retention`) and browsable at
+  `/enliterator/conversations`, so a good answer can be shown again with zero model spend and
+  the desk's own conversations can, in time, be tended; a desk can also be evaluated without a
+  browser (`Chat::Eval` / `rake enliterator:ask`, v0.38). The public accountless desk (Plan B —
+  sessionless, link-token, rate-limited) is the forthcoming horizon.
 - `/enliterator/suggestions` — the governed-vocabulary review queue: when the model proposes a
   term a facet's contract doesn't cover, a curator approves it, maps it onto an existing key
   (a synonym), or rejects it. The ontology tends itself. The queue ranks by accumulated **pressure**
@@ -264,6 +284,14 @@ Enliterator.configure do |c|
   c.queue_name      = :enliterator            # ActiveJob queue for TendingVisitJob
   c.logger          = Rails.logger            # optional; defaults to Rails.logger
   c.error_detail    = nil                     # chat error cards: nil = auto (dev only), true/false to force
+
+  # Reference Desk (the agentic chat surface) — all opt-in; byte-identical to single-shot when off:
+  c.chat_federation      = false              # agentic loop + grounded specialists (else single-shot chat)
+  c.chat_followups       = false              # the desk reasons clickable follow-up questions
+  c.chat_register        = nil                # engine-owned institutional voice (nil => the default register)
+  c.chat_persona_editing = false              # mount /desks: curator-edit personas (versioned, rollback, reset)
+  c.chat_editor          = nil                # callable(request) => editor identity for persona versions
+  c.chat_retention       = false              # persist + replay conversations; mount /conversations
 end
 ```
 
@@ -277,6 +305,12 @@ end
 | `stale_after` | `90.days` | staleness threshold for the scheduled walk |
 | `queue_name` | `:enliterator` | queue `TendingVisitJob` enqueues onto |
 | `error_detail` | `nil` (auto) | actionable detail in chat error cards: `nil` = on in dev only, `true`/`false` to force. Detail (exception, where, fix-hint) **never reaches production** unless forced; the gate is server-resolved (no request param enables it) |
+| `chat_federation` | `false` | turn the chat into the agentic **Reference Desk** (triage + grounded specialists, a governed loop); off = single-shot grounded chat |
+| `chat_followups` | `false` | the desk reasons up to three clickable follow-up questions from its own answer |
+| `chat_register` | `nil` | the engine-owned institutional voice beneath every persona (`nil` => the default register) |
+| `chat_persona_editing` | `false` | mount `/desks` — curator-edit each desk's persona, versioned with rollback + reset-to-seed |
+| `chat_editor` | `nil` | callable `(request) => editor` attributing persona versions; auth-agnostic (rescued) |
+| `chat_retention` | `false` | retain conversations as replayable artifacts; mount `/conversations` to browse + label |
 
 Adapters are POROs and accept an injected `client:` so they can be stubbed in
 specs with no network and no provider gem. Provider gems are lazy-required inside
@@ -552,16 +586,18 @@ only code-defined keys are ever in force).
 Out of scope (deliberately not built):
 
 - **Entity / relationship knowledge graph** — HSDL already has one; Enliterator
-  tends records, it does not model cross-record entities or relationships.
-- **MCP tools** — no Model Context Protocol surface in this version.
-- **Slack / expert human-in-the-loop UI** — the schema supports it (`locked`,
-  `review_state`) but no notification or approval workflow is built.
-- **Bedrock tier** — the Bedrock adapter exists, but the v0.2 routing path targets
-  the LiteLLM gateway; wiring Bedrock in as a staffing tier is deferred.
-- **Dynamic per-host scheduler UI** — scheduling is a flat rake walk; per-host
-  cadence/facet/tier configuration UI is deferred.
+  tends records and *draws* the entity-bearing claims as the Atlas graph (v0.21),
+  but it does not maintain a separate cross-record entity/relationship model.
+- **Slack / external notification workflow** — in-app human-in-the-loop review
+  exists (the `/suggestions` authority-control queue and the `/review` audit anchor),
+  but pushing approvals out to Slack or email is not built.
+- **Dynamic per-host scheduler UI** — the heartbeat can be triggered and watched in
+  the browser, but per-host cadence/facet/tier configuration is still code, not UI.
 - **Input chunking for small-context tiers** — over-window inputs escalate to a
-  larger-context tier rather than being chunked.
+  larger-context tier rather than being chunked (analytical cataloging, v0.25, reads
+  a work section-by-section, the deliberate path for long works).
+- **Public accountless desk (Plan B)** — the agentic Reference Desk is account-gated;
+  a sessionless, link-token, rate-limited public desk is the named horizon.
 
 Implemented in v0.2 (was deferred in v0.1): **routing / staffing** — facet→tier
 assignment, the escalation ladder, `verify_floor`, on-prem constraints, the
@@ -572,7 +608,7 @@ above).
 
 ```bash
 bundle install
-bundle exec rspec     # 431 examples, 0 failures (Null/stub adapters; no network)
+bundle exec rspec     # 717 examples, 0 failures (Null/stub adapters; no network)
 ```
 
 The test host app lives in `spec/dummy` (a `Widget` model that includes
