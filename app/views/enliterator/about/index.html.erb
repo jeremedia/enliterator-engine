@@ -267,6 +267,7 @@
         <li class="toc-h2"><a href="#compounding-attention">Compounding attention</a></li>
         <li class="toc-h2"><a href="#how-it-works">How it works</a></li>
         <li class="toc-h2"><a href="#the-pulse">The pulse</a></li>
+        <li class="toc-h2"><a href="#the-reference-desk">The reference desk</a></li>
         <li class="toc-h2"><a href="#the-conscience-is-human">The conscience is human</a></li>
         <li class="toc-h2"><a href="#for-a-collection-like-this-one">For a collection like this one</a></li>
         <li class="toc-h2"><a href="#the-four-surfaces">The surfaces</a></li>
@@ -483,6 +484,34 @@
       is locked — the model can never quietly overwrite a librarian.
     </p>
 
+    <h2 id="the-reference-desk">The reference desk</h2>
+    <p>
+      An enliterated collection can be <em>asked</em>. The <%= link_to "Chat", conversation_path %>
+      surface is not a search box wearing a chat skin — it's a <strong>reference interview</strong>.
+      The desk triages a question, hands it to a grounded specialist when one is better placed to
+      answer, reasons its reply while you watch the work, and <strong>cites the records it
+      consulted</strong> inline — each citation a link back to the record itself. When it finishes it
+      offers the next good questions, reasoned from the answer rather than drawn from a fixed list, so
+      the inquiry continues by pointing — the way a good librarian hears the question behind your
+      question.
+    </p>
+    <p>
+      Its <strong>voice is yours to shape</strong>. Each desk carries an institutional register the
+      engine owns and a <em>persona</em> a curator can edit, version, and roll back — the same
+      authority control that governs the collection's vocabulary, now turned on how the desk speaks.
+      And it is safe to hand someone the voice because <strong>behavior does not live in the
+      words</strong>: what the desk may read, that it must ground every claim, that it shows its
+      provenance — these are enforced by the engine's loop, not by the prompt. You can rewrite every
+      line of a persona and never loosen a single guarantee.
+    </p>
+    <p>
+      And the conversations themselves are <strong>kept</strong>. Each exchange is retained as a
+      first-class record and can be replayed from its own event stream — so a good answer can be shown
+      again without being re-run, and the collection can, in time, <strong>tend its own
+      conversations</strong> the way it tends its records: the engine turning its attention on the one
+      surface where it speaks. The thesis, applied to itself.
+    </p>
+
     <h2 id="the-conscience-is-human">The conscience is human</h2>
     <p>
       At Burning Man there's a saying: if you make eye contact with trash, it's yours — not because you
@@ -521,8 +550,20 @@
       </div>
       <div class="card">
         <span class="surface-title"><%= link_to "Chat", conversation_path %></span>
-        <span class="surface-desc">Converse with the enliteration — answers grounded in the collection's own records, with source links back to Status.</span>
+        <span class="surface-desc">The reference desk — a governed reference interview that triages, routes to grounded specialists, streams its reasoning, and cites the records it consulted.</span>
       </div>
+      <% if Enliterator.configuration.chat_persona_editing %>
+      <div class="card">
+        <span class="surface-title"><%= link_to "Desks", desks_path %></span>
+        <span class="surface-desc">Shape the desk's voice — edit each desk's persona, versioned with rollback and reset-to-seed; the engine register and org chart stay code-owned and read-only.</span>
+      </div>
+      <% end %>
+      <% if Enliterator.configuration.chat_retention %>
+      <div class="card">
+        <span class="surface-title"><%= link_to "Conversations", conversations_path %></span>
+        <span class="surface-desc">The kept conversations — browse, label, and replay retained exchanges from their own event stream; the corpus the desk will learn to tend.</span>
+      </div>
+      <% end %>
       <div class="card">
         <span class="surface-title"><%= link_to "Requests", suggestions_path %></span>
         <span class="surface-desc">Govern the vocabulary — review the terms the model wants, approve / map / reject, and watch the loop converge.</span>
@@ -554,7 +595,20 @@
     </div>
 
     <p class="about-colophon">
-      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.30 —
+      Living document &middot; reflects Enliterator as of <strong>June 2026</strong> (v0.41 —
+      reset to seed: a desk returns to its registered persona, auditably — the persona editor,
+      completed; v0.40 — the method, shipped: <em>enliterating-a-collection</em>, the practice of
+      taking a collection from dormant to literate, encoded as a first-draft skill in the gem to be
+      tended through every use; v0.39 — chat retention: every conversation kept as a first-class
+      artifact and replayed from its own event stream, so the desk's conversations become tendable;
+      v0.38 — the desk made testable: a per-desk step budget and a no-browser way to evaluate a desk
+      as data; v0.37 — persona editing: each desk's voice is curator-editable, versioned, and
+      reversible — code seeds, the store governs; v0.36 — the reference register: an engine-owned
+      institutional voice beneath every desk's persona; v0.35 — the desk helps you ask: the agent
+      reasons its own next questions, clickable; v0.34 — follow the stream: the answer auto-scrolls
+      and the sources tuck away; v0.33 — the agentic answer streams token-by-token; v0.32 — a
+      consulted record becomes a door back into the conversation; v0.31 — the reading room quiets:
+      the chrome recedes as you talk and the desk shows it's thinking; v0.30 —
       actionable errors at the desk: when a turn fails, the reading room now tells you
       <em>what</em> broke and what to do about it &mdash; the exception, the tier it failed at,
       and a hint for the fix (a stale login, a slow tier) &mdash; shown in development, never
@@ -606,6 +660,8 @@
     'what-tended-means',
     'compounding-attention',
     'how-it-works',
+    'the-pulse',
+    'the-reference-desk',
     'the-conscience-is-human',
     'for-a-collection-like-this-one',
     'the-four-surfaces'
