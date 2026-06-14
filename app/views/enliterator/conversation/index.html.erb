@@ -393,6 +393,9 @@
       });
   }
 <% if Enliterator.configuration.chat_federation %>
+  <% if @replay_id %>
+  var REPLAY_ID = <%= @replay_id.to_json.html_safe %>;
+  <% end %>
   // ── Federation: the agentic turn model ──────────────────────────────────
   // A turn reads top-to-bottom as a narrative: the live work-trace first, the
   // answer below it (created lazily on the first token so it lands UNDER the
@@ -1027,6 +1030,72 @@
     }
     // Shift+Enter falls through to the default newline; autosize fires on input.
   });
+
+  // ── Replay client (v0.39) ─────────────────────────────────────────────────
+  // Drives the existing federated renderer from the replay SSE endpoint.
+  // The endpoint re-emits a saved conversation's events with two replay-only
+  // markers: `replay_user` ({q}) before each turn's events, and `replay_end`
+  // ({}) at the very end. We reuse userBubble/buildTurn/handleFrameFederated/
+  // finishTurnFederated verbatim — replay is feed-the-same-events, not a second
+  // renderer. Turn boundaries (replay_user / replay_end) drive finalization
+  // because `done` events inside the stored event stream are handled the same
+  // way the live path does: by the outer reader-done / boundary trigger, not by
+  // handleFrameFederated (which lets `done` fall through).
+  function replayConversation(id) {
+    enterChatting();
+    autoScroll = true;
+    var els = null, state = null, q = "";
+    fetch("/enliterator/chat/replay/" + encodeURIComponent(id))
+      .then(function (resp) {
+        var reader = resp.body.getReader(), decoder = new TextDecoder(), buf = "";
+        function pump() {
+          return reader.read().then(function (res) {
+            if (res.done) {
+              // Stream ended: finalize any open turn (handles a replay_end that
+              // arrived in the last chunk before done, or a missing replay_end).
+              if (els && state) { finishTurnFederated(els, state, q); els = null; state = null; }
+              return;
+            }
+            buf += decoder.decode(res.value, { stream: true });
+            var parts = buf.split("\n\n"); buf = parts.pop();
+            parts.forEach(function (frame) {
+              var ev = "message", data = "";
+              frame.split("\n").forEach(function (line) {
+                if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
+                else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
+              });
+              if (ev === "replay_user") {
+                // Finalize the previous turn if one is open (belt-and-suspenders —
+                // replay_end or the done boundary should have closed it already).
+                if (els && state) { finishTurnFederated(els, state, q); els = null; state = null; }
+                var payload = {}; try { payload = JSON.parse(data); } catch (e) {}
+                q = payload.q || "";
+                userBubble(q);
+                var t = buildTurn();
+                els = { trace: t.trace, head: t.head, steps: t.steps, sources: t.sources,
+                        turn: t.turn, md: null, prov: null, toolSteps: {}, activeDesk: "Frontdesk",
+                        sourceCount: 0, gotFollowups: false, cites: { list: [], seen: {} } };
+                state = { text: "", timer: null };
+                els.startedAt = Date.now();
+              } else if (ev === "replay_end") {
+                if (els && state) { finishTurnFederated(els, state, q); els = null; state = null; }
+              } else if (ev !== "done" && els && state) {
+                // Delegate all live events to the same handler the live stream uses.
+                // `done` is skipped — turn finalization is driven by the turn
+                // boundaries above, not by the stored `done` events themselves
+                // (mirroring the live path where done triggers reader-done finalization).
+                handleFrameFederated(frame, els, state);
+              }
+            });
+            return pump();
+          });
+        }
+        return pump();
+      })
+      .catch(function () { /* replay transport failed — leave what already rendered */ });
+  }
+  // On load: if a replay id was emitted by the server, start the replay.
+  if (typeof REPLAY_ID !== "undefined") { replayConversation(REPLAY_ID); }
 
   // ── Follow-ups (v0.35: rendered from the server's :followups event) ─────────
   var promptsEl = document.getElementById("prompts");

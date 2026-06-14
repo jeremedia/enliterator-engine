@@ -1,0 +1,56 @@
+<%# v0.39: retained conversations — browse, label, replay, delete.
+    Each row: label (or "(unlabeled)"), context, source, turn count, updated_at,
+    a Replay link (→ /enliterator/chat?replay=<token>), an inline label form,
+    and a delete button. Composed from layout tokens; ALL dynamic values via
+    <%= %> (escaped). %>
+<h1>Conversations</h1>
+<p class="muted">Retained chat sessions. Replay any conversation to re-render it through the federated client; label sessions for later reference.</p>
+
+<% if @conversations.empty? %>
+  <p class="muted" style="margin-top:var(--s5)">No conversations have been retained yet. They appear here once <code>config.chat_retention</code> is on and patrons ask questions at <a href="<%= conversation_path %>">Chat</a>.</p>
+<% else %>
+  <table style="margin-top:var(--s4)">
+    <thead>
+      <tr>
+        <th>Label</th>
+        <th>Context</th>
+        <th>Source</th>
+        <th>Turns</th>
+        <th>Updated</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @conversations.each do |conv| %>
+        <tr>
+          <td>
+            <%= conv.label.presence || %(<span class="muted">(unlabeled)</span>).html_safe %>
+          </td>
+          <td><%= conv.context.presence || %(<span class="muted">whole collection</span>).html_safe %></td>
+          <td><%= conv.source %></td>
+          <td><%= conv.turns.size %></td>
+          <td class="muted" style="font-size:var(--fs-sm);white-space:nowrap"><%= conv.updated_at.strftime("%Y-%m-%d %H:%M") %></td>
+          <td style="min-width:22rem">
+            <div style="display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center">
+              <%# Replay link: drives the federated renderer via ?replay= param %>
+              <%= link_to "Replay", conversation_path(replay: conv.token), class: "btn btn-sm btn-affirmative" %>
+
+              <%# Label form: set or update the human-readable label %>
+              <%= form_with url: conversation_label_path(conv), method: :post, style: "display:inline-flex;gap:var(--s1);align-items:center" do |f| %>
+                <%= f.text_field :label, value: conv.label.to_s, placeholder: "label…",
+                      class: "field", style: "font-size:var(--fs-sm);padding:.2rem .4rem;width:10rem" %>
+                <%= f.submit "Save", class: "btn btn-sm" %>
+              <% end %>
+
+              <%# Delete button: POSTs to destroy action %>
+              <%= form_with url: conversation_delete_path(conv), method: :post, style: "display:inline" do |f| %>
+                <%= f.submit "Delete", class: "btn btn-sm btn-destructive",
+                      data: { confirm: "Delete this conversation?" } %>
+              <% end %>
+            </div>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
