@@ -22,8 +22,10 @@ module Enliterator
 
         Then write up to three short questions — one per line, no numbering or
         bullets — that the reader could naturally ask NEXT given the answer you just
-        gave. Make them specific to this answer, not generic. Put nothing after the
-        last question. If no genuinely useful follow-up exists, omit the block entirely.
+        gave. Make them specific to this answer, not generic. Phrase each as the
+        patron's own next question ("What does the collection hold on X?"), never as
+        an offer of assistance ("Would you like me to…?"). Put nothing after the last
+        question. If no genuinely useful follow-up exists, omit the block entirely.
       TXT
 
       # Parse the questions out of an answer's trailing sentinel block. Returns
