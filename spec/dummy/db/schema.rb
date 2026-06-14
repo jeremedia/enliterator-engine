@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_14_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_14_130100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -402,6 +402,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_120000) do
     t.index ["heartbeat_id"], name: "index_enliterator_audits_on_heartbeat_id"
   end
 
+  create_table "enliterator_chat_conversations", force: :cascade do |t|
+    t.string "context"
+    t.datetime "created_at", null: false
+    t.string "label"
+    t.string "source", default: "live", null: false
+    t.string "token", null: false
+    t.datetime "updated_at", null: false
+    t.index ["token"], name: "index_enliterator_chat_conversations_on_token", unique: true
+  end
+
   create_table "enliterator_chat_personas", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "desk_name", null: false
@@ -410,6 +420,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_120000) do
     t.text "system_prompt", null: false
     t.datetime "updated_at", null: false
     t.index ["desk_name", "created_at"], name: "index_enliterator_chat_personas_on_desk_name_and_created_at"
+  end
+
+  create_table "enliterator_chat_turns", force: :cascade do |t|
+    t.text "answer"
+    t.boolean "budget_hit", default: false, null: false
+    t.bigint "conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.string "desk_name"
+    t.integer "elapsed_ms"
+    t.jsonb "events", default: [], null: false
+    t.integer "ordinal", null: false
+    t.bigint "persona_id"
+    t.text "question", null: false
+    t.datetime "updated_at", null: false
+    t.index ["conversation_id", "ordinal"], name: "index_enliterator_chat_turns_on_conversation_id_and_ordinal", unique: true
+    t.index ["conversation_id"], name: "index_enliterator_chat_turns_on_conversation_id"
+    t.index ["persona_id"], name: "index_enliterator_chat_turns_on_persona_id"
   end
 
   create_table "enliterator_claims", force: :cascade do |t|
@@ -1821,6 +1848,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_120000) do
   add_foreign_key "enliterator_audits", "enliterator_claims", column: "claim_id", on_delete: :cascade
   add_foreign_key "enliterator_audits", "enliterator_claims", column: "corrected_claim_id", on_delete: :nullify
   add_foreign_key "enliterator_audits", "enliterator_heartbeats", column: "heartbeat_id", on_delete: :nullify
+  add_foreign_key "enliterator_chat_turns", "enliterator_chat_conversations", column: "conversation_id"
   add_foreign_key "enliterator_claims", "enliterator_claims", column: "superseded_by_id", on_delete: :nullify
   add_foreign_key "enliterator_claims", "enliterator_contexts", column: "context_id"
   add_foreign_key "enliterator_claims", "enliterator_visits", column: "visit_id", on_delete: :nullify

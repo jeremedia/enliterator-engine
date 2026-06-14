@@ -187,6 +187,11 @@ module Enliterator
     # who edited a persona without the engine imposing an auth model.
     attr_accessor :chat_editor
 
+    # v0.39: gates chat retention. nil/false ⇒ no capture, replay/browse 404, no
+    # nav link (byte-identical to v0.38, stateless desk). true ⇒ federation turns
+    # persist (the dev/demo backend) and can be re-streamed.
+    attr_accessor :chat_retention
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -233,6 +238,7 @@ module Enliterator
       @chat_register = nil
       @chat_persona_editing = nil
       @chat_editor = nil
+      @chat_retention = nil
       @error_detail = nil
       @allow_null_llm = false
       @conversation_tier = nil
