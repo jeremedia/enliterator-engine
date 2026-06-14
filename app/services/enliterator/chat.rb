@@ -52,5 +52,23 @@ module Enliterator
         routes_to:     Array(routes_to).map(&:to_s)
       )
     end
+
+    # v0.37: compose the system content from three layers — register → persona →
+    # follow-up directive — each added only when its config is on. Shared by
+    # Loop#system_content and the /desks preview (DRY). With both flags off this
+    # returns the bare persona_text (byte-identical to pre-v0.36).
+    def compose_system(persona_text)
+      [ register_text, persona_text,
+        (Enliterator::Chat::Followups::DIRECTIVE if Enliterator.configuration.chat_followups) ]
+        .compact.join("\n\n")
+    end
+
+    # v0.36 register layer (lifted from the Loop). nil/false ⇒ none; true ⇒ the
+    # built-in DEFAULT; a String ⇒ that custom register.
+    def register_text
+      r = Enliterator.configuration.chat_register
+      return nil unless r
+      r == true ? Enliterator::Chat::Register::DEFAULT : r.to_s
+    end
   end
 end
