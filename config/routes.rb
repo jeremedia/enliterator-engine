@@ -61,4 +61,11 @@ Enliterator::Engine.routes.draw do
   post "suggestions/verdict",  to: "suggestions#verdict",  as: :suggestions_verdict
   # v0.8: run the considerer over the whole open field (auto-apply safe verdicts).
   post "suggestions/consider", to: "suggestions#consider", as: :suggestions_consider
+
+  # Desks (v0.37): edit each reference desk's persona — versioned, rollback-able.
+  # Always drawn; DesksController 404s when config.chat_persona_editing is off
+  # (the always-draw + controller-gate convention, like chat/mcp).
+  get  "desks",          to: "desks#index",    as: :desks
+  post "desks/update",   to: "desks#update",   as: :desk_update
+  post "desks/rollback", to: "desks#rollback", as: :desk_rollback
 end
