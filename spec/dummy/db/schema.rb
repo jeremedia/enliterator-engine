@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_11_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_14_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -400,6 +400,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_11_190000) do
     t.index ["claim_id"], name: "index_enliterator_audits_on_claim_id"
     t.index ["corrected_claim_id"], name: "index_enliterator_audits_on_corrected_claim_id"
     t.index ["heartbeat_id"], name: "index_enliterator_audits_on_heartbeat_id"
+  end
+
+  create_table "enliterator_chat_personas", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "desk_name", null: false
+    t.string "editor"
+    t.string "note"
+    t.text "system_prompt", null: false
+    t.datetime "updated_at", null: false
+    t.index ["desk_name", "created_at"], name: "index_enliterator_chat_personas_on_desk_name_and_created_at"
   end
 
   create_table "enliterator_claims", force: :cascade do |t|
