@@ -1,9 +1,75 @@
-<%# v0.37 placeholder — full persona editor lands in the next task. %>
-<h1 class="section-head">Reference desks</h1>
+<%# v0.37: persona editing. Each desk's voice is editable + versioned; tier/tools/
+    routes and the engine register are code-owned (shown read-only). The composed
+    preview is exactly what the Loop sends (Chat.compose_system). %>
+<% content_for :head do %>
+<style>
+  .desk { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); margin-bottom: var(--s4); box-shadow: var(--shadow); background: var(--panel); }
+  .desk__meta { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--s2); }
+  .desk__ro { background: var(--bg); border-radius: var(--r-sm); padding: var(--s2) var(--s3); white-space: pre-wrap; font-size: var(--fs-sm); margin: var(--s2) 0; border: 1px solid var(--line); }
+  .desk__ta { width: 100%; min-height: 12rem; font: inherit; font-size: var(--fs-base); padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); box-sizing: border-box; }
+  .desk__ta:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .desk__row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: var(--s2); }
+  .desk__hist { list-style: none; padding: 0; margin: var(--s2) 0 0; }
+  .desk__hist li { display: flex; gap: var(--s2); align-items: baseline; flex-wrap: wrap; padding: var(--s2) 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+  .desk__v { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
+</style>
+<% end %>
+
+<h1>Reference desks</h1>
+<p class="muted">Edit each desk's persona — the voice and role it speaks in. The engine register and the org chart (tier, tools, routing) are code-owned and shown for context. Saves are versioned; roll back anytime. Changes are live on the next turn.</p>
+
+<% if @desks.empty? %>
+  <p class="muted">No desks are registered. (Set <code>config.chat_federation</code> and register agents.)</p>
+<% end %>
+
 <% @desks.each do |desk| %>
-  <% effective = Enliterator::Chat::Persona.effective(desk.name) || desk.system_prompt %>
+  <% effective  = Enliterator::Chat::Persona.effective(desk.name) || desk.system_prompt %>
+  <% overridden = Enliterator::Chat::Persona.effective(desk.name).present? %>
+  <% history    = Enliterator::Chat::Persona.history(desk.name).to_a %>
   <section class="desk">
     <h2><%= desk.name %></h2>
-    <div class="desk__ro"><%= effective %></div>
+    <div class="desk__meta">
+      tier <code><%= desk.tier %></code> ·
+      tools <%= desk.tools.join(", ") %><%= " · routes to #{desk.routes_to.join(', ')}" if desk.routes_to.any? %>
+      · <%= overridden ? "curator override active" : "using the registered seed" %>
+    </div>
+
+    <details>
+      <summary class="muted" style="cursor:pointer;font-size:var(--fs-sm)">Engine register (read-only)</summary>
+      <div class="desk__ro"><%= Enliterator::Chat.register_text || "(register off)" %></div>
+    </details>
+
+    <%= form_with url: desk_update_path, method: :post do %>
+      <input type="hidden" name="desk" value="<%= desk.name %>">
+      <label style="display:block;margin-top:var(--s3);font-size:var(--fs-sm);color:var(--muted)">Persona</label>
+      <textarea name="system_prompt" class="desk__ta"><%= effective %></textarea>
+      <div class="desk__row">
+        <input type="text" name="note" placeholder="change note (optional)" class="field" style="flex:1;min-width:12rem">
+        <button type="submit" class="btn btn-affirmative">Save new version</button>
+      </div>
+    <% end %>
+
+    <details style="margin-top:var(--s3)">
+      <summary class="muted" style="cursor:pointer;font-size:var(--fs-sm)">Composed prompt the desk receives (preview)</summary>
+      <div class="desk__ro"><%= Enliterator::Chat.compose_system(effective) %></div>
+    </details>
+
+    <% if history.any? %>
+      <h3 style="font-size:var(--fs-base);font-weight:600;margin:var(--s4) 0 var(--s1)">History</h3>
+      <ul class="desk__hist">
+        <% total = history.size %>
+        <% history.each_with_index do |v, i| %>
+          <li>
+            <span class="desk__v">v<%= total - i %></span>
+            <span class="muted"><%= v.created_at.strftime("%Y-%m-%d %H:%M") %><%= " · #{v.editor}" if v.editor.present? %><%= " · #{v.note}" if v.note.present? %></span>
+            <%= form_with url: desk_rollback_path, method: :post do %>
+              <input type="hidden" name="desk" value="<%= desk.name %>">
+              <input type="hidden" name="version_id" value="<%= v.id %>">
+              <button type="submit" class="btn btn-sm">Roll back to this</button>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
   </section>
 <% end %>
