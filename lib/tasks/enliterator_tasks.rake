@@ -350,6 +350,28 @@ namespace :enliterator do
 end
 
 namespace :enliterator do
+  # v0.38: ask the reference desk a question from the CLI — the no-browser
+  # evaluation harness. Drives the real Chat::Loop (real agents, gateway, tools)
+  # and prints the structured result. Wire a CONTEXT= to route to a specialist desk.
+  #
+  #   Q='what is HSDL?' bin/rails enliterator:ask
+  #   Q='compare two theses' CONTEXT=chds-theses STEP_CAP=8 bin/rails enliterator:ask
+  desc "Ask the reference desk a question (no browser). Q='...' [CONTEXT=chds-theses] [STEP_CAP=n]"
+  task ask: :environment do
+    q = ENV["Q"].to_s
+    abort "set Q='your question'" if q.strip.empty?
+    opts = {}
+    opts[:step_cap] = ENV["STEP_CAP"].to_i if ENV["STEP_CAP"].present?
+    r = Enliterator::Chat::Eval.ask(q, context: ENV["CONTEXT"].presence, **opts)
+    puts "Q: #{r.question}"
+    puts "elapsed #{r.elapsed_s}s | tools(#{r.tools.size}): #{r.tools.tally.inspect} | handoffs: #{r.handoffs.inspect} | budget_hit: #{r.budget_hit}"
+    puts "followups:"; r.followups.each { |f| puts "  • #{f}" }
+    puts "── answer ──"
+    puts r.answer
+  end
+end
+
+namespace :enliterator do
   # v0.27: the Brief — "how did last night's tending go?" without re-deriving
   # the query every morning. A time-windowed digest: heartbeat cycles, visits
   # by facet/tier/reason, failures WITH their errors, deep-read sessions,

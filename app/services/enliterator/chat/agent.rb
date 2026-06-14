@@ -5,15 +5,16 @@ module Enliterator
     # An agent definition. Immutable value object; all mutation goes through
     # the registry (Enliterator::Chat.register + .reset!, defined in chat.rb).
     class Agent
-      attr_reader :name, :grounding, :system_prompt, :tools, :tier, :routes_to
+      attr_reader :name, :grounding, :system_prompt, :tools, :tier, :routes_to, :step_cap
 
-      def initialize(name:, grounding:, system_prompt:, tools:, tier:, routes_to:)
+      def initialize(name:, grounding:, system_prompt:, tools:, tier:, routes_to:, step_cap: nil)
         @name          = name
         @grounding     = grounding
         @system_prompt = system_prompt
         @tools         = tools
         @tier          = tier
         @routes_to     = routes_to
+        @step_cap      = step_cap
       end
 
       def allows?(tool_name) = tools.include?(tool_name.to_s)

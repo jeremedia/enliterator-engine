@@ -20,7 +20,7 @@ module Enliterator
 
     # Register an agent. Validates the tier resolves to a converse_with_tools-capable
     # adapter NOW (fail-fast at registration, never mid-stream).
-    def register(name:, grounding:, system_prompt:, tools:, tier:, routes_to: [])
+    def register(name:, grounding:, system_prompt:, tools:, tier:, routes_to: [], step_cap: nil)
       adapter = Enliterator.llm(tier: tier)
       unless adapter.respond_to?(:converse_with_tools)
         raise Enliterator::ConfigurationError,
@@ -49,7 +49,8 @@ module Enliterator
         system_prompt: system_prompt,
         tools:         Array(tools).map(&:to_s),
         tier:          tier.to_s,
-        routes_to:     Array(routes_to).map(&:to_s)
+        routes_to:     Array(routes_to).map(&:to_s),
+        step_cap:      step_cap
       )
     end
 

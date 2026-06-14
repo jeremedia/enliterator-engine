@@ -275,6 +275,33 @@ RSpec.describe Enliterator::Chat::Loop do
     end
   end
 
+  describe "v0.38 per-agent step_cap" do
+    it "an agent's own step_cap overrides the constructor default" do
+      # A desk capped at 2 stops after 2 tool rounds even when the loop default is higher.
+      Enliterator::Chat.reset!
+      Enliterator::Chat.register(name: "Tight", grounding: nil, system_prompt: "p",
+                                 tools: %w[search], tier: "cheap", step_cap: 2)
+      allow(Enliterator::Mcp).to receive(:dispatch).and_return({ label: "x", claims_by_facet: {} })
+      looping = Array.new(6) { calls({ id: "1", name: "search", arguments: { "q" => "x" } }) }
+      described_class.new(agent: Enliterator::Chat.frontdesk, llm: ScriptedLLM.new(*looping), sink: sink, step_cap: 8).run("hi")
+      budget = events.find { |e| e.first == :token && e.last[:t].to_s.match?(/step budget/i) }
+      expect(budget).not_to be_nil  # hit at the agent's cap of 2, despite the loop default 8
+      starts = events.count { |e| e.first == :tool_call_start }
+      expect(starts).to eq(2)       # exactly 2 rounds dispatched before the cap
+    end
+
+    it "falls back to the constructor default when the agent has no step_cap (byte-identical)" do
+      Enliterator::Chat.reset!
+      Enliterator::Chat.register(name: "Default", grounding: nil, system_prompt: "p",
+                                 tools: %w[search], tier: "cheap")  # no step_cap
+      allow(Enliterator::Mcp).to receive(:dispatch).and_return({ label: "x", claims_by_facet: {} })
+      looping = Array.new(6) { calls({ id: "1", name: "search", arguments: { "q" => "x" } }) }
+      described_class.new(agent: Enliterator::Chat.frontdesk, llm: ScriptedLLM.new(*looping), sink: sink, step_cap: 3).run("hi")
+      starts = events.count { |e| e.first == :tool_call_start }
+      expect(starts).to eq(3)       # uses the loop default 3 (no per-agent override)
+    end
+  end
+
   describe "v0.37 persona override (Chat::Persona)" do
     let(:agent) do
       Enliterator::Chat::Agent.new(
