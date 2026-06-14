@@ -49,9 +49,9 @@ module Enliterator
             Enliterator.logger&.info("[enliterator] chat loop hit wall budget (#{@wall_budget}s) agent=#{@agent.name}")
             break
           end
-          if @steps >= @step_cap
+          if @steps >= effective_step_cap
             emit(:token, t: "I reached my step budget — here is what I have so far.")
-            Enliterator.logger&.info("[enliterator] chat loop hit step cap (#{@step_cap}) agent=#{@agent.name}")
+            Enliterator.logger&.info("[enliterator] chat loop hit step cap (#{effective_step_cap}) agent=#{@agent.name}")
             break
           end
           @steps += 1
@@ -218,6 +218,11 @@ module Enliterator
       end
 
       def emit(event, data) = @sink.call(event, data)
+
+      # The active desk's step budget: a per-agent cap (set at registration) wins;
+      # otherwise the constructor default (@step_cap). Recomputed each round so a
+      # handoff to a desk with a different cap takes effect immediately.
+      def effective_step_cap = @agent.step_cap || @step_cap
     end
   end
 end
