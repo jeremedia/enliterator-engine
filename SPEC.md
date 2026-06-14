@@ -2194,3 +2194,521 @@ the failure stays on screen instead of being cleared by the normal end-of-turn c
   **Prod/off payload byte-identical to v0.29; federation-off and the OFF-view unaffected; no
   silent failures.**
 - SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.31 — The Reading Room Quiets (chat chrome recedes; the thinking timer)
+
+## Why
+The conversation surface opened loud — a header, an explainer, a scope banner all competing
+with the empty composer — and once a turn was running, the patron stared at an empty trace
+box with no sign the desk was working (the agentic turn's first tool call can be ten silent
+seconds). v0.31 makes the room behave like a reading room: it greets you when empty, recedes
+once you're talking, and shows the desk thinking. Pure surface; the loop is untouched.
+
+## What
+
+### A welcoming empty state, receding chrome
+Federation-gated. With no turns yet, `/chat` leads with a calm empty state; on the first
+question the surrounding chrome recedes so the exchange owns the page. Nothing the off-view
+contained is removed from the DOM — the recede is a class toggle on the federated surface
+only.
+
+### The live "Working… Ns" thinking timer
+While the desk works a turn, an unobtrusive indicator counts the elapsed seconds, so a
+ten-second first-tool latency reads as *working*, not *hung*. And an empty work-trace — a
+turn that calls no tools — no longer renders an empty "view" affordance; the trace box
+appears only when there is a trace to show.
+
+## Honesty notes
+- Federation OFF / the single-shot view are byte-identical: the empty-state, the recede, the
+  timer, and the empty-trace suppression are all inside the `config.chat_federation` gate.
+- No new SSE event, no loop change — the timer is client-side wall-clock; the recede is CSS.
+
+## Done = all of:
+- The welcoming empty state + receding chat chrome (federation-gated); the live "Working… Ns"
+  thinking timer; empty-trace "view" suppression. Off-view byte-identical; full suite green.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.32 — Clickable Conversation Navigation (Stage A — the consulted record becomes a door)
+
+## Why
+The sources rail under each answer listed the records the desk consulted — but they only
+linked *out* to the status browser. The most natural next move in a reference interview —
+"tell me more about *that* one" — required the patron to retype it. v0.32 makes a consulted
+record a door back into the conversation: an inline **ask-link** that asks the desk about
+that record, in place, without leaving the page. (Stage A of clickable navigation; Stage C —
+the agent reasoning its *own* next questions — lands in v0.35.)
+
+## What
+
+### Inline ask-links from consulted records
+Federation-gated. Each record the turn consulted gains an affordance that, clicked, submits a
+follow-up scoped to that record — the conversation continues by pointing, not by typing. The
+links ride the same client-correlated record metadata the v0.29 citation rail already builds;
+no new wire data.
+
+### Bug fix: the search widget's `:records` key
+The `search` tool widget read its results under the wrong key and silently rendered empty.
+Fixed to the correct `:records` key — a consulted-records list that was quietly blank now
+populates, which is also what gives the ask-links anything to point at.
+
+## Honesty notes
+- Federation OFF / single-shot byte-identical — ask-links exist only on the federated surface.
+- The `:records` fix is a real silent failure closed (rule 3): the widget rendered without
+  error but with no content; the corrected key restores the data the citation/ask-link layer
+  depends on.
+
+## Done = all of:
+- Inline ask-links from consulted records (Stage A, federation-gated); search-widget
+  `:records` key fix. Off-view byte-identical; full suite green.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.33 — Streaming Federation Answers (the agentic loop learns to stream)
+
+## Why
+Every modern chat streams its answer; the Reference Desk didn't. The single-shot path already
+streamed, but the **agentic federation path** did not — `Chat::Loop` called the non-streaming
+`converse_with_tools`, got the whole final answer, and emitted it as one `:token`, so the
+answer *popped in* after ten to thirty seconds of nothing. The blocker was specific: the
+gateway's stream path streamed content but **always returned empty tool_calls** — it never
+assembled tool calls from the stream, so the loop couldn't simply flip to streaming (the first
+round is usually tool calls, which would be dropped). v0.33 adds the missing piece — streamed
+tool-call assembly — so the loop can stream the final answer while grounding survives.
+
+## What
+
+### `Gateway#converse_with_tools` — streamed tool-call assembly (`adapters/llm/gateway.rb`)
+The streaming branch now accumulates **tool-call deltas** alongside content. OpenAI emits tool
+calls fragmented across chunks (`choice.delta.tool_calls`: an array of `{index, id?,
+function:{name?, arguments?}}`); a tolerant `extract_tool_call_deltas` captures `id`/`name`
+when present and **concatenates** `arguments` fragments by index. At stream end: if fragments
+accumulated, it builds `tool_calls` and the `assistant_message` in the **same shapes** the
+non-stream path produces (so the loop can't tell the difference); otherwise it returns the
+streamed content as before. `tokens: {}` on the stream path, unchanged.
+
+### `Chat::Loop` — stream the call, with a no-double-emit guard (`chat/loop.rb`)
+The loop calls `converse_with_tools(stream: true)` with a block that emits each delta as a
+`:token` and sets a `streamed` flag. The load-bearing line is `emit(:token, …) unless
+streamed`: with a real streaming gateway the block fires and the text already streamed (no
+double-emit); with a non-streaming adapter or the test `ScriptedLLM` (which ignores the block)
+`streamed` stays false and the full text is emitted exactly as before — so **every existing
+loop spec stays green unchanged**. Tool rounds emit no content and dispatch as today. The
+enforcement boundary (route_to interception, allow-list, grounding) is untouched.
+
+### Client — unchanged
+The federated `:token` handler already accumulates and renders via the debounced `mdToHtml`;
+the answer bubble is created lazily on the first token. Streamed deltas flow through all of it
+with no change. No new SSE event — streaming reuses `:token`.
+
+## Honesty notes
+- **Federation-path only.** The single-shot streaming path and the off-view are untouched;
+  byte-identity-when-off holds.
+- **Budgets are between rounds.** A streaming *final answer* is not chopped mid-flight
+  (correct — you don't truncate the answer); the per-call `gateway_timeout` still bounds a
+  wedged stream.
+- **Error mid-stream** routes to the v0.30 `:error` card; any partial streamed text is
+  replaced by the card (acceptable). We stream the answer's *content*; tool-call arguments
+  assemble silently, as before — streaming them to the UI is out of scope, named.
+
+## Done = all of:
+- `Gateway#converse_with_tools` streamed tool-call assembly (`extract_tool_call_deltas`,
+  fragment concatenation by index, non-stream-identical `tool_calls`/`assistant_message`
+  shapes); `Chat::Loop` streaming with the `unless streamed` guard (existing loop specs green
+  unchanged; one new real-streaming loop case); gateway streaming specs proving assembly from
+  fragmented chunks. No new SSE event; off-path byte-identical; full suite green.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.34 — Follow the Stream (auto-scroll; the Sources rail collapses)
+
+## Why
+With the answer now streaming (v0.33), two surface frictions surfaced: the page didn't follow
+the growing answer, so the patron had to scroll to keep the newest text in view; and the
+"Sources consulted" rail sat open under every answer, pushing the next exchange down the page.
+v0.34 makes the room follow the writing and tuck the sources away until wanted.
+
+## What
+
+### Follow-the-stream auto-scroll
+Federation-gated. As tokens stream in, the view keeps the newest text in view — but yields to
+the patron: if they scroll up to read, auto-scroll stops fighting them and resumes only when
+they return to the bottom. A "follow the stream" affordance, not a scroll-jack.
+
+### The Sources rail collapses into a closed `<details>`
+The numbered sources rail is now a closed `<details>` by default — present, one click away,
+but no longer occupying the space between turns. The inline citation chips in the prose are
+unchanged; the rail is the redundant, browsable copy, so collapsing it costs nothing.
+
+## Honesty notes
+- Federation OFF / single-shot byte-identical — both behaviors live on the federated surface
+  only.
+- A client refactor extracted `followStream`; the error-card path now calls it, so the client
+  test factory injects a `followStream` noop (a test-seam detail, no behavior change).
+
+## Done = all of:
+- Follow-the-stream auto-scroll (yields to manual scroll, resumes at bottom); Sources rail
+  collapsed into a closed `<details>`. Off-view byte-identical; client golden/cite tests
+  green; full suite green.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.35 — Agent-Reasoned Follow-ups (Stage C — the desk helps you ask)
+
+## Why
+The follow-up suggestions under an answer were generic and unchanging — the same placeholders
+no matter the question. A reference interview's value is partly the librarian *seeing the next
+good question* the patron didn't know to ask. v0.35 makes the agent **reason its own
+follow-ups** from the turn it just answered, rendered as clickable questions that continue the
+inquiry — and instruments the click-through, because the experiment is the point: we are
+funded to learn what the surface can become.
+
+## What
+
+### `Chat::Followups` — the inline follow-up protocol (`chat/followups.rb`)
+A small protocol object: a `SENTINEL` (`%%FOLLOWUPS%%`), a `MAX` of 3, a `DIRECTIVE` appended
+to the system prompt instructing the desk to end its answer with the sentinel followed by up
+to three contextual next questions, and `parse(text)` — which splits at the sentinel
+(`take_while`, so a stray second sentinel can't smuggle body text), strips bullet/number
+markup, and caps at `MAX`. The questions are *contextual* — reasoned from this answer, not a
+static list.
+
+### `Chat::Loop` injects the directive + emits `:followups` (gated)
+When `config.chat_followups` is on, the loop appends the directive to the system prompt and,
+after the final answer, parses the tail and emits a `:followups` event with the questions.
+The directive is composed into the system prompt centrally (this becomes `compose_system` in
+v0.36), not hand-concatenated at the call site.
+
+### Client renders server-reasoned follow-ups; the scaffold retires
+The federated client renders the `:followups` event as clickable question buttons that submit
+as the next turn, and `proseOf` **strips the sentinel and its tail** from the streamed prose
+so the protocol marker never shows (golden-guarded). The earlier client-side DOM-scrape
+scaffold that guessed follow-ups from consulted records is **retired** — the agent's reasoning
+replaces the heuristic.
+
+### Instrumentation
+The controller logs follow-up **click-through** (gated, the query truncated) so we can see
+which reasoned questions patrons actually pursue — the measurement the version exists to
+enable. The `:followups` event is gating-pinned: OFF → absent, ON → parsed questions.
+
+## Honesty notes
+- `config.chat_followups` is **OFF by default**; OFF is byte-identical (no directive, no
+  `:followups` event, the prose unchanged). The sentinel-strip is golden-guarded so a normal
+  answer is never altered.
+- Follow-ups are *reasoned*, not retrieved — they are the model's suggestion, shown as such;
+  clicking one is a new grounded turn, governed by the same Loop.
+
+## Done = all of:
+- `Chat::Followups` (sentinel/MAX/DIRECTIVE/`parse` with `take_while` truncation guard);
+  `Chat::Loop` directive injection + `:followups` emission (gated); client renders clickable
+  follow-ups + `proseOf` sentinel-strip (golden-guarded), DOM-scrape scaffold retired;
+  controller click-through logging (gated, truncated); `:followups` gating pinned. OFF
+  byte-identical; full suite green.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.36 — The Reference Register (the desk's voice, engine-owned)
+
+## Why
+The desk answered correctly but in no particular *voice* — sometimes a chipper "friendly
+assistant," wrong for a homeland-security research library. The right voice is
+institutional-formal: a reference librarian's register — precise, unhurried, never chummy,
+never hedging into uncertainty it doesn't have. v0.36 gives the engine an **owned register**
+that sits beneath every desk's persona, so the whole federation speaks the institution's voice
+by default, and establishes the composition seam that v0.37's editable personas plug into.
+
+## What
+
+### `Chat::Register` — the engine-owned voice (`chat/register.rb`)
+`Register::DEFAULT` is a frozen, institution-formal LIS register: how the desk carries itself,
+independent of any one desk's role. It is **code-owned** — the institution's voice, not a
+per-deployment knob — gated by `config.chat_register`.
+
+### `Chat.compose_system` — register → persona → followups
+A single composition function builds the system prompt the Loop sends:
+`[register_text, persona_text, (Followups::DIRECTIVE if chat_followups)].compact.join`. The
+register frames the voice; the persona (the agent's `system_prompt`, made editable in v0.37)
+frames the role; the follow-up directive (v0.35) rides last. The Loop calls `compose_system`
+at run init **and** on every handoff reset, so a specialist inherits the same register. This
+is the seam that makes the persona safe to edit: the register and the Loop's enforcement are
+not in the persona's reach.
+
+### Patron-voiced follow-ups
+With a register in place, the v0.35 follow-up directive is tuned to the patron's voice — the
+suggested questions read as a patron would ask them, not as the desk describing itself.
+
+## Honesty notes
+- `config.chat_register` gates the register; composed centrally, so register/persona/follow-ups
+  can't drift apart at call sites. With federation off the system prompt is the agent's own
+  `system_prompt`, unchanged.
+- The register is the institution's voice and stays code-owned; what a deployment edits (v0.37)
+  is the per-desk **persona**, never the register.
+
+## Done = all of:
+- `Chat::Register::DEFAULT` (institution-formal, frozen, `config.chat_register`);
+  `Chat.compose_system` (register → persona → followups) used by the Loop at init and handoff;
+  patron-voiced follow-up directive. Off-path unchanged; **663 green.**
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.37 — Persona Editing (code seeds, the store governs)
+
+## Why
+A deployment needs to shape each desk's *persona* — the CHDS Theses specialist should
+introduce itself as such — without editing the gem. And those edits must be auditable and
+reversible: a voice is a governance surface, not a config string. v0.37 makes each desk's
+persona **curator-editable, versioned, and rollback-able**, applying the authority-control
+pattern the vocabulary already uses — **code seeds, the store governs** — now to the desk's
+voice. It is safe to do because the Loop, not the persona, enforces behavior.
+
+## What
+
+### `Chat::Persona` — an append-only versioned store (`models/enliterator/chat/persona.rb`)
+A new table `enliterator_chat_personas` (reversible migration; applied to the dummy and HSDL
+dev). `record(desk_name:, system_prompt:, editor:, note:)` appends a version;
+`effective(desk_name)` returns the latest stored persona or nil; `history(desk_name)` lists
+versions newest-first. **Append-only** — a rollback is a new version copying an old one, not a
+deletion, so the audit trail is complete.
+
+### The Loop resolves the effective persona (override || seed)
+`Chat::Loop#persona_for(agent)` resolves `Chat::Persona.effective(agent.name) ||
+agent.system_prompt` — the stored override if one exists, otherwise the code seed — and feeds
+it through `Chat.compose_system`. The change is **live on the next turn**: the store governs,
+the code seeds. The register and enforcement are untouched.
+
+### `/desks` — the persona editor (`DesksController`, gated)
+A new surface (`desks`, `desks/update`, `desks/rollback`). It shows each registered desk's
+editable persona, the **read-only** engine register and org chart (tier, tools, routing —
+code-owned), the **composed preview** (exactly what the Loop sends), and the version history
+with per-version rollback. Gated by `config.chat_persona_editing` — the route is always drawn;
+the controller `head :not_found` when off (the always-draw + gate convention shared with
+chat/mcp). An **editor seam** (`config.chat_editor`, a callable over the request) attributes
+each version to a person when the host resolves one, rescuing to nil otherwise — auth-agnostic.
+
+## Honesty notes
+- `config.chat_persona_editing` OFF: `/desks` 404s and nothing reads the store —
+  byte-identical. With it on but no edits saved, `effective` is nil and the Loop uses the code
+  seed — still byte-identical to v0.36.
+- **The persona is editable because behavior isn't in it.** Grounding, the read-only
+  allow-list, provenance, routing — all live in the Loop. A curator can rewrite the voice; they
+  cannot rewrite what the desk is allowed to do.
+- Append-only by design: history is never destroyed; rollback is a forward-moving copy.
+
+## Done = all of:
+- `Chat::Persona` (append-only versioned store, `enliterator_chat_personas`, reversible
+  migration applied to dummy + HSDL); `Chat::Loop#persona_for` (override || seed via
+  `compose_system`, live next turn); `/desks` editor (editable persona, read-only
+  register/org-chart, composed preview, history + rollback) gated by
+  `config.chat_persona_editing` (always-draw + controller-gate); `config.chat_editor` editor
+  seam (rescued, auth-agnostic). OFF byte-identical; full suite green.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.38 — Per-Agent Step Cap + No-Browser Evaluation (the desk becomes testable)
+
+## Why
+Two needs converged. First, a thorough specialist (CHDS Theses) sometimes exhausted the
+federation's default step budget on hard questions and returned "I reached my step budget"
+instead of an answer — the cap belonged to the desk, not the federation. Second, evaluating
+the desk meant driving the browser by hand: slow, unscriptable, and it hid the run-to-run
+variance the agentic loop actually has. v0.38 makes the step cap **per-agent** and gives the
+engine a **no-browser way to evaluate a desk** — drive `Chat::Loop` directly and get the
+answer, the tools used, the handoffs, the follow-ups, and the elapsed time back as data.
+
+## What
+
+### Per-agent `step_cap`
+`Chat::Agent` gains a nilable `step_cap`; `Chat::Loop` uses `effective_step_cap =
+@agent.step_cap || @step_cap` — a desk that needs more rounds (HSDL's CHDS desk: 10) gets
+them, while the federation default still bounds the rest. A thorough question that previously
+hit the budget now completes.
+
+### `Chat::Eval` — drive the loop without a browser (`chat/eval.rb`)
+`Eval.ask(question, context:, record:, **loop_opts)` runs the real `Chat::Loop` and returns a
+`Result` struct: `answer`, `tools`, `handoffs`, `followups`, `elapsed_s`, `budget_hit`, and the
+raw `events`. It is the loop the controller drives, minus the transport — so an eval exercises
+the genuine governed path, not a mock. When `config.chat_retention` is on (v0.39) an eval
+records like any turn.
+
+### `enliterator:ask` — the rake front door
+A rake task wraps `Eval.ask` so a desk can be questioned from the command line in a `rails
+runner` — scriptable, fast, and honest about variance (run it three times and watch the
+agentic path differ). This is the harness that found the step-budget bug in the first place.
+
+## Honesty notes
+- The per-agent cap is additive: an agent with no `step_cap` behaves exactly as v0.37 (the
+  federation default applies). Off-path unaffected.
+- `Eval` drives the **real** Loop — same enforcement boundary, same tools, same budgets — so an
+  eval result reflects production behavior, not a simulation. It records only when retention is
+  enabled.
+
+## Done = all of:
+- `Chat::Agent#step_cap` (nilable) + `Chat::Loop` `effective_step_cap` (per-agent || federation
+  default); `Chat::Eval.ask` → `Result` (answer/tools/handoffs/followups/elapsed_s/budget_hit/
+  events), driving the real loop, recording under retention; `enliterator:ask` rake (no-browser
+  desk evaluation). Additive; off-path unaffected; full suite green.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.39 — Chat Retention (the event stream is the artifact)
+
+## Why
+Demonstrating the desk meant starting a fresh conversation and running it live every time; and
+the tending loops the project wants to build *on the desk's own conversational quality* had
+nothing to tend — the turns evaporated when the stream closed. v0.39 retains every federation
+turn as a first-class artifact and can **replay it**. The insight that makes this cheap: the
+SSE event array the desk already streams **is** the transport, **is** the record, **is** the
+replay source, **is** the future tending input. Capture is teeing the sink; replay is
+re-emitting the array.
+
+## What
+
+### `Chat::Conversation` + `Chat::Turn` — the store (gated)
+Two new tables (reversible migrations; applied to the dummy and HSDL dev):
+`enliterator_chat_conversations` (token, context, label, source) and `enliterator_chat_turns`
+(conversation, ordinal, question, **events jsonb**, answer, desk_name, persona_id, elapsed_ms,
+budget_hit). The turn's stored `events` jsonb is the captured SSE array verbatim — the
+artifact. `Turn` is built **tendable-ready**: the fields a future conversation-quality facet
+needs (the answer, the desk, the persona version, the events) are already first-class. Gated by
+`config.chat_retention`.
+
+### Capture = tee the sink (`Chat::Recorder` + controller)
+When retention is on, `ConversationController#stream` wraps its SSE sink so each event is
+**both** written to the wire and appended to a captured array; at turn end
+`Chat::Recorder.record` persists it. The recorder derives `answer`/`desk_name`/`persona_id`/
+`budget_hit` from the event array, tolerates symbol- and string-keyed events, and **never
+raises** (it rescues and logs — a retention failure must never break a live turn, rule 3).
+`Chat::Eval` records through the same path. The client carries a `conversation_token` so a turn
+joins its conversation (gated).
+
+### Re-stream replay (endpoint + client)
+`GET /chat/replay/:id` **re-emits a stored turn's events as SSE** — the same event types in the
+same order — so the federated client renders a replay **identically to a live turn**, with zero
+model spend. A small inter-token delay (skipped in test) preserves the live feel; replay frames
+`replay_user`/`replay_end` bracket the re-stream. The replay client reuses the live federated
+renderer — one renderer, two sources.
+
+### `/conversations` — browse + label (gated)
+A new surface lists retained conversations with their source (live vs eval), labels them, and
+deletes them. The delete confirm uses an inline vanilla `onclick` confirm, **not** Turbo/UJS
+`data-confirm` (the engine ships no JS framework — a `data-confirm` would be a dead no-op on a
+destructive action; rule 2).
+
+## Honesty notes
+- `config.chat_retention` OFF: the sink is the plain `sse` method, nothing is stored, and
+  `/conversations` / `/chat/replay` 404 — byte-identical to v0.38.
+- **The event array is the single source.** Replay does not re-run the model or reconstruct —
+  it re-emits exactly what was captured, so a replay is a faithful record, not an
+  approximation. Live-verified: a captured live turn (source=live) replayed from the store with
+  zero Bedrock, rendering indistinguishably from live.
+- Retention is **designed for** the next phase (conversation-tending: `Turn` as a Tendable +
+  quality facets) but does not implement it — named, not pretended.
+- The ordinal-assignment race (MAX+1) is UI-unreachable and logged on the unique index —
+  accepted, not hidden.
+
+## Done = all of:
+- `Chat::Conversation` + `Chat::Turn` (events-jsonb-as-artifact, tendable-ready fields,
+  reversible migrations applied to dummy + HSDL); `Chat::Recorder` (derives answer/desk/persona/
+  budget_hit, symbol+string tolerant, never raises); tee'd capture in
+  `ConversationController#stream` + `Chat::Eval`; client `conversation_token`; re-stream replay
+  endpoint + client (reuses the federated renderer, `replay_user`/`replay_end`); `/conversations`
+  browse/label/delete (inline `onclick` confirm). All gated by `config.chat_retention`; OFF
+  byte-identical; **715 green** (retention proven: live turn captured → replay re-streamed from
+  store with zero model spend).
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.40 — `enliterating-a-collection` (the method, shipped in the gem)
+
+## Why
+Across HSDL the engine taught us not just *a* tool but a *method*: how to take a collection
+from dormant to enliterated — the facet and staffing design, the vocabulary discipline, the
+condition survey, the heartbeat economics, the measured audit, the reference-desk pattern, and
+the ethic of who owns the spend. That method is a transmissible literacy. v0.40 encodes it as a
+**skill shipped in the gem** — so the next enliteration starts from the accumulated practice,
+not from scratch. It is written as an explicit **first draft, to be tended through the lens of
+every use** — itself an enliterated artifact, with a Tending log.
+
+## What
+
+### `skills/enliterating-a-collection/SKILL.md`
+A skill that ships in the gem at `skills/enliterating-a-collection/`. It encodes:
+- the **stance** — build IN to library/information science, don't reinvent it (authority
+  control, SKOS, PROV-O, finding aids);
+- the **method** — derive text first (the foundation for non-text collections), design facets
+  as roles and tiers as capability, let the vocabulary govern itself, survey condition before
+  spending, run the heartbeat on the changed frontier, measure the audit, staff a reference
+  desk;
+- the **common mistakes** (from its own RED baseline: generic "AI enrichment," invented
+  vocabulary, tending records no one can read) and their LIS-grounded corrections (TGM/TGN/
+  LCNAF, legibility-gating, the measured audit);
+- the **ethic** — the conscience is human; someone sees the dormant collection and authorizes
+  the spend.
+
+### Written test-first; tended on first use
+The skill was authored RED→GREEN (a museum-photo-archive baseline missed LIS grounding,
+invented vocabulary, tended unreadable records; with the skill it used TGM/TGN/LCNAF,
+legibility-gating, and the audit). It carries a **Tending log** — Visit 0 (HSDL, its source
+corpus) and Visit 1 (a photo archive, which taught the derive-text-first foundation for
+non-text collections) — and declares itself a first draft to be tended through every use.
+
+## Honesty notes
+- This is **documentation shipped in the gem**, not engine code — no runtime change, no new
+  surface, suite unaffected. Its correctness is demonstrated by the RED→GREEN authoring and the
+  Tending log, the same way a skill is tested.
+- The method is **HSDL-shaped and text-native today** — it explicitly wants a second, ideally
+  non-text, collection to settle its open questions. The next enliteration is its Visit 2; the
+  draft expects to change.
+
+## Done = all of:
+- `skills/enliterating-a-collection/SKILL.md` — the method (stance, the step-by-step method, a
+  common-mistakes table from a RED baseline, the ethic), written RED→GREEN, encoded as a first
+  draft with a Tending log (Visit 0 HSDL, Visit 1 photo archive). Ships in the gem; no runtime
+  change; suite unaffected.
+- SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.41 — Reset to Seed (the persona editor, completed)
+
+## Why
+v0.37 let a curator edit a desk's persona but gave no honest way *back* to the registered
+seed — short of pasting the gem's text by hand. A persona editor isn't finished until you can
+return to the code-owned starting point, auditably. v0.41 adds reset-to-seed and, in doing so,
+closes the v0.37 surface.
+
+## What
+
+### `DesksController#reset` — an append-only return to the seed
+Reset records a **new version copying the registered seed** (`desk.system_prompt`), rather than
+deleting the override history — the reset is itself an auditable version, consistent with the
+append-only store. After a reset, `effective` equals the seed again.
+
+### The Reset affordance shows only when overridden
+`/desks` computes `overridden = effective != desk.system_prompt` and shows the Reset button
+(with an inline vanilla `confirm`) **only when the persona genuinely differs from the seed**. A
+desk on its seed reads "using the registered seed" and offers no reset; the status line makes
+the override state legible at a glance.
+
+## Honesty notes
+- Reset is append-only and honest: history is preserved, the reset is a forward-moving copy of
+  the seed, and the affordance hides when there's nothing to reset. Gated with the rest of
+  `/desks` by `config.chat_persona_editing`.
+- Inline `onclick` confirm (no UJS/Turbo — rule 2), matching the v0.39 delete affordance.
+
+## Done = all of:
+- `DesksController#reset` (records a seed-copy version, append-only); `/desks` `overridden`
+  computation + conditional Reset affordance (inline confirm) + override status line. Gated; OFF
+  byte-identical; **717 green.**
+- SPEC, README, CLAUDE.md, About colophon.
