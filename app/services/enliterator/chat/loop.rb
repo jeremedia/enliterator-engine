@@ -189,24 +189,19 @@ module Enliterator
         messages << tool_result_message(call, { error: message })
       end
 
-      # System content for the active agent, composed in three layers:
-      #   register (v0.36, the engine-owned voice) → persona (the host's desk
-      #   prompt) → follow-up directive (v0.35, the output-tail instruction).
-      # Each layer is added only when its config is on; with both off the content
-      # is the bare @agent.system_prompt (byte-identical to v0.34).
+      # System content for the active agent: the engine register + the EFFECTIVE
+      # persona (curator override if stored, else the registered seed) + the
+      # follow-up directive. Resolved at turn time so a persona edit is live
+      # without a restart. Composition lives in Chat.compose_system (shared with
+      # the /desks preview).
       def system_content
-        [ register_text, @agent.system_prompt,
-          (Enliterator::Chat::Followups::DIRECTIVE if Enliterator.configuration.chat_followups) ]
-          .compact.join("\n\n")
+        Enliterator::Chat.compose_system(persona_for(@agent))
       end
 
-      # v0.36: resolve the register layer. nil/false ⇒ none; true ⇒ the built-in
-      # DEFAULT; a String ⇒ that custom register. Frames the desk's voice ahead of
-      # the host persona.
-      def register_text
-        r = Enliterator.configuration.chat_register
-        return nil unless r
-        r == true ? Enliterator::Chat::Register::DEFAULT : r.to_s
+      # The effective persona text for an agent: a curator's stored override wins;
+      # otherwise the registered seed ("code seeds, store governs").
+      def persona_for(agent)
+        Enliterator::Chat::Persona.effective(agent.name) || agent.system_prompt
       end
 
       # v0.35: parse the answer's trailing %%FOLLOWUPS%% block and surface the

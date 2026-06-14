@@ -274,4 +274,52 @@ RSpec.describe Enliterator::Chat::Loop do
       expect(seen_on_final).to include("advise")                                # the CHDS persona
     end
   end
+
+  describe "v0.37 persona override (Chat::Persona)" do
+    let(:agent) do
+      Enliterator::Chat::Agent.new(
+        name: "Desk", grounding: nil, system_prompt: "SEED persona.",
+        tools: %w[search], tier: "cheap", routes_to: [])
+    end
+    def recording_llm
+      Class.new do
+        define_method(:converse_with_tools) do |messages:, tools:, stream: false, **|
+          @seen = messages.first["content"]
+          Enliterator::Adapters::LLM::Gateway::ToolTurn.new(text: "ok", tool_calls: [], assistant_message: nil, tokens: {})
+        end
+        attr_reader :seen
+      end.new
+    end
+
+    after { Enliterator::Chat::Persona.delete_all }
+
+    it "uses the registered seed when no override is stored (byte-identical)" do
+      llm = recording_llm
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(*) {}).run("hi")
+      expect(llm.seen).to eq("SEED persona.")
+    end
+
+    it "uses the curator override when one is stored, not the seed" do
+      Enliterator::Chat::Persona.record(desk_name: "Desk", system_prompt: "OVERRIDE persona.")
+      llm = recording_llm
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(*) {}).run("hi")
+      expect(llm.seen).to eq("OVERRIDE persona.")
+      expect(llm.seen).not_to include("SEED")
+    end
+
+    it "resolves the override live across a handoff (per answering desk)" do
+      Enliterator::Chat::Persona.record(desk_name: "CHDS", system_prompt: "CHDS OVERRIDE.")
+      seen_on_final = nil
+      turns = [ calls({ id: "1", name: "route_to", arguments: { "agent" => "CHDS" } }), "ok" ]
+      llm = Object.new
+      llm.define_singleton_method(:converse_with_tools) do |messages:, tools:, stream: false, **|
+        t = turns.shift
+        next t if t.is_a?(Enliterator::Adapters::LLM::Gateway::ToolTurn)
+        seen_on_final = messages.first["content"]
+        Enliterator::Adapters::LLM::Gateway::ToolTurn.new(text: t, tool_calls: [], assistant_message: nil, tokens: {})
+      end
+      Enliterator::Chat::Loop.new(agent: Enliterator::Chat.frontdesk, llm: llm, sink: ->(*) {}, step_cap: 4).run("hi")
+      expect(seen_on_final).to eq("CHDS OVERRIDE.")  # the SPECIALIST's stored override (register/followups off here)
+    end
+  end
 end
