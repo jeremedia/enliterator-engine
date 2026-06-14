@@ -23,7 +23,7 @@ RSpec.describe "Conversation federation", type: :request do
     end
   end
 
-  after { Enliterator.configuration.chat_federation = nil; Enliterator.configuration.chat_followups = nil; Enliterator.configuration.chat_register = nil; Enliterator::Chat.reset! }
+  after { Enliterator.configuration.chat_federation = nil; Enliterator.configuration.chat_followups = nil; Enliterator.configuration.chat_register = nil; Enliterator.configuration.chat_retention = nil; Enliterator::Chat.reset! }
 
   # Helper: pull the JSON object that follows an `event: error` line in an SSE body.
   # The controller writes "event: error\n" then "data: <json>\n\n". Returns the parsed
@@ -193,6 +193,76 @@ RSpec.describe "Conversation federation", type: :request do
     expect(Enliterator.logger).to have_received(:info).with(/followup_click/).at_least(:once)
   ensure
     Enliterator.configuration.chat_followups = nil
+  end
+
+  # ── v0.39 Chat retention ─────────────────────────────────────────────────
+  # When chat_federation + chat_retention are both on, every POST to
+  # /enliterator/chat/stream persists a Chat::Turn under a Chat::Conversation
+  # keyed by the client-supplied conversation_token. A second POST with the SAME
+  # token appends ordinal 2 into the SAME conversation. When retention is OFF,
+  # the body is byte-identical (token + done) and NO Turn rows are created.
+  describe "chat_retention capture" do
+    let(:llm_tt) do
+      Enliterator::Adapters::LLM::Gateway::ToolTurn.new(
+        text: "the answer", tool_calls: [], assistant_message: nil, tokens: {})
+    end
+
+    before do
+      Enliterator.configuration.chat_federation = true
+      allow(Enliterator).to receive(:llm).and_return(double(converse_with_tools: llm_tt))
+      Enliterator::Chat.register(name: "Frontdesk", grounding: nil, system_prompt: "p",
+                                 tools: %w[search], tier: "cheap")
+    end
+
+    it "with retention ON: persists a Turn under the given conversation_token" do
+      Enliterator.configuration.chat_retention = true
+
+      post "/enliterator/chat/stream",
+           params: { question: "what is this?", conversation_token: "tok1" }
+
+      expect(response.body).to include("event: token")
+      conv = Enliterator::Chat::Conversation.find_by(token: "tok1")
+      expect(conv).not_to be_nil
+      expect(conv.source).to eq("live")
+      expect(conv.turns.count).to eq(1)
+      turn = conv.turns.first
+      expect(turn.ordinal).to eq(1)
+      expect(turn.question).to eq("what is this?")
+      expect(turn.answer).to eq("the answer")
+      expect(turn.desk_name).to eq("Frontdesk")
+    end
+
+    it "with retention ON: a second POST with the same token appends ordinal 2" do
+      Enliterator.configuration.chat_retention = true
+      # Allow the stub to return a ToolTurn on both calls
+      allow(Enliterator).to receive(:llm).and_return(
+        double(converse_with_tools: llm_tt))
+
+      post "/enliterator/chat/stream",
+           params: { question: "first question", conversation_token: "tok1" }
+      post "/enliterator/chat/stream",
+           params: { question: "second question", conversation_token: "tok1" }
+
+      conv = Enliterator::Chat::Conversation.find_by(token: "tok1")
+      expect(conv.turns.count).to eq(2)
+      expect(conv.turns.map(&:ordinal)).to eq([ 1, 2 ])
+      expect(conv.turns.map(&:question)).to eq([ "first question", "second question" ])
+    end
+
+    it "with retention OFF: no Turn rows created and SSE body is byte-identical" do
+      Enliterator.configuration.chat_retention = nil
+
+      expect {
+        post "/enliterator/chat/stream",
+             params: { question: "hello", conversation_token: "tok-off" }
+      }.not_to change(Enliterator::Chat::Turn, :count)
+
+      # Byte-identity: the federation-ON stream still emits token + done.
+      expect(response.body).to include("event: token")
+      expect(response.body).to include("event: done")
+      # No conversation row either.
+      expect(Enliterator::Chat::Conversation.find_by(token: "tok-off")).to be_nil
+    end
   end
 
   it "does NOT log a click-through for an ordinary submit (no from_followup param)" do

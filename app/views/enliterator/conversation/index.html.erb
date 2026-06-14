@@ -398,6 +398,14 @@
   // answer below it (created lazily on the first token so it lands UNDER the
   // trace), then an empty sources zone a later task populates. Tool calls show
   // live status (spinner → ✓) so the ~20s Bedrock turns aren't dead air.
+
+  // Per-page-load conversation token: all turns in one page visit group into
+  // one Chat::Conversation on the server when retention is on. Harmless when
+  // retention is off (controller ignores it). Uses crypto.randomUUID when
+  // available (all modern browsers); falls back to a timestamp+random for
+  // older environments.
+  var conversationToken = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + "-" + Math.random().toString(16).slice(2));
+
   var TOOL_LABELS = {
     collection_overview: "Reading the collection's self-portrait",
     search:              "Searching the collection",
@@ -966,6 +974,7 @@
     var body = new FormData();
     body.append("question", q);
     body.append("history", JSON.stringify(history));
+    body.append("conversation_token", conversationToken);
     if (fromFollowup) { body.append("from_followup", "1"); fromFollowup = false; }
 
     fetch(streamUrl, { method: "POST", headers: { "X-CSRF-Token": csrf }, body: body })
