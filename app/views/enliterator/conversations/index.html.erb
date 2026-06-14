@@ -42,10 +42,12 @@
                 <%= f.submit "Save", class: "btn btn-sm" %>
               <% end %>
 
-              <%# Delete button: POSTs to destroy action %>
+              <%# Delete button: POSTs to destroy. Inline vanilla confirm — the engine
+                  ships NO JS (no Turbo/UJS), so data-confirm would be a dead no-op
+                  (hard rule 2); onclick="return confirm(...)" works on any host. %>
               <%= form_with url: conversation_delete_path(conv), method: :post, style: "display:inline" do |f| %>
                 <%= f.submit "Delete", class: "btn btn-sm btn-destructive",
-                      data: { confirm: "Delete this conversation?" } %>
+                      onclick: "return confirm('Delete this conversation?')" %>
               <% end %>
             </div>
           </td>
