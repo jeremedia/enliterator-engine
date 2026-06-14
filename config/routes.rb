@@ -34,6 +34,9 @@ Enliterator::Engine.routes.draw do
 
   get  "chat",        to: "conversation#index",  as: :conversation
   post "chat/stream", to: "conversation#stream", as: :conversation_stream
+  # v0.39: re-stream replay — re-emits a saved conversation's stored events as SSE
+  # so the federated client renders it identically to a live turn (gated; 404 off).
+  get "chat/replay/:id", to: "conversation#replay", as: :conversation_replay, constraints: { id: %r{[^/]+} }
 
   # The atlas (v0.21): the enliterated collection drawn as a graph — records,
   # the entities their claims name, and the contexts that hold them; every

@@ -77,6 +77,36 @@ module Enliterator
       response.stream.close
     end
 
+    def replay
+      return head :not_found unless Enliterator.configuration.chat_retention
+      conv = Enliterator::Chat::Conversation.find_by(id: params[:id]) ||
+             Enliterator::Chat::Conversation.find_by(token: params[:id])
+      return head :not_found unless conv
+
+      response.headers["Content-Type"]      = "text/event-stream"
+      response.headers["Cache-Control"]     = "no-cache"
+      response.headers["X-Accel-Buffering"] = "no"
+
+      conv.turns.each do |turn|
+        sse(:replay_user, q: turn.question)            # client renders the patron bubble + a fresh turn
+        Array(turn.events).each do |e|
+          name = (e["event"] || e[:event]).to_s
+          data = e["data"] || e[:data] || {}
+          next if name.empty?
+          sse(name, data)
+          sleep 0.012 if name == "token" && !Rails.env.test?  # animate the stream live; instant in tests
+        end
+      end
+      sse(:replay_end, {})
+    rescue ActionController::Live::ClientDisconnected
+      # client navigated away mid-replay — nothing to clean up beyond the ensure
+    rescue => e
+      Enliterator.logger&.error("[enliterator] replay error: #{e.class}: #{e.message}")
+      sse(:error, message: "replay failed") rescue nil
+    ensure
+      response.stream.close
+    end
+
     private
 
     def sse(event, data)
