@@ -92,10 +92,10 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
 
 ## Current state & direction
 
-- Remote: github.com/jeremedia/enliterator-engine, **released through v0.23** (pushed 2026-06-10/11;
-  tags + GitHub releases v0.18–v0.22; v0.23 pushed via another of Jeremy's sessions, which also
-  pinned HSDL's Gemfile to it — HSDL commit 43943ba — and cut HSDL Release v1.42.0; check whether
-  a v0.23 tag/release exists before assuming). The version history:
+- Remote: github.com/jeremedia/enliterator-engine, **released through v0.41** (tags + GitHub
+  releases v0.18–v0.41; engine `main` @ `577a0f6` = the v0.31–v0.41 SPEC/About doc catch-up on top
+  of the v0.41 code at `0d80e43`; HSDL `enliterator-integration` pinned at `271f584`). The early
+  version history:
   v0.19 = the component standard (tokens + shared components in
   the layout style block, ctx-switch left beside what it scopes, Requests queue as per-term
   cards). v0.20 = the prepared finding aid: Status/Heartbeat previews read the last ledger
@@ -163,14 +163,17 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   enliterator:audit N=`, `/review` (confirm/overrule/correct → `Tendable#correct_claim!`, NOT
   assert_claim! — locked human supersession; `Claim::AlreadySuperseded` race guard), Status
   accuracy panel.
-- **NEXT**: read morning ledgers for the supervised week (2026-06-11 morning's cycle is the
-  FIRST with v0.23 pulse stamping — expect phase nil + pulse_at ≈ finished_at; also the first
-  audit allocation since the sampler fix should finally include significance/*); accumulate
-  audit cells toward n≈30; human-anchor sessions on /review (~18+ approvals waiting on
-  /requests from cycles #12/#45); vocabulary trigger still UNMEASURED. Then: the frontier
-  conversation (bound root lanes vs raise budget) and the auth wrap before staging (engine-push
-  prerequisite now CLEARED; FEDLINK 2026-07-14). UI rule going forward (v0.19): new pages
-  compose from the layout's tokens/components; page `<style>` is page-specific layout only.
+- **NEXT** (2026-06-14): SPEC / About / README / this file all caught up through v0.41 —
+  version-log doc-debt cleared. Live threads: **v2 conversation-tending** (make `Chat::Turn` a
+  Tendable + conversation-quality facets — grounded / answered / register-held / tool-efficient —
+  the payoff v0.39 retention was built for); **Plan B** (the public accountless desk: sessionless,
+  link-token, rate-limited, per-surface affordance scrub, leashed web tool); the **Bedrock
+  campaign** (campaign tier = bedrock-sonnet on the grant; blocked on an NPS IAM key — the ~9h SSO
+  ceiling caps multi-day autonomy); the **auth wrap on /enliterator (incl. /mcp, /desks,
+  /conversations) before staging**. Deadline: FEDLINK 2026-07-14. Next enliteration after HSDL =
+  currently the Curation Engine Collections project (the method skill's Visit 2 — shape NOT yet
+  examined). UI rule still in force (v0.19): new pages compose from the layout's tokens/components;
+  page `<style>` is page-specific layout only.
 - **How updates reach the engine (answered 2026-06-10)**: source_change = `updated_at` vs lane
   anchor — the legacy→dev sync's row rewrites ARE the signal, zero integration. ASSOCIATED
   tables (vocabulary_term_relations, marc_subjects) are INVISIBLE (no touch:true, raw-SQL
@@ -178,6 +181,81 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.41 — reset-to-seed**: `DesksController#reset` records a NEW version copying
+  `desk.system_prompt` (append-only — the reset is itself auditable, never a delete); `/desks`
+  computes `overridden = effective != seed` and shows the Reset button (inline `confirm`, no UJS —
+  rule 2) ONLY when overridden, with a "using the registered seed / curator override active" status
+  line. Gated with the rest of `/desks` by `config.chat_persona_editing`. **717 green.**
+- **v0.40 — the `enliterating-a-collection` SKILL** (the METHOD shipped in the gem at
+  `skills/enliterating-a-collection/SKILL.md`): build-IN-to-LIS stance; the method (derive text
+  first — the foundation for non-text collections; facets-as-roles/tiers-as-capability; vocabulary
+  self-governance; condition before spend; heartbeat on the changed frontier; measured audit; the
+  reference-desk pattern); a common-mistakes table from a RED baseline; the ethic. Written
+  writing-skills-TDD (RED museum-photo baseline [generic "AI enrichment", invented vocab, tended
+  unreadable records] → GREEN [TGM/TGN/LCNAF-grounded, legibility-gated, audited]); encoded as a
+  FIRST DRAFT with a Tending log (Visit 0 HSDL, Visit 1 photo archive). Docs only — no runtime change.
+- **v0.39 — chat retention** (`config.chat_retention`, default off): `Chat::Conversation` +
+  `Chat::Turn` (events-jsonb-as-artifact; tendable-ready: answer/desk_name/persona_id/elapsed_ms/
+  budget_hit). Capture = TEE the SSE sink (`ConversationController#stream` wraps the sink when on) →
+  `Chat::Recorder.record` (derives answer/desk/persona/budget from the event array; tolerates
+  symbol+string keys; NEVER raises — rescues + logs, rule 3). Re-stream replay: `GET /chat/replay/:id`
+  re-emits stored events as SSE (`replay_user`/`replay_end` frames; inter-token delay skipped in
+  test) so the federated client renders a replay IDENTICALLY to live, zero model spend.
+  `/conversations` browse/label/delete (inline `onclick` confirm — NOT data-confirm; no UJS).
+  `Chat::Eval` records through the same path. THE EVENT ARRAY IS THE ARTIFACT (transport = record =
+  replay source = v2 tending input). Two reversible migrations (conversations + turns), applied to
+  dummy + HSDL. **715 green.**
+- **v0.38 — per-agent step_cap + no-browser eval**: `Chat::Agent#step_cap` (nilable); Loop uses
+  `effective_step_cap = @agent.step_cap || @step_cap` (HSDL CHDS = 10 fixes intermittent "step
+  budget" non-answers). `Chat::Eval.ask(question, context:, record:, **loop_opts)` → `Result`
+  (answer/tools/handoffs/followups/elapsed_s/budget_hit/events) drives the REAL Loop minus
+  transport; `rake enliterator:ask` = the CLI front door (scriptable; exposes the run-to-run
+  variance the browser hides — it found the step-budget bug).
+- **v0.37 — persona editing** (`config.chat_persona_editing`, default off, controller 404s when
+  off): `Chat::Persona` append-only versioned store (`enliterator_chat_personas`);
+  `record`/`effective`/`history`. Loop `persona_for(agent) = Persona.effective(agent.name) ||
+  agent.system_prompt` → `Chat.compose_system`, live next turn ("code seeds, the store governs").
+  `/desks` editor: editable persona; READ-ONLY register + org chart (tier/tools/routes code-owned);
+  composed preview (exactly what the Loop sends); history + rollback. `config.chat_editor` =
+  callable(request)→editor seam (rescued, auth-agnostic). SAFE because the LOOP not the persona
+  enforces grounding/allow-list/provenance. Reversible migration applied to dummy + HSDL.
+- **v0.36 — the reference register** (`config.chat_register`): `Chat::Register::DEFAULT` = frozen
+  institution-formal LIS voice (code-owned — the institution's voice, not a knob).
+  `Chat.compose_system` = `[register_text, persona_text, (Followups::DIRECTIVE if
+  chat_followups)].compact.join` — the Loop calls it at run init AND on every handoff reset
+  (specialists inherit the register). This is the seam v0.37's editable persona plugs into.
+  Patron-voiced follow-up directive. **663 green.**
+- **v0.35 — Stage C: agent-reasoned follow-ups** (`config.chat_followups`, default off):
+  `Chat::Followups` (SENTINEL `%%FOLLOWUPS%%`, MAX 3, DIRECTIVE, `parse` with a `take_while`
+  truncation guard). Loop appends the directive + emits a `:followups` event after the final answer;
+  client renders clickable question buttons; `proseOf` STRIPS the sentinel+tail from streamed prose
+  (golden-guarded). The v0.29 DOM-scrape follow-up scaffold is RETIRED. Controller logs click-through
+  (gated, truncated query) — instrumented ("the experiment is the point"). OFF byte-identical.
+- **v0.34 — follow the stream**: federated auto-scroll that YIELDS to manual scroll and resumes at
+  bottom; Sources rail collapsed into a closed `<details>`. Client refactor extracted `followStream`
+  (the error-card path calls it → test factory injects a noop). Off-view byte-identical.
+- **v0.33 — streaming federation answers**: `Gateway#converse_with_tools` stream path now ASSEMBLES
+  tool-call deltas (`extract_tool_call_deltas`: concat `arguments` fragments by index; builds
+  `tool_calls` + `assistant_message` in the SAME shapes as the non-stream path). Loop streams with
+  the load-bearing `emit(:token,…) unless streamed` guard — a non-streaming adapter / the test
+  `ScriptedLLM` (ignores the block) keeps `streamed` false → full-text emit → every existing loop
+  spec green unchanged. No new SSE event (reuses `:token`); federation-path only; budgets between
+  rounds don't chop a streaming answer.
+- **v0.32 — clickable navigation (Stage A)**: inline ask-links from consulted records (click a
+  record → ask the desk about it, in place; rides the v0.29 citation metadata). Bug fix: the
+  `search` widget read the wrong key and rendered empty — corrected to `:records` (a real silent
+  failure closed; it's what gives the ask-links anything to point at).
+- **v0.31 — the reading room quiets**: welcoming empty state + receding chat chrome
+  (federation-gated); live "Working… Ns" thinking timer (client wall-clock); empty work-trace
+  "view" suppressed. Pure surface; off-view byte-identical.
+- **v0.30 — actionable errors at the desk**: `config.error_detail` (3-state nil/true/false,
+  default nil = auto via the one guarded `Rails.env.development?` touch, host-overridable);
+  `Chat::ErrorReport.build` = the SOLE `:error` constructor — `{message:}` ALWAYS from a static
+  literal (never `error.message` — a secret can't route around the gate); `detail`/`where`/`hint`
+  added only past `return h unless detail` (keys-canary spec). Loop + controller emit a structured
+  `:error` (covers federated + single-shot); resolved SERVER-side only (no `?error_detail=1`).
+  Client `renderErrorCard` is textContent-safe; `els.errored` survives the turn-finish flush.
+  Prod/off payload byte-identical.
 - **v0.29 — the Reference Desk, made legible (the agentic surface, elevated)**: a pure
   SURFACE elevation of v0.28's agentic chat + an engine-wide design-language pass. NO loop
   change, NO new SSE event — the same governed loop, finally shown. (1) Global design
