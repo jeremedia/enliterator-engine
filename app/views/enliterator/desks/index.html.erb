@@ -1,0 +1,9 @@
+<%# v0.37 placeholder — full persona editor lands in the next task. %>
+<h1 class="section-head">Reference desks</h1>
+<% @desks.each do |desk| %>
+  <% effective = Enliterator::Chat::Persona.effective(desk.name) || desk.system_prompt %>
+  <section class="desk">
+    <h2><%= desk.name %></h2>
+    <div class="desk__ro"><%= effective %></div>
+  </section>
+<% end %>

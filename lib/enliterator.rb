@@ -176,6 +176,17 @@ module Enliterator
     # register text instead. Nests under chat_federation (only the Loop applies it).
     attr_accessor :chat_register
 
+    # v0.37: gates the /enliterator/desks persona-editing surface. nil/false ⇒
+    # the controller 404s (and no nav link). A write surface that changes desk
+    # behavior, so opt-in. The persona STORE resolution is always live (inert when
+    # empty); this gates only the editing UI.
+    attr_accessor :chat_persona_editing
+
+    # v0.37: optional auth-agnostic editor-identity seam. nil ⇒ editors recorded as
+    # nil (dev). A callable ->(request) { "identity" } lets a host behind auth record
+    # who edited a persona without the engine imposing an auth model.
+    attr_accessor :chat_editor
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -220,6 +231,8 @@ module Enliterator
       @chat_federation = nil
       @chat_followups = nil
       @chat_register = nil
+      @chat_persona_editing = nil
+      @chat_editor = nil
       @error_detail = nil
       @allow_null_llm = false
       @conversation_tier = nil
