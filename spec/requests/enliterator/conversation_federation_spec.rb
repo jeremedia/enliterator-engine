@@ -23,7 +23,7 @@ RSpec.describe "Conversation federation", type: :request do
     end
   end
 
-  after { Enliterator.configuration.chat_federation = nil; Enliterator.configuration.chat_followups = nil; Enliterator::Chat.reset! }
+  after { Enliterator.configuration.chat_federation = nil; Enliterator.configuration.chat_followups = nil; Enliterator.configuration.chat_register = nil; Enliterator::Chat.reset! }
 
   # Helper: pull the JSON object that follows an `event: error` line in an SSE body.
   # The controller writes "event: error\n" then "data: <json>\n\n". Returns the parsed

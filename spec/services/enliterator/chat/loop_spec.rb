@@ -196,4 +196,82 @@ RSpec.describe Enliterator::Chat::Loop do
       Enliterator.configuration.chat_followups = nil
     end
   end
+
+  describe "v0.36 register (config.chat_register)" do
+    # A recording fake: captures the system content it was handed, returns a plain
+    # final answer (no tail).
+    def recording_llm
+      Class.new do
+        define_method(:converse_with_tools) do |messages:, tools:, stream: false, **|
+          @seen = messages.first["content"]
+          Enliterator::Adapters::LLM::Gateway::ToolTurn.new(
+            text: "An answer.", tool_calls: [], assistant_message: nil, tokens: {})
+        end
+        attr_reader :seen
+      end.new
+    end
+
+    let(:agent) do
+      Enliterator::Chat::Agent.new(
+        name: "Desk", grounding: nil, system_prompt: "You are the Desk.",
+        tools: %w[search], tier: "cheap", routes_to: [])
+    end
+
+    after { Enliterator.configuration.chat_register = nil }
+
+    it "with the flag OFF (default), the system content is the bare persona (byte-identical)" do
+      llm = recording_llm
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(*) {}).run("hi")
+      expect(llm.seen).to eq("You are the Desk.")
+    end
+
+    it "with chat_register = true, prepends the built-in DEFAULT register ahead of the persona" do
+      Enliterator.configuration.chat_register = true
+      llm = recording_llm
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(*) {}).run("hi")
+      expect(llm.seen).to start_with(Enliterator::Chat::Register::DEFAULT)
+      expect(llm.seen).to include("You are the Desk.")
+      expect(llm.seen).to include("not a personal assistant")  # a load-bearing phrase of the register
+    end
+
+    it "with chat_register = a String, uses that custom register, not the DEFAULT" do
+      Enliterator.configuration.chat_register = "House rule: terse."
+      llm = recording_llm
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(*) {}).run("hi")
+      expect(llm.seen).to start_with("House rule: terse.")
+      expect(llm.seen).not_to include("not a personal assistant")
+    end
+
+    it "composes register → persona → follow-up directive when both are on" do
+      Enliterator.configuration.chat_register = true
+      Enliterator.configuration.chat_followups = true
+      llm = recording_llm
+      Enliterator::Chat::Loop.new(agent: agent, llm: llm, sink: ->(*) {}).run("hi")
+      reg = llm.seen.index(Enliterator::Chat::Register::DEFAULT[0, 20])
+      per = llm.seen.index("You are the Desk.")
+      dir = llm.seen.index(Enliterator::Chat::Followups::SENTINEL)
+      expect([ reg, per, dir ]).to all(be_truthy)
+      expect(reg).to be < per
+      expect(per).to be < dir
+    ensure
+      Enliterator.configuration.chat_followups = nil
+    end
+
+    it "re-applies the register after a handoff (the specialist that answers carries it)" do
+      Enliterator.configuration.chat_register = true
+      seen_on_final = nil
+      turns = [ calls({ id: "1", name: "route_to", arguments: { "agent" => "CHDS" } }), "An answer." ]
+      llm = Object.new
+      llm.define_singleton_method(:converse_with_tools) do |messages:, tools:, stream: false, **|
+        t = turns.shift
+        next t if t.is_a?(Enliterator::Adapters::LLM::Gateway::ToolTurn)
+        seen_on_final = messages.first["content"]
+        Enliterator::Adapters::LLM::Gateway::ToolTurn.new(text: t, tool_calls: [], assistant_message: nil, tokens: {})
+      end
+      Enliterator::Chat::Loop.new(agent: Enliterator::Chat.frontdesk, llm: llm,
+                                  sink: ->(*) {}, step_cap: 4).run("hi")
+      expect(seen_on_final).to start_with(Enliterator::Chat::Register::DEFAULT)  # register frames the SPECIALIST too
+      expect(seen_on_final).to include("advise")                                # the CHDS persona
+    end
+  end
 end

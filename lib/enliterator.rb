@@ -169,6 +169,13 @@ module Enliterator
     # logs the outcome. Nests under chat_federation (the Loop only runs when that is on).
     attr_accessor :chat_followups
 
+    # v0.36: the engine-owned reference REGISTER (the desk's voice). nil/false ⇒
+    # not injected (byte-identical to v0.35). true ⇒ the built-in
+    # Enliterator::Chat::Register::DEFAULT (institution-formal LIS voice) is
+    # prepended to every answering desk's system prompt. A String ⇒ that custom
+    # register text instead. Nests under chat_federation (only the Loop applies it).
+    attr_accessor :chat_register
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -212,6 +219,7 @@ module Enliterator
       @suggestion_sink = nil
       @chat_federation = nil
       @chat_followups = nil
+      @chat_register = nil
       @error_detail = nil
       @allow_null_llm = false
       @conversation_tier = nil

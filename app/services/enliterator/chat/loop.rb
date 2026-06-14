@@ -189,13 +189,24 @@ module Enliterator
         messages << tool_result_message(call, { error: message })
       end
 
-      # System content for the active agent. v0.35: when chat_followups is on,
-      # append the generic follow-up directive so the answering desk ends with the
-      # %%FOLLOWUPS%% block. Off ⇒ the bare persona (byte-identical to v0.34).
+      # System content for the active agent, composed in three layers:
+      #   register (v0.36, the engine-owned voice) → persona (the host's desk
+      #   prompt) → follow-up directive (v0.35, the output-tail instruction).
+      # Each layer is added only when its config is on; with both off the content
+      # is the bare @agent.system_prompt (byte-identical to v0.34).
       def system_content
-        base = @agent.system_prompt
-        return base unless Enliterator.configuration.chat_followups
-        "#{base}\n\n#{Enliterator::Chat::Followups::DIRECTIVE}"
+        [ register_text, @agent.system_prompt,
+          (Enliterator::Chat::Followups::DIRECTIVE if Enliterator.configuration.chat_followups) ]
+          .compact.join("\n\n")
+      end
+
+      # v0.36: resolve the register layer. nil/false ⇒ none; true ⇒ the built-in
+      # DEFAULT; a String ⇒ that custom register. Frames the desk's voice ahead of
+      # the host persona.
+      def register_text
+        r = Enliterator.configuration.chat_register
+        return nil unless r
+        r == true ? Enliterator::Chat::Register::DEFAULT : r.to_s
       end
 
       # v0.35: parse the answer's trailing %%FOLLOWUPS%% block and surface the
