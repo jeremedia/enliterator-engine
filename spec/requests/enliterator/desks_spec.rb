@@ -67,4 +67,24 @@ RSpec.describe "Desks (persona editing)", type: :request do
     post "/enliterator/desks/update", params: { desk: "Frontdesk", system_prompt: "X." }
     expect(Enliterator::Chat::Persona.history("Frontdesk").first.editor).to eq("curator@example.gov")
   end
+
+  it "reset-to-seed appends a version copying the registered seed; effective returns to the seed" do
+    Enliterator.configuration.chat_persona_editing = true
+    Enliterator::Chat::Persona.record(desk_name: "Frontdesk", system_prompt: "EDITED.")
+    expect(Enliterator::Chat::Persona.effective("Frontdesk")).to eq("EDITED.")
+    post "/enliterator/desks/reset", params: { desk: "Frontdesk" }
+    expect(response).to redirect_to("/enliterator/desks")
+    expect(Enliterator::Chat::Persona.effective("Frontdesk")).to eq("SEED front.")  # back to the seed text
+    expect(Enliterator::Chat::Persona.history("Frontdesk").count).to eq(2)          # append-only (EDITED + reset)
+    expect(Enliterator::Chat::Persona.history("Frontdesk").first.note).to match(/reset/i)
+  end
+
+  it "the index shows a Reset button only when the effective persona differs from the seed" do
+    Enliterator.configuration.chat_persona_editing = true
+    get "/enliterator/desks"
+    expect(response.body).not_to include("Reset to the registered seed")  # un-edited → no reset
+    Enliterator::Chat::Persona.record(desk_name: "Frontdesk", system_prompt: "EDITED.")
+    get "/enliterator/desks"
+    expect(response.body).to include("Reset to the registered seed")      # edited → reset offered
+  end
 end

@@ -71,6 +71,7 @@ Enliterator::Engine.routes.draw do
   get  "desks",          to: "desks#index",    as: :desks
   post "desks/update",   to: "desks#update",   as: :desk_update
   post "desks/rollback", to: "desks#rollback", as: :desk_rollback
+  post "desks/reset",    to: "desks#reset",    as: :desk_reset
 
   # v0.39: browse + label retained conversations (gated; controller 404s when off).
   get  "conversations",            to: "conversations#index",   as: :conversations
