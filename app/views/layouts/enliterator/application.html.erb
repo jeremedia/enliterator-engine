@@ -472,6 +472,7 @@
     <%= link_to "Atlas", atlas_path %>
     <%= link_to "Heartbeat", heartbeat_path %>
     <% if Enliterator.configuration.chat_persona_editing %><%= link_to "Desks", desks_path %><% end %>
+    <% if Enliterator.configuration.chat_retention %><%= link_to "Conversations", conversations_path %><% end %>
     <%= link_to "Settings", settings_path, class: "nav-spacer" %>
     <%= link_to "About", about_path %>
   </nav>

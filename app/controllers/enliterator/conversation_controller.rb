@@ -11,6 +11,10 @@ module Enliterator
       # must SAY what it's scoped to — a chat silently pinned to an 82-record
       # sub-collection is indistinguishable from a broken one.
       @scope_count = current_context&.memberships&.count
+      # v0.39: replay client — set the id/token to replay when requested + retention on.
+      if params[:replay].present? && Enliterator.configuration.chat_retention
+        @replay_id = params[:replay]
+      end
     end
 
     def stream
