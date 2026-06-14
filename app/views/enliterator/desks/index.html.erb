@@ -24,7 +24,10 @@
 
 <% @desks.each do |desk| %>
   <% effective  = Enliterator::Chat::Persona.effective(desk.name) || desk.system_prompt %>
-  <% overridden = Enliterator::Chat::Persona.effective(desk.name).present? %>
+  <%# "overridden" = the effective persona genuinely DIFFERS from the registered
+      seed. A reset-to-seed records a seed-copy version, so effective == seed → not
+      overridden → the Reset affordance hides (and the status reads "registered seed"). %>
+  <% overridden = effective != desk.system_prompt %>
   <% history    = Enliterator::Chat::Persona.history(desk.name).to_a %>
   <section class="desk">
     <h2><%= desk.name %></h2>
@@ -47,6 +50,16 @@
         <input type="text" name="note" placeholder="change note (optional)" class="field" style="flex:1;min-width:12rem">
         <button type="submit" class="btn btn-affirmative">Save new version</button>
       </div>
+    <% end %>
+
+    <%# Reset to the registered (code) seed — only when the persona differs from it.
+        Inline vanilla confirm (engine ships no UJS/Turbo — rule 2). %>
+    <% if overridden %>
+      <%= form_with url: desk_reset_path, method: :post, style: "display:inline" do %>
+        <input type="hidden" name="desk" value="<%= desk.name %>">
+        <button type="submit" class="btn btn-sm"
+                onclick="return confirm('Reset this persona to the registered seed?')">Reset to the registered seed</button>
+      <% end %>
     <% end %>
 
     <details style="margin-top:var(--s3)">

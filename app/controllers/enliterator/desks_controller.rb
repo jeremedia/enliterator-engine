@@ -35,6 +35,17 @@ module Enliterator
       redirect_to desks_path, notice: "Rolled #{desk.name} back to an earlier version (saved as the latest)."
     end
 
+    # v0.37: return a desk to its registered (code) seed. Append-only + honest —
+    # records a new version copying the seed (so the reset is itself an auditable
+    # version), rather than deleting history. Effective then equals the seed again.
+    def reset
+      desk = desk_or_redirect or return
+      Enliterator::Chat::Persona.record(
+        desk_name: desk.name, system_prompt: desk.system_prompt,
+        editor: resolve_editor, note: "reset to the registered seed")
+      redirect_to desks_path, notice: "Reset #{desk.name} to the registered seed (saved as the latest version)."
+    end
+
     private
 
     def require_editing!
