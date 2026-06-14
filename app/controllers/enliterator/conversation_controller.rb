@@ -24,11 +24,27 @@ module Enliterator
 
       if Enliterator.configuration.chat_federation
         agent = Enliterator::Chat.for_context(current_context&.key)
+        # Capture: when chat_retention is on, tee the sink so every event is also
+        # recorded. When retention is off, `captured` stays nil, sink == method(:sse)
+        # (byte-identical to v0.38 — no extra rows, no observable change).
+        captured = [] if Enliterator.configuration.chat_retention
+        sink = captured ? ->(ev, data) { captured << { "event" => ev.to_s, "data" => data }; sse(ev, data) } : method(:sse)
+        t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         # error_detail? is the per-surface decision point — passed explicitly here so
         # the future public desk can pass `false` regardless of env. (The Loop already
         # defaults to the resolver; this makes the surface's choice the authority.)
-        Enliterator::Chat::Loop.new(agent: agent, sink: method(:sse),
+        Enliterator::Chat::Loop.new(agent: agent, sink: sink,
                                     error_detail: Enliterator.configuration.error_detail?).run(params[:question].to_s)
+        if captured
+          conv = Enliterator::Chat::Conversation.find_or_create_by(token: params[:conversation_token].presence || SecureRandom.uuid) do |c|
+            c.context = current_context&.key
+            c.source  = "live"
+          end
+          Enliterator::Chat::Recorder.record(
+            conversation: conv, question: params[:question].to_s, events: captured,
+            initial_desk: agent.name,
+            elapsed_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round)
+        end
       else
         # ===== existing single-shot path — preserve VERBATIM =====
         provenance = Enliterator::Conversation.new(context: current_context).reply(
