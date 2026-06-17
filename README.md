@@ -396,6 +396,15 @@ every visit it causes carries `heartbeat_id` + `reason` — the schedule is
 auditable provenance, not a cron log. `PLAN=1` dry-runs the queue and prints the
 frontier horizon ("N records remaining ≈ M cycles at this budget").
 
+A cycle also degrades gracefully through **transient bedrock unavailability**
+(v0.41.1). All enliteration runs on a Bedrock credit with no fallback, so an
+expired AWS SSO session *or* a gateway timeout is treated as a **pause**, not a
+failure: the affected records are **deferred** (left on the frontier, no Visit),
+the considerer holds the scopes it can't reach (the ones it finished stay saved),
+and the cycle finishes clean (exit 0) so the deferred work resumes on the next
+beat (after `aws sso login` if the token lapsed). A real fault — bad request,
+model-not-found, a bug — still stays fatal.
+
 ```
 PLAN=1 bin/rails enliterator:heartbeat        # read the plan first
 BUDGET=30000 bin/rails enliterator:heartbeat  # a small supervised cycle
