@@ -180,6 +180,18 @@ module Enliterator
         log("standing down: #{e.message}")
         raise
       rescue => e
+        # v0.41.1: transient bedrock unavailability anywhere in the cycle (expired
+        # token OR timeout/connection) is a PAUSE, not a fault — finish CLEAN (no
+        # error stamp, no re-raise, exit 0) so the deferred work simply resumes on
+        # the next beat. This is the backstop; the phases defer in place where they
+        # can (work_items!, consider!). Every other error stays fatal as before.
+        if Enliterator::Adapters::LLM::Bedrock.unavailable?(e)
+          run_warnings << "bedrock unavailable mid-cycle — finished early; deferred work resumes " \
+                          "on the next beat (transient; re-run `aws sso login` if SSO expired)"
+          log(run_warnings.last)
+          finalize!(counts, run_warnings)
+          return self
+        end
         finalize!(counts, run_warnings, error_message: "#{e.class}: #{e.message}")
         raise
       end
@@ -259,6 +271,7 @@ module Enliterator
 
     def work_items!(plan, counts, run_warnings)
       total_failed = 0
+      bedrock_deferred = 0
       plan.items.each_with_index do |item, i|
         stand_down_check!
         pulse!("work")
@@ -300,6 +313,18 @@ module Enliterator
             counts[item.reason]["enqueued"] += 1
           end
         rescue => e
+          # v0.41.1: transient bedrock unavailability (an expired token OR a
+          # gateway timeout) is a PAUSE, not a failure — defer this item (it stays
+          # on the frontier, untended, with no Visit) so the next beat resumes it.
+          # The "deferred" tally is added LAZILY (only on a real deferral) so a
+          # cycle with none is byte-identical, and a deferral never counts toward
+          # total_failed — a transient outage cannot trip the abort below.
+          if Enliterator::Adapters::LLM::Bedrock.unavailable?(e)
+            counts[item.reason]["deferred"] = counts[item.reason].fetch("deferred", 0) + 1
+            bedrock_deferred += 1
+            log("[#{i + 1}/#{plan.items.size}] #{item.tendable_type}/#{item.tendable_id} DEFERRED — bedrock unavailable (#{e.class})")
+            next
+          end
           counts[item.reason]["failed"] += 1
           total_failed += 1
           log("[#{i + 1}/#{plan.items.size}] #{item.tendable_type}/#{item.tendable_id} FAILED #{e.class}: #{e.message}")
@@ -309,6 +334,11 @@ module Enliterator
                   "aborting the cycle as a misconfiguration, not a workload"
           end
         end
+      end
+      if bedrock_deferred.positive?
+        run_warnings << "bedrock unavailable — #{bedrock_deferred} item(s) deferred to the next beat " \
+                        "(transient: SSO expiry or gateway timeout); re-run `aws sso login` if the token lapsed"
+        log(run_warnings.last)
       end
     end
 
@@ -332,8 +362,19 @@ module Enliterator
         pulse!("considerer")
         ctx = ctx_id && Enliterator::Context.find_by(id: ctx_id)
         key = ctx&.key || "root"
-        outcomes[key] = Enliterator::Considerer.new(context: ctx).consider!
-        log("considerer #{key}: #{outcomes[key].map { |k, v| "#{k}=#{v}" }.join(' ')}")
+        begin
+          outcomes[key] = Enliterator::Considerer.new(context: ctx).consider!
+          log("considerer #{key}: #{outcomes[key].map { |k, v| "#{k}=#{v}" }.join(' ')}")
+        rescue => e
+          # v0.41.1: transient bedrock unavailability (expired token OR timeout)
+          # holds THIS scope for the next beat — scopes already considered stay
+          # saved (the update! below still runs) and the cycle finishes clean.
+          # Any other error is a real fault and still propagates to the fatal path.
+          raise if e.is_a?(StoodDown)
+          raise unless Enliterator::Adapters::LLM::Bedrock.unavailable?(e)
+          run_warnings << "considerer #{key}: bedrock unavailable — held for the next beat (transient; re-run `aws sso login` if SSO expired)"
+          log(run_warnings.last)
+        end
       end
       update!(considerer: outcomes)
     end

@@ -15,6 +15,51 @@ module Enliterator
       # profile id like "us.anthropic.claude-3-5-sonnet-20241022-v2:0") is documented
       # in the README; the host passes whichever is enabled for its account.
       class Bedrock < Base
+        # v0.41.1: the signature of a recoverable AWS-credential lapse (an
+        # expired SSO session / token), matched against "#{error.class}:
+        # #{error.message}". The grant runs on a Bedrock credit and the campaign
+        # tier must stay ON bedrock — so an expiry is a re-auth PAUSE the
+        # heartbeat defers on, never a fallback to another model. `auth_lapsed?`
+        # ANDs this expiry signature with a bedrock scope, so it fires ONLY for
+        # bedrock: a non-bedrock token expiry, or a bedrock error that is not an
+        # auth lapse (e.g. throttling), returns false. (Shares the expiry
+        # signature with Chat::ErrorReport's SSO hint, which is a broader,
+        # any-tier concern and stays independent.)
+        AUTH_EXPIRY_RX = /ExpiredToken|security token.*expired|InvalidGrant|\bsso\b/i
+        BEDROCK_RX     = /bedrock/i
+
+        # True when `error` is a recoverable Bedrock credential lapse (re-auth
+        # resolves it), as opposed to a real failure. Scoped to bedrock by
+        # construction ("always and only on bedrock"). Pure string match — it
+        # never loads the AWS SDK, so the heartbeat may call it on any host
+        # (the engine does not depend on aws-sdk-bedrockruntime).
+        def self.auth_lapsed?(error)
+          return false if error.nil?
+          subject = "#{error.class}: #{error.message}"
+          subject.match?(BEDROCK_RX) && subject.match?(AUTH_EXPIRY_RX)
+        rescue StandardError
+          false
+        end
+
+        # v0.41.1 broaden: bedrock is the only funded tier (no fallback), so the
+        # whole pipeline must survive *transient* bedrock unavailability — a
+        # gateway timeout / connection blip / 5xx as well as an expired token.
+        # All defer-and-resume on the next beat; only a real fault (bad request,
+        # model-not-found, a bug) stays fatal. A timeout carries no tier marker,
+        # but deferring-and-retrying a timeout is safe on any tier, so it is not
+        # bedrock-scoped (the auth case stays bedrock-scoped via auth_lapsed?).
+        TRANSIENT_RX = /APITimeout|Net::ReadTimeout|timed out|\btimeout\b|ECONNREFUSED|Connection(?:Failed|Reset)|ServiceUnavailable|\b50[23]\b/i
+
+        # True when `error` is a transient LLM-availability failure that should
+        # defer and resume next beat (an expired token OR a timeout/connection/5xx),
+        # as opposed to a real fault. The heartbeat's defer gate.
+        def self.unavailable?(error)
+          return false if error.nil?
+          auth_lapsed?(error) || "#{error.class}: #{error.message}".match?(TRANSIENT_RX)
+        rescue StandardError
+          false
+        end
+
         # @param model_id [String] Bedrock model id / inference profile id (required).
         # @param region   [String] AWS region; defaults to AWS_REGION or us-east-1.
         # @param client   [Object] optional injected client responding to #converse

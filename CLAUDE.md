@@ -181,6 +181,33 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **v0.41.1 — graceful bedrock UNAVAILABILITY** (resilience hotfix; committed locally, UNPUSHED —
+  gated): ALL enliteration runs on the $10k Bedrock credit — NO funds for any other model, so NO
+  fallback (Jeremy, emphatically: do NOT route governance/audit to `quality`/gpt — everything stays
+  bedrock). The pipeline must SURVIVE bedrock's transient failures, not route around them. Two modes
+  poisoned the nightly cycle: (1) expired SSO token — renewed token lives ~9h but the beat is 01:30,
+  so an unattended beat ALWAYS meets an expired token until the NPS-IAM key (non-expiring creds)
+  lands (id=55); (2) a bedrock TIMEOUT mid-cycle even on a valid token — the considerer (and
+  conservator + audit examiner) all run on bedrock-sonnet (they default to `ladder.last`, and HSDL's
+  ladder = `[cheap, quality, bedrock-sonnet]`), and id=54/id=56 timed out on the considerer (id=56:
+  on the 4th of ~5 scopes; old code saved only at loop end, so the 3 completed scopes were LOST).
+  Root cause (2026-06-17): the heartbeat had NO transient-failure concept — recognition lived only in
+  `Chat::ErrorReport` (chat surface), never consulted by the pacemaker — so a transient failure either
+  tripped `EARLY_FAILURE_LIMIT` (id=51, tokens=0) or became the cycle's terminal `error`, skipping
+  considerer/conserve/audit and exiting 1. Fix: `Bedrock.unavailable?(error)` =
+  `auth_lapsed?` (AWS-expiry signature ANDed with `/bedrock/i` — only-on-bedrock; false for throttling
+  + non-bedrock SSO) ∨ `TRANSIENT_RX` (timeout/Net::ReadTimeout/ECONNREFUSED/503/502 — tier-agnostic,
+  safe to retry anywhere); SDK-free (engine has no aws-sdk dep). `work_items!` DEFERS a transient
+  failure (stays on frontier, no Visit, lazy `deferred` tally, NOT counted toward EARLY_FAILURE);
+  `consider!` holds the failing scope per-scope (the reached scopes' `update!` still runs → preserved);
+  `execute!` top-level net = clean finish (no error, exit 0) backstop. Real faults (bad request,
+  model-not-found, bugs) STAY fatal. No-deferral cycles byte-identical. Engine half only — the
+  9h-vs-01:30 gap closes only with the IAM key; until then, deferred work drains on any valid-token
+  beat (trigger a daytime beat after re-auth). Live on tonight's launchd beat automatically (fresh
+  rake loads the local override; no push/restart for the pacemaker). **735 green** (+18). SPEC
+  §v0.41.1 / About colophon / README heartbeat touched. NOTE rejected approach: moving governance off
+  bedrock to a stable tier — there are no funds for non-bedrock models, so resilience-on-bedrock is
+  the only path.
 - **v0.41 — reset-to-seed**: `DesksController#reset` records a NEW version copying
   `desk.system_prompt` (append-only — the reset is itself auditable, never a delete); `/desks`
   computes `overridden = effective != seed` and shows the Reset button (inline `confirm`, no UJS —

@@ -2712,3 +2712,79 @@ the override state legible at a glance.
   computation + conditional Reset affordance (inline confirm) + override status line. Gated; OFF
   byte-identical; **717 green.**
 - SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# v0.41.1 — Graceful Bedrock Unavailability (the grant survives bedrock's bad moments)
+
+## Why
+**All** enliteration runs on a $10k AWS Bedrock credit — there are no funds for any other model, so
+there is **no fallback**: the whole pipeline must *survive* bedrock's transient failures, not route
+around them. Two such failures kept poisoning the nightly cycle. (1) A manually-renewed AWS SSO
+session lives only ~9 hours, while the pacemaker beats at 01:30 — so an unattended beat **always**
+meets an expired token until the NPS-IAM key (non-expiring credentials) lands (id=55). (2) Even on a
+valid token, a bedrock call can **time out** mid-cycle (id=54, id=56 — the considerer, which runs on
+bedrock, timed out on the 4th of ~5 scopes). The intended behavior for both is a **pause**: defer the
+work, finish the cycle clean, resume on the next beat. It wasn't. The heartbeat had no notion of a
+transient failure — the only expiry-recognition lived in `Chat::ErrorReport` (the chat surface) and
+the pacemaker never consulted it. So a transient failure either tripped the `EARLY_FAILURE_LIMIT`
+misconfiguration abort (tokens=0) or surfaced as the cycle's terminal `error` — skipping the
+considerer/conservator/audit and exiting non-zero. The considerer stalled for days.
+
+## What
+
+### `Enliterator::Adapters::LLM::Bedrock.unavailable?(error)` — the defer gate
+The predicate the heartbeat consults to decide *defer-and-resume* vs *fatal*. It is the union of two
+recognizers, matched against `"#{error.class}: #{error.message}"`:
+- **`auth_lapsed?`** — the AWS-credential-expiry signature (`ExpiredToken | security token … expired
+  | InvalidGrant | sso`) **ANDed** with a bedrock scope (`/bedrock/i`). True only for a recoverable
+  bedrock auth lapse; false for a non-bedrock token expiry (*only-on-bedrock*) and for a bedrock error
+  that is not an auth lapse (throttling). Covers both the direct-SDK error and the LiteLLM 500. Shares
+  the expiry signature with `Chat::ErrorReport`'s SSO hint, which stays an independent, any-tier concern.
+- **`TRANSIENT_RX`** — timeouts / connection blips / 5xx (`APITimeout | Net::ReadTimeout | timed out |
+  ECONNREFUSED | Connection(Failed|Reset) | ServiceUnavailable | 502/503`). A timeout carries no tier
+  marker, but deferring-and-retrying a timeout is safe on **any** tier, so this half is intentionally
+  not bedrock-scoped. A real fault (bad request, model-not-found, a bug) matches neither → stays fatal.
+
+Pure string match — never loads the AWS SDK, so the heartbeat may call it on any host (the engine does
+not depend on `aws-sdk-bedrockruntime`).
+
+### The heartbeat defers in place where it can, finishes clean everywhere
+- **`work_items!`**: a per-item transient failure **defers** the record — it stays on the frontier,
+  untended, with no Visit, counted in a lazily-added `deferred` tally — and does **not** count toward
+  `EARLY_FAILURE_LIMIT`, so a transient outage at the start no longer reads as a misconfiguration. One
+  summary warning per cycle names the deferred count and the `aws sso login` remedy (if SSO expired).
+- **`consider!`**: a transient failure in a scope **holds that scope** for the next beat; scopes
+  already considered stay saved (the `update!` still runs) and the cycle continues. (This is exactly
+  id=56: a timeout on the 4th of ~5 scopes now preserves the first three instead of losing them.)
+- **`execute!`**: the top-level rescue treats a transient failure as a **clean finish** — no `error`
+  stamp, no re-raise (exit 0) — the backstop for any phase that does not defer in place. Every other
+  error stays fatal exactly as before.
+
+The deferred work resumes on the next beat that runs with a valid, responsive token: a manually-
+triggered daytime beat now, every nightly beat once the IAM key removes the expiry.
+
+## Honesty notes
+- **Transient defers; real faults stay fatal; additive.** A real failure (bad request,
+  model-not-found, a bug) still counts and the `EARLY_FAILURE_LIMIT` abort still fires on it
+  (spec-pinned). Only transient unavailability (expiry / timeout / connection / 5xx) defers. The
+  `deferred` tally is added only on a real deferral, so a cycle with none is byte-identical to v0.41.
+- **Scoping.** The auth half is bedrock-scoped (an expiry signature ANDed with `/bedrock/i`) so a
+  non-bedrock SSO error can't mis-defer. The timeout/connection half is intentionally tier-agnostic —
+  retrying a timeout next beat is safe on any tier — which also matches this deployment's reality:
+  **all enliteration is on bedrock** (no funds for any other model, so no fallback exists).
+- This fixes the **engine** half. The **operational** half — the ~9h SSO window never overlapping the
+  01:30 beat — is closed only by the NPS-IAM key (non-expiring credentials). Until then the graceful
+  defer keeps every cycle clean and the bedrock lane drains on any valid-token beat.
+- **No config flag**: the trigger (transient bedrock unavailability) is itself the gate, and it was a
+  previously-always-fatal condition. A flag to re-enable the broken behavior has no use case.
+
+## Done = all of:
+- `Enliterator::Adapters::LLM::Bedrock.unavailable?` = `auth_lapsed?` (`AUTH_EXPIRY_RX` ∧ `BEDROCK_RX`)
+  ∨ `TRANSIENT_RX` (timeout/connection/5xx) — SDK-free; `work_items!` per-item defer + lazy `deferred`
+  tally + summary warning; `consider!` per-scope hold; `execute!` top-level clean-finish net. Real
+  faults stay fatal; no-deferral cycles byte-identical; **735 green** (18 new: the predicate's auth +
+  transient + only-on-bedrock + real-fault cases, the defer-and-continue, the no-abort-on-all-lapse,
+  the no-abort-on-all-timeout, the considerer auth-hold and timeout-hold, the top-level net, and a
+  back-compat guard that a non-bedrock failure stays fatal).
+- SPEC, README, CLAUDE.md, About colophon.
