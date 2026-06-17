@@ -2788,3 +2788,107 @@ triggered daytime beat now, every nightly beat once the IAM key removes the expi
   the no-abort-on-all-timeout, the considerer auth-hold and timeout-hold, the top-level net, and a
   back-compat guard that a non-bedrock failure stays fatal).
 - SPEC, README, CLAUDE.md, About colophon.
+
+---
+
+# Authority control is two-stage (foundational)
+
+*Not a version — a foundational reframe of how the vocabulary governs itself, plus the forward
+design for the half that isn't built yet. Discovered 2026-06-17 while supervising a considerer run
+on chds-theses (~1,135 open candidate terms in one scope, 68% proposed by a single record).
+**Documentation only; no runtime change.** Naming the model is true today; building the missing
+stage is forward work.*
+
+## The thesis
+
+Literacy is not curated onto a corpus after the fact; it **emerges from the act of reading it**. A
+collection's controlled vocabulary — the terms by which it can be searched, browsed, and understood
+— is built by the readers of its documents, each recognizing what a document is about *and what
+prior readers already named*. Authority control is therefore not an editorial stage bolted on at the
+end; it is **distributed across every act of reading, and merely ratified centrally**.
+
+This is how a thesaurus is actually maintained (ANSI/NISO **Z39.19**): an indexer works with the
+vocabulary *in hand* — reusing established terms and proposing candidate terms by **literary
+warrant** — and an editor ratifies. The engine's thesis, made infrastructure: *the controlled
+vocabulary is an emergent property of reading, not an imposition upon it.*
+
+## The two stages
+
+- **Stage 1 — read-time warrant accrual (distributed).** As a reader tends a record it sees *both*
+  the **established vocabulary** (approved terms it uses as claim keys) *and* the **candidate
+  vocabulary** (open proposed terms already carrying warrant — what other readers recently
+  proposed). It reuses established terms, **affirms** a candidate when one fits (contributing
+  warrant), and proposes a genuinely new candidate only when neither fits. Convergence happens here,
+  where the literature is read.
+- **Stage 2 — ratification (centralized).** The `Considerer` synthesizes the converged candidate
+  field and ratifies a slate (map / approve / reject); approvals join the established vocabulary;
+  `/requests` is the human ratification surface.
+
+The model maps onto what already exists, and onto Z39.19:
+
+| Z39.19 | Enliterator |
+|---|---|
+| established / preferred terms | `Vocabulary.for(facet, context:)` (code + curator-approved) |
+| candidate terms | `ProposedTerm` (open) |
+| literary warrant | `pressure` / `distinct_records` / resurgence |
+| vocabulary editor | `Considerer` + `/requests` |
+
+## What's true today, and what isn't
+
+**Stage 2 exists and works.** The considerer reads the whole candidate field, decides each term,
+auto-applies the reversible verdicts (maps + confident rejects), and holds approves for human
+ratification — exactly the editor's role.
+
+**Stage 1 is degenerate.** The reader is given only the *established* vocabulary (the facet
+contract, `Vocabulary.for`); it never sees the *candidate* field. So every reader proposes blind:
+warrant accrues only when two readers happen to coin the identical key string, and synonyms
+(`issuing_organization` / `issuing_agency` / `organization_origin`) pile up as separate candidates.
+**We built indexers who cannot see the thesaurus.** The considerer inherits the fragmentation as one
+oversized field — chds-theses presents ~1,135 open candidates, 68% proposed by exactly one record —
+which is both why a single whole-field synthesis call times out and why most of the field is noise.
+
+## The missing stage 1 — read-time warrant accrual (designed, NOT yet built)
+
+Two reader-side disciplines, both "participate in vocabulary formation correctly":
+
+**(a) Show the candidate vocabulary; let readers affirm.** Thread a **candidate block** into the
+tend prompt beside the established contract: a *bounded, salient* set of open `ProposedTerm`s for
+this facet/context — top-N by warrant, ideally narrowed to candidates semantically near this record
+(the engine already has embeddings). The instruction goes three-tier: *established* → use as a claim
+key; *candidate* → if one expresses your observation, re-propose **that** key (affirm it); *novel* →
+propose a new candidate only when neither fits. "Affirming" is emitting the same `proposed_key`; the
+existing Suggestion → ProposedTerm machinery already aggregates it, so warrant accrues with **no new
+storage**. Guards: affirm only if it genuinely fits (a forced match is worse than a clean new
+proposal), and never emit a candidate as a *claim* — it isn't established yet.
+
+**(b) Subject-indexing vs vocabulary-proposal.** Separate two acts the reader now conflates:
+*indexing this document's subjects* (a **value**, e.g. under `index_terms`) vs *proposing a new
+collection-wide dimension* (a new **key**). The test: a document-specific concept becomes an
+`index_terms` value; a new candidate *key* is reserved for a concept many records would share. This
+is what stops the long tail — a thesis's bespoke "five-element framework" is an index value, not a
+vocabulary key.
+
+(a) collapses synonyms; (b) keeps bespoke one-offs out of the key space. The considerer then
+ratifies a small, genuinely-warranted, collection-level field.
+
+## Consequences for the existing design
+
+- **Supersedes "chunk the considerer."** The earlier instinct — batch the oversized considerer call
+  — treated the symptom. Upstream convergence shrinks the candidate field at the source; the
+  considerer's whole-field synthesis (its load-bearing property: it can only dedupe terms it sees
+  together) stays intact, just over a converged field. A pressure-floor on what the considerer
+  LLM-considers drops from "the fix" to a backstop.
+- **Pressure becomes a true warrant signal.** Today pressure is coincidental string-collision; with
+  the candidate block, an affirmation is a reader of the literature recognizing a term — pressure
+  *is* literary warrant, accrued where reading happens.
+
+## Non-goals / deferred to the implementation plan
+
+This pass is **documentation only** (this section + the About thesis passage). No runtime change.
+Stage 1 is built later, when it reaches the queue (behind bedrock resilience and FEDLINK prep),
+under the usual discipline: additive, gated, byte-identical when unused. Deferred to that plan:
+exact prompt wording; candidate-retrieval (top-N-by-warrant vs semantic-nearest) and N; whether a
+reader sees candidates accrued *within* the running cycle or only prior warrant; whether the audit
+should check the index/vocabulary discipline. One risk to carry: the candidate block creates a
+rich-get-richer effect — mostly the point (convergence), but it can entrench an early poor term;
+stage 2 (the considerer) remains the corrective.

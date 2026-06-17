@@ -181,6 +181,20 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   title/description/summary_data/docling_markdown. WATCH ITEM: if catalog metadata ever joins
   the tending input, wire a signal (sync-rake touch, touch:true, or point
   `heartbeat_source_changed` at a digest covering associations).
+- **Authority control is two-stage — foundational reframe** (2026-06-17, docs-only; SPEC.md has the
+  unnumbered "Authority control is two-stage (foundational)" section, About's "vocabulary that tends
+  itself" row carries the thesis): discovered while supervising a considerer run — vocabulary
+  convergence is currently SINGLE-stage. Readers propose BLIND (given only the established vocabulary
+  `Vocabulary.for`, never the candidate field of open `ProposedTerm`s), and the Considerer does ALL
+  dedup downstream. Z39.19 framing: we built indexers who can't see the thesaurus. The model wants
+  TWO stages: **stage 1 read-time warrant accrual** (readers shown established + candidate vocab,
+  AFFIRM a candidate instead of coining a synonym → pressure becomes true literary warrant) + the
+  subject-indexing-vs-vocabulary-proposal discipline (per-doc concept → an `index_terms` VALUE;
+  recurring dimension → a new KEY — kills the 68%-single-record one-off tail); **stage 2 considerer
+  ratification** (exists, works). SUPERSEDES the "chunk the considerer" idea (upstream convergence
+  shrinks the field; pressure-floor → backstop). The reframe is TRUE now (stage 2 exists); stage 1 is
+  DESIGNED, not built — queued behind bedrock resilience + FEDLINK, under the usual additive/gated
+  discipline. Brainstormed with Jeremy 2026-06-17; he chose unnumbered foundational placement.
 - **v0.41.1 — graceful bedrock UNAVAILABILITY** (resilience hotfix; committed locally, UNPUSHED —
   gated): ALL enliteration runs on the $10k Bedrock credit — NO funds for any other model, so NO
   fallback (Jeremy, emphatically: do NOT route governance/audit to `quality`/gpt — everything stays
