@@ -576,6 +576,24 @@ the versioned policy permanently — after which the DB derivation for it is red
 Disable the live-extension behavior with `config.apply_approved_keys = false` (then
 only code-defined keys are ever in force).
 
+**Read-time warrant accrual (v0.41.2 — `config.read_time_warrant`, default off).**
+The converging cycle above ratifies *centrally* (the considerer reads the whole
+field). But convergence should also begin *where the reading happens* — otherwise
+every reader proposes blind, each coining its own synonym (`issuing_organization` /
+`issuing_agency` / `organization_origin`), and the considerer inherits a fragmented
+field. With `read_time_warrant` on, the Visitor threads a **candidate block** into
+`#tend` beside the controlled vocabulary: the bounded, demand-ranked set of *open*
+candidate terms other readers have proposed for this facet/context
+(`Enliterator::Vocabulary.candidates_for`, read off live `Suggestion.gaps` so a key
+proposed earlier in the same cycle is already visible). The instruction is
+three-tier — use an *established* term as a claim key; **affirm** a *candidate* that
+fits by re-proposing its `proposed_key` (warrant accrues through the existing
+Suggestion machinery, no new storage); propose a *novel* key only when neither fits.
+Affirmation collapses synonyms at the source — warrant becomes the breadth of
+distinct records that recognize a term — so the considerer ratifies a small,
+genuinely-warranted field. Off ⇒ byte-identical (no candidate retrieval, no prompt
+change). See SPEC.md "Authority control is two-stage" + v0.41.2.
+
 ## Architecture notes
 
 - **Polymorphic ids are strings.** Every `*_id` column on engine tables is

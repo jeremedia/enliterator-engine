@@ -64,9 +64,9 @@ module Enliterator
         # the original system text.
         #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, facet:, state:, neighbors:, tags: [], contract: nil, required: nil)
+        def tend(text:, facet:, state:, neighbors:, tags: [], contract: nil, required: nil, candidates: nil)
           messages = [
-            { role: "system", content: system_for(contract, required: required) },
+            { role: "system", content: system_for(contract, required: required, candidates: candidates) },
             {
               role: "user",
               content: build_user(text: text, facet: facet, state: state, neighbors: neighbors)

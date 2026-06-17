@@ -239,6 +239,30 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
     end
   end
 
+  describe "#tend with candidates (stage 1 — read-time warrant)" do
+    let(:contract)   { { author: "Who authored it.", date: "When." } }
+    let(:candidates) { [ { proposed_key: "funder", count: 3, sample_rationale: "names the funder" } ] }
+
+    def system_content
+      fake_client.completions.last_kwargs[:messages].find { |m| m[:role] == "system" }[:content]
+    end
+
+    it "threads the candidate block into the system message" do
+      adapter.tend(text: "x", facet: "metadata", state: {}, neighbors: [],
+                   contract: contract, candidates: candidates)
+      expect(system_content).to match(/CANDIDATE VOCABULARY/i)
+      expect(system_content).to include("funder")
+    end
+
+    it "is byte-identical (no candidate block) when candidates is nil" do
+      adapter.tend(text: "x", facet: "metadata", state: {}, neighbors: [], contract: contract, candidates: nil)
+      with_nil = system_content
+      adapter.tend(text: "x", facet: "metadata", state: {}, neighbors: [], contract: contract)
+      expect(with_nil).to eq(system_content)
+      expect(with_nil).not_to match(/CANDIDATE VOCABULARY/i)
+    end
+  end
+
   describe "#tend with NO contract is byte-identical to v0.2" do
     it "sends RESPONSE_SCHEMA verbatim and the original system text" do
       adapter.tend(text: "x", facet: "summary", state: {}, neighbors: [])

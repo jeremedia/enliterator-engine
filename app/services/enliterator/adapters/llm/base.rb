@@ -89,7 +89,7 @@ module Enliterator
         # suggestions emphasis).
         #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil)
+        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil, candidates: nil)
           raise NotImplementedError, "#{self.class} must implement #tend"
         end
 
@@ -156,12 +156,14 @@ module Enliterator
         #
         # @param contract [Hash, nil] `{key => description}` or nil.
         # @return [String]
-        def system_for(contract, required: nil)
+        def system_for(contract, required: nil, candidates: nil)
           base = build_system
           keys = allowed_terms_from(contract)
           return base if keys.nil? || keys.empty?
 
-          base + "\n\n" + contract_system_block(contract, required: required)
+          out = base + "\n\n" + contract_system_block(contract, required: required)
+          out += "\n\n" + candidates_block(candidates) if candidates&.any?
+          out
         end
 
         private
@@ -233,6 +235,42 @@ module Enliterator
             required key is genuinely absent from the record, assert it with an empty
             value and low confidence rather than omitting it.
           REQUIRED
+        end
+
+        # Stage 1 — the CANDIDATE-vocabulary block, appended by system_for as a SIBLING
+        # AFTER the contract block (gated on candidates&.any?). Renders the warrant-
+        # ranked candidates other readers have proposed + the three-tier affirm
+        # instruction + the value-vs-key discipline. NOTE the deliberate override:
+        # affirming re-emits an EXISTING candidate key into `suggestions`, contradicting
+        # that array's general "propose NEW keys" framing — so the override is stated
+        # HERE, in the gated prompt, NOT by editing SUGGESTIONS_SCHEMA_PROPERTY (which
+        # schema_for adds unconditionally; changing it would alter the schema for every
+        # contract facet even when this is off, breaking byte-identity).
+        def candidates_block(candidates)
+          lines = candidates.map { |c|
+            key = c[:proposed_key] || c["proposed_key"]
+            cnt = (c[:count] || c["count"]).to_i
+            rat = c[:sample_rationale] || c["sample_rationale"]
+            "  - #{key} (proposed by #{cnt} record#{'s' unless cnt == 1}): #{rat}"
+          }.join("\n")
+          <<~CANDIDATES.strip
+            CANDIDATE VOCABULARY — terms OTHER readers have already proposed for this
+            facet but a curator has not yet ratified. They carry literary warrant; help
+            the vocabulary CONVERGE rather than fragment:
+
+            #{lines}
+
+            If your observation matches one of these candidates, AFFIRM it: re-propose it
+            in the `suggestions` array using its EXACT proposed_key. This is intended even
+            though the key already exists — re-emitting it is HOW warrant accrues, and it
+            overrides the array's general "propose a NEW key" guidance for these
+            candidates. Propose a genuinely new key ONLY when neither an allowed term nor
+            any candidate above fits.
+
+            A concept specific to THIS record — one a reader would look up here, not a
+            dimension many records share — belongs as a VALUE under an existing
+            value-bearing key (e.g. index terms), NOT as a new proposed key.
+          CANDIDATES
         end
 
         # Recursively duplicate a (frozen) nested Hash/Array structure so a

@@ -192,6 +192,17 @@ module Enliterator
     # persist (the dev/demo backend) and can be re-streamed.
     attr_accessor :chat_retention
 
+    # ---- Stage 1: read-time warrant accrual ------------------------------
+
+    # Gate for stage 1 of two-stage authority control (SPEC.md "Authority control
+    # is two-stage"). nil/false ⇒ readers see only the ESTABLISHED vocabulary
+    # (byte-identical to today). true ⇒ each tend on a contracted facet also threads
+    # the CANDIDATE vocabulary (live `Suggestion.gaps` for the facet/context) into
+    # the prompt, so readers AFFIRM an existing candidate instead of coining a
+    # synonym — turning pressure into true literary warrant. Reader-side only; the
+    # considerer (stage 2) is unchanged.
+    attr_accessor :read_time_warrant
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -246,6 +257,7 @@ module Enliterator
       @considerer_autonomy = :auto_safe
       @considerer_min_confidence = 0.75
       @apply_approved_keys = true
+      @read_time_warrant = nil
       @heartbeat_budget_tokens = 200_000
       @heartbeat_change_share = 0.2
       @heartbeat_neighbor_threshold = 3

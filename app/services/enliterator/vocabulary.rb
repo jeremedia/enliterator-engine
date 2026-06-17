@@ -51,5 +51,38 @@ module Enliterator
       descs = Enliterator::ProposedTerm.where(proposed_key: terms).pluck(:proposed_key, :recommended_rationale).to_h
       terms.each_with_object({}) { |t, h| h[t] = descs[t].presence || DEFAULT_DESCRIPTION }
     end
+
+    # Stage 1 — read-time warrant accrual. The bounded, warrant-ranked CANDIDATE
+    # vocabulary a reader is shown for a facet/context: live PENDING proposals
+    # (`Suggestion.gaps`, demand-ranked) MINUS what is already established or
+    # resolved. Read off LIVE pending — NOT `ProposedTerm`, which is refreshed only
+    # at considerer time and so would be stale/empty in the tend loop.
+    #
+    # Scoping is asymmetric: gathering is EXACT-context (`gaps`' own `context_id:`
+    # filter — pending rows don't inherit, SPEC rule 4); exclusion is PATH-CUMULATIVE
+    # (`Vocabulary.for` + `resolved_keys` both read up the path — verdicts/approvals
+    # inherit down). Excludes `resolved_keys` (approved/mapped/rejected), not just the
+    # established set, so a key whose affirmation `persist_suggestions!` would suppress
+    # is never advertised as a live candidate.
+    #
+    # +established+ lets a caller (the visitor) pass the contract it ALREADY resolved
+    # via `Vocabulary.for`, to avoid recomputing it per record; nil falls back to
+    # `Vocabulary.for` for standalone/test callers. Keys are string-normalized
+    # (a contract may be symbol-keyed) so the set-difference against the String
+    # `proposed_key`s from `gaps` actually matches.
+    #
+    # @return [Array<Hash>, nil] up to `limit` gap hashes {proposed_key, count,
+    #   sample_rationale, sample_example} by demand; nil (NOT []) when none, so the
+    #   visitor's `!candidates.nil?` gate omits the kwarg and the call stays
+    #   byte-identical when there is nothing to show.
+    def candidates_for(facet, context: nil, established: nil, limit: 20)
+      est      = ((established || Enliterator::Vocabulary.for(facet, context: context)) || {})
+                   .keys.map(&:to_s).to_set
+      excluded = est + Enliterator::Suggestion.resolved_keys(context: context)
+      Enliterator::Suggestion.gaps(facet: facet.to_s, context: context)
+        .reject { |g| excluded.include?(g[:proposed_key]) }
+        .first(limit)
+        .presence
+    end
   end
 end
