@@ -2793,11 +2793,12 @@ triggered daytime beat now, every nightly beat once the IAM key removes the expi
 
 # Authority control is two-stage (foundational)
 
-*Not a version — a foundational reframe of how the vocabulary governs itself, plus the forward
-design for the half that isn't built yet. Discovered 2026-06-17 while supervising a considerer run
-on chds-theses (~1,135 open candidate terms in one scope, 68% proposed by a single record).
-**Documentation only; no runtime change.** Naming the model is true today; building the missing
-stage is forward work.*
+*Not a version — a foundational reframe of how the vocabulary governs itself. Discovered 2026-06-17
+while supervising a considerer run on chds-theses (~1,135 open candidate terms in one scope, 68%
+proposed by a single record). The conceptual pass was documentation-only; **stage 1 then shipped in
+v0.41.2** (below) — the candidate block + affirmation, gated behind `read_time_warrant` and
+byte-identical when off. Semantic-nearest candidate retrieval and the index/value audit remain
+forward work.*
 
 ## The thesis
 
@@ -2829,7 +2830,7 @@ The model maps onto what already exists, and onto Z39.19:
 | Z39.19 | Enliterator |
 |---|---|
 | established / preferred terms | `Vocabulary.for(facet, context:)` (code + curator-approved) |
-| candidate terms | `ProposedTerm` (open) |
+| candidate terms | `Suggestion` (pending — the live read-time projection readers affirm, via `Suggestion.gaps`) + `ProposedTerm` (the materialized warrant aggregate the `Considerer` reads) |
 | literary warrant | `pressure` / `distinct_records` / resurgence |
 | vocabulary editor | `Considerer` + `/requests` |
 
@@ -2839,27 +2840,31 @@ The model maps onto what already exists, and onto Z39.19:
 auto-applies the reversible verdicts (maps + confident rejects), and holds approves for human
 ratification — exactly the editor's role.
 
-**Stage 1 is degenerate.** The reader is given only the *established* vocabulary (the facet
-contract, `Vocabulary.for`); it never sees the *candidate* field. So every reader proposes blind:
-warrant accrues only when two readers happen to coin the identical key string, and synonyms
-(`issuing_organization` / `issuing_agency` / `organization_origin`) pile up as separate candidates.
-**We built indexers who cannot see the thesaurus.** The considerer inherits the fragmentation as one
-oversized field — chds-theses presents ~1,135 open candidates, 68% proposed by exactly one record —
-which is both why a single whole-field synthesis call times out and why most of the field is noise.
+**Stage 1 was degenerate (v0.41.2 fixes it).** The reader was given only the *established*
+vocabulary (the facet contract, `Vocabulary.for`); it never saw the *candidate* field. So every
+reader proposed blind: warrant accrued only when two readers happened to coin the identical key
+string, and synonyms (`issuing_organization` / `issuing_agency` / `organization_origin`) piled up as
+separate candidates. **We built indexers who could not see the thesaurus.** The considerer inherited
+the fragmentation as one oversized field — chds-theses presents ~1,135 open candidates, 68% proposed
+by exactly one record — which is both why a single whole-field synthesis call times out and why most
+of the field is noise. v0.41.2 shows the reader the candidate field; see below.
 
-## The missing stage 1 — read-time warrant accrual (designed, NOT yet built)
+## Stage 1 — read-time warrant accrual (shipped in v0.41.2)
 
 Two reader-side disciplines, both "participate in vocabulary formation correctly":
 
 **(a) Show the candidate vocabulary; let readers affirm.** Thread a **candidate block** into the
-tend prompt beside the established contract: a *bounded, salient* set of open `ProposedTerm`s for
-this facet/context — top-N by warrant, ideally narrowed to candidates semantically near this record
-(the engine already has embeddings). The instruction goes three-tier: *established* → use as a claim
-key; *candidate* → if one expresses your observation, re-propose **that** key (affirm it); *novel* →
-propose a new candidate only when neither fits. "Affirming" is emitting the same `proposed_key`; the
-existing Suggestion → ProposedTerm machinery already aggregates it, so warrant accrues with **no new
-storage**. Guards: affirm only if it genuinely fits (a forced match is worse than a clean new
-proposal), and never emit a candidate as a *claim* — it isn't established yet.
+tend prompt beside the established contract: a *bounded, warrant-ranked* set of open candidates for
+this facet/context — **top-N by `Suggestion.gaps`** (the live *pending* demand, read directly at
+tend-time so a key proposed earlier in the same cycle is already visible; the considerer's
+`ProposedTerm` aggregate is materialized only at consider-time and would read stale here). The
+instruction goes three-tier: *established* → use as a claim key; *candidate* → if one expresses your
+observation, re-propose **that** key (affirm it); *novel* → propose a new candidate only when
+neither fits. "Affirming" is emitting the same `proposed_key`; the existing Suggestion → ProposedTerm
+machinery already aggregates it (warrant = `COUNT(DISTINCT tendable)`), so warrant accrues with **no
+new storage**. Guards: affirm only if it genuinely fits (a forced match is worse than a clean new
+proposal), and never emit a candidate as a *claim* — it isn't established yet. Semantic narrowing to
+candidates near this record is deferred; top-N-by-warrant is the shipped MVP.
 
 **(b) Subject-indexing vs vocabulary-proposal.** Separate two acts the reader now conflates:
 *indexing this document's subjects* (a **value**, e.g. under `index_terms`) vs *proposing a new
@@ -2884,11 +2889,110 @@ ratifies a small, genuinely-warranted, collection-level field.
 
 ## Non-goals / deferred to the implementation plan
 
-This pass is **documentation only** (this section + the About thesis passage). No runtime change.
-Stage 1 is built later, when it reaches the queue (behind bedrock resilience and FEDLINK prep),
-under the usual discipline: additive, gated, byte-identical when unused. Deferred to that plan:
-exact prompt wording; candidate-retrieval (top-N-by-warrant vs semantic-nearest) and N; whether a
-reader sees candidates accrued *within* the running cycle or only prior warrant; whether the audit
-should check the index/vocabulary discipline. One risk to carry: the candidate block creates a
-rich-get-richer effect — mostly the point (convergence), but it can entrench an early poor term;
+Stage 1 shipped in **v0.41.2** under the usual discipline (additive, gated behind
+`read_time_warrant`, byte-identical when off). Resolved along the way: the read-time source is
+`Suggestion.gaps` (live pending), so a reader sees candidates accrued *within* the running cycle,
+not just prior warrant. Still deferred: semantic-nearest candidate retrieval (vs top-N-by-warrant)
+and N-tuning; an audit of the index/value discipline. One risk to carry: the candidate block creates
+a rich-get-richer effect — mostly the point (convergence), but it can entrench an early poor term;
 stage 2 (the considerer) remains the corrective.
+
+---
+
+# v0.41.2 — Read-time warrant accrual (stage 1, built)
+
+## Why
+The foundational reframe above named the model and diagnosed the break: readers were shown only the
+*established* vocabulary (`Vocabulary.for`) and never the *candidate* field, so each proposed blind —
+synonyms fragmented (`issuing_organization` / `issuing_agency` / `organization_origin`) and a one-off
+tail piled up (chds-theses: ~1,135 open candidates, 68% from a single record), which floods the
+considerer and times out its whole-field synthesis. This version builds **stage 1**: show readers the
+candidate field and let them **affirm** an existing candidate instead of coining a synonym. Reader-side
+only; the considerer (stage 2) is unchanged — it just ratifies a smaller, converged field. This
+**supersedes** the earlier "chunk the considerer" instinct (a pressure-floor drops to a backstop).
+
+## What
+
+### `config.read_time_warrant` — one flag, default off
+`attr_accessor` in the chat-flag cluster; nil default, reset each example. Off ⇒ no candidate
+retrieval, no prompt change, the adapter call is **byte-identical** to v0.41.x. This is hard rule 1,
+spec-pinned (the flag-off visitor never even calls `candidates_for`).
+
+### `Enliterator::Vocabulary.candidates_for(facet, context:, established: nil, limit: 20)`
+The bounded, warrant-ranked CANDIDATE vocabulary a reader is shown — symmetry with `Vocabulary.for`.
+It is `Suggestion.gaps` (live **pending**, ranked by `COUNT(DISTINCT tendable)`) minus two exclusions,
+returning `rows.presence` (**nil, not `[]`**, when empty — so the visitor's `!candidates.nil?` gate
+omits the kwarg):
+- **established** — path-cumulative `Vocabulary.for` (code + curator-approved). `established:` lets the
+  visitor pass the contract it already resolved, avoiding a per-record recompute; the `Vocabulary.for`
+  fallback serves standalone/test callers. String-normalized to match gap keys.
+- **resolved** — `Suggestion.resolved_keys(context:)` (approved / mapped / rejected, read **up** the
+  path). Excluded so the block never advertises a key whose affirmation `persist_suggestions!` would
+  silently drop (mapped/rejected in an ancestor while a child still holds pre-verdict pending rows).
+
+Scoping is **asymmetric and load-bearing**: candidate-gathering uses the **exact** context
+(`gaps`' `context_id: context&.id` — pending rows don't inherit, rule 4); exclude-established uses the
+**path-cumulative** `Vocabulary.for`/`resolved_keys` (verdicts read up the path). Read-time source is
+`Suggestion.gaps`, **NOT** `ProposedTerm` — `ProposedTerm.refresh!` runs only at consider-time, so
+reading it here would show stale warrant and return `[]` on a host between considerer runs (a
+fantasy-state no-op). Reading live `gaps` also means a key proposed earlier in the **same cycle** is
+visible to later readers (within-cycle convergence, free). Renders `proposed_key` + `count` +
+`sample_rationale` — the exact gap-hash keys.
+
+### The candidate block (`Adapters::LLM::Base#candidates_block`)
+`system_for(contract, required:, candidates:)` appends `candidates_block` as a **sibling** after
+`contract_system_block`, guarded by `candidates&.any?` — never nested in the contract block (it
+early-returns the base text for a no-contract facet; candidates can only exist *under* a contract). The
+block renders the candidate vocabulary and a **three-tier instruction**: *established* → claim key;
+*candidate* → if one fits, re-propose **that** `proposed_key` (affirm); *novel* → propose a new key only
+when neither fits. Discipline (b) rides the same block: a document-specific concept is a **value**
+(route to a value-bearing key like `index_terms`); a new **key** is reserved for a recurring,
+collection-level dimension. **The structured-output schema is UNCHANGED** — `SUGGESTIONS_SCHEMA_PROPERTY`
+is added unconditionally for every contract facet, so editing its "new keys" framing would break
+byte-identity; instead the gated block states explicitly that re-emitting a shown candidate's
+`proposed_key` is how you affirm it, overriding the array's general framing for the candidates shown.
+Affirmation lives entirely in the system prompt; the schema golden stays clean.
+
+### Visitor threading (the verified injection path)
+`call_with_staffing` computes `candidates` **once per record** — gated on
+`read_time_warrant && contract` (an unconstrained facet emits no suggestions, so the `gaps` query is
+skipped) — and threads it to **every** tier visit via `tend_with_optional_kwargs`, kwarg-gated exactly
+like `contract:`/`required:` (passed only when non-nil AND the adapter's `#tend` declares it). So Null
+and per-tier stubs are gated out; the **Gateway** (HSDL's live bedrock-sonnet path) and **Bedrock**
+both thread it. The v0.1 back-compat path (`call_back_compat`) has no contract and is untouched.
+
+## Honesty notes
+- **Affirmation accrual is verified, not rebuilt.** Affirming = a reader emits an existing candidate's
+  `proposed_key`; `persist_suggestions!` writes another `Suggestion` (no dedup for unresolved keys), and
+  warrant is `gaps`' `COUNT(DISTINCT tendable)`. So an affirmation **by a different record** raises
+  warrant (breadth of demand); a **same-record** re-tend does not (it bumps raw pressure, a separate
+  signal). The persistence path is unchanged; specs pin the semantics through the real Visitor loop.
+- **The model's *decision* to affirm (vs synonymize) is a deployment property**, verified live against
+  HSDL — not unit-testable with a stub. The specs pin the *mechanism* the candidate block depends on.
+- **Byte-identical when off.** Flag-off: no `candidates_for` call, no prompt block, the adapter call
+  carries no `:candidates` key (sentinel-asserted, not just nil-asserted). Flag-on-but-no-candidates
+  and flag-on-but-no-contract also omit the kwarg — three distinct no-op paths, all spec-pinned.
+- **Deferred:** semantic-nearest candidate retrieval (needs candidate-term embeddings — new infra);
+  the index/value audit; `ProposedTerm`'s richer signals (resurgence) at read-time. Top-N-by-warrant is
+  the MVP. WATCH: `candidates_for` runs `gaps` (a GROUP BY) once per record when on — negligible beside
+  the ~20s bedrock call, self-correcting as the field converges, but the first flag-on cycle over the
+  ~1,135-candidate chds-theses field pays it once per record.
+
+## Done = all of:
+- `config.read_time_warrant` (gated, default off); `Vocabulary.candidates_for` = `Suggestion.gaps`
+  minus path-cumulative established + resolved, exact-context, nil-when-empty; `Base#candidates_block`
+  sibling-appended (schema untouched); visitor computes once per record (gated on flag ∧ contract) and
+  threads to every tier visit, kwarg-gated; Gateway + Bedrock parity.
+- **761 green** (26 new over the 735 v0.41.1 baseline): 9 `candidates_for` (demand order, exclude
+  established + resolved, exact-context, nil-not-`[]`, limit, `established:` param + fallback), 5
+  candidate-block goldens (render + byte-identity for no-contract and contract-present-candidates-absent
+  + schema-untouched), 2 gateway candidate-thread, 6 visitor threading (off / on+present once-per-record
+  threaded up the ladder / on+empty / on+no-contract — kwarg presence-and-absence asserted), 4
+  affirmation accrual (second-record raises warrant, same-record does not, no synonym, ancestor-resolved
+  suppressed). No existing example modified.
+- SPEC (this section + the two-stage reframe amended to name `Suggestion.gaps` as the read-time
+  source), README, CLAUDE.md, About row.
+- **Gated:** push and the HSDL `config.read_time_warrant = true` enable wait on Jeremy's word; the
+  live affirmation check runs against HSDL on a valid bedrock token (`enliterator:deep_read_pilot`).
+
+---

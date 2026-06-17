@@ -138,6 +138,16 @@ module Enliterator
         # bars `verified` at the top tier. nil ⇒ byte-identical to v0.3/v0.4.
         required = policy.required_terms(facet, path: @path_keys)
 
+        # Stage 1 (read-time warrant accrual): the CANDIDATE vocabulary for this
+        # facet/context — live pending proposals other readers have made — so the
+        # model AFFIRMS an existing candidate instead of coining a synonym. Gated on
+        # the flag AND on contract presence (an unconstrained facet emits no
+        # suggestions, so there is nothing to affirm); `established: contract` reuses
+        # the contract already resolved above. nil ⇒ byte-identical, kwarg omitted.
+        candidates = if Enliterator.configuration.read_time_warrant && contract
+                       Enliterator::Vocabulary.candidates_for(facet, context: context, established: contract)
+                     end
+
         # No tier may legally run this record (e.g. on-prem-only with no on-prem
         # ladder). Record a failed visit and surface the misconfiguration.
         if allowed.empty?
@@ -164,7 +174,8 @@ module Enliterator
             escalated_from:    prior_visit,
             proposed_by_lower: proposed,
             contract:          contract,
-            required:          required
+            required:          required,
+            candidates:        candidates
           )
 
           # v0.5: a required key that came back empty forces escalation even when the
@@ -316,7 +327,7 @@ module Enliterator
       # Run one tending at a tier, recording the Visit (tier, tokens, raw,
       # escalation linkage). Does NOT reconcile — the loop decides which visit
       # writes. Returns [visit, parsed].
-      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil, required: nil)
+      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil, required: nil, candidates: nil)
         adapter = Enliterator.llm(tier: tier)
         log_event("resolve", tier: tier, adapter: adapter.class.name, model_id: adapter.model_id,
                              facet: facet, tendable: tendable_ref, step: step)
@@ -355,7 +366,8 @@ module Enliterator
             neighbors: neighbors,
             tags:      tags,
             contract:  contract,
-            required:  required
+            required:  required,
+            candidates: candidates
           )
           parsed = response.parsed || {}
 
@@ -504,11 +516,12 @@ module Enliterator
       # to v0.2 even on adapters that DO accept `contract:`. The Gateway accepts both;
       # Null/Bedrock accept `contract:` (and ignore it); per-tier stubs that accept
       # only `tags:` (escalation spec) still work — they're never handed a contract.
-      def tend_with_optional_kwargs(adapter, text:, facet:, state:, neighbors:, tags:, contract:, required: nil)
+      def tend_with_optional_kwargs(adapter, text:, facet:, state:, neighbors:, tags:, contract:, required: nil, candidates: nil)
         kwargs = { text: text, facet: facet, state: state, neighbors: neighbors }
-        kwargs[:tags]     = tags     if adapter_accepts_kwarg?(adapter, :tags)
-        kwargs[:contract] = contract if !contract.nil? && adapter_accepts_kwarg?(adapter, :contract)
-        kwargs[:required] = required if !required.nil? && adapter_accepts_kwarg?(adapter, :required)
+        kwargs[:tags]       = tags       if adapter_accepts_kwarg?(adapter, :tags)
+        kwargs[:contract]   = contract   if !contract.nil?   && adapter_accepts_kwarg?(adapter, :contract)
+        kwargs[:required]   = required   if !required.nil?   && adapter_accepts_kwarg?(adapter, :required)
+        kwargs[:candidates] = candidates if !candidates.nil? && adapter_accepts_kwarg?(adapter, :candidates)
         adapter.tend(**kwargs)
       end
 

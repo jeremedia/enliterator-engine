@@ -192,9 +192,35 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   subject-indexing-vs-vocabulary-proposal discipline (per-doc concept → an `index_terms` VALUE;
   recurring dimension → a new KEY — kills the 68%-single-record one-off tail); **stage 2 considerer
   ratification** (exists, works). SUPERSEDES the "chunk the considerer" idea (upstream convergence
-  shrinks the field; pressure-floor → backstop). The reframe is TRUE now (stage 2 exists); stage 1 is
-  DESIGNED, not built — queued behind bedrock resilience + FEDLINK, under the usual additive/gated
-  discipline. Brainstormed with Jeremy 2026-06-17; he chose unnumbered foundational placement.
+  shrinks the field; pressure-floor → backstop). Brainstormed with Jeremy 2026-06-17; he chose
+  unnumbered foundational placement. **Stage 1 then SHIPPED in v0.41.2** (below) — the SPEC section's
+  "designed, NOT yet built" language is amended to name `Suggestion.gaps` as the read-time source; the
+  index/value audit + semantic-nearest retrieval remain deferred.
+- **v0.41.2 — read-time warrant accrual (stage 1, BUILT)** (committed locally, UNPUSHED — gated;
+  SPEC.md §v0.41.2 + the amended two-stage reframe): the reframe's missing half, shipped reader-side
+  only (considerer untouched). `config.read_time_warrant` (default off → byte-identical: the flag-off
+  visitor never even calls `candidates_for`). `Enliterator::Vocabulary.candidates_for(facet, context:,
+  established:, limit:)` = `Suggestion.gaps` (live PENDING, ranked by `COUNT(DISTINCT tendable)`) minus
+  established (path-cumulative `Vocabulary.for`) minus `resolved_keys` (approved/mapped/rejected, read
+  UP the path) — returns `presence` (**nil, not `[]`**, so the `!candidates.nil?` gate omits the kwarg).
+  SCOPING IS ASYMMETRIC + load-bearing: candidate-gather uses the EXACT context (pending rows don't
+  inherit, rule 4); exclude-est/resolved read the PATH. Read-time source is `Suggestion.gaps` NOT
+  `ProposedTerm` (refresh! runs only at consider-time → reading it here = stale/`[]` on a host between
+  considerer runs = fantasy no-op; gaps also gives within-cycle convergence free). Prompt: `base.rb`
+  `candidates_block` is a SIBLING append after the contract block (guarded `candidates&.any?` — never
+  nested; system_for early-returns for no-contract facets); three-tier instruction (established→claim
+  key / candidate→affirm THAT proposed_key / novel→new key only when neither fits) + discipline (b)
+  value-vs-key (`index_terms` value for a per-doc concept; new key for a recurring dimension). THE
+  SCHEMA IS UNCHANGED — `SUGGESTIONS_SCHEMA_PROPERTY` is added unconditionally, so affirmation lives in
+  the gated PROMPT, not the schema (golden stays clean). Visitor computes candidates ONCE per record in
+  `call_with_staffing` (gated on flag ∧ contract) + threads to EVERY tier visit via
+  `tend_with_optional_kwargs` (kwarg-gated like contract/required → Null/stubs gated out; Gateway =
+  HSDL's live bedrock path + Bedrock parity). Accrual VERIFIED not rebuilt: a 2nd DISTINCT record
+  affirming raises warrant; a same-record re-tend does NOT (bumps raw pressure only); the model's
+  affirm-vs-synonymize DECISION is a deployment property (verified live, not unit-testable). **761
+  green** (+26 over 735; no existing example modified). Gated: push + HSDL `read_time_warrant = true`
+  enable + the live `enliterator:deep_read_pilot` affirmation check (needs a valid bedrock token) wait
+  on Jeremy.
 - **v0.41.1 — graceful bedrock UNAVAILABILITY** (resilience hotfix; committed locally, UNPUSHED —
   gated): ALL enliteration runs on the $10k Bedrock credit — NO funds for any other model, so NO
   fallback (Jeremy, emphatically: do NOT route governance/audit to `quality`/gpt — everything stays
