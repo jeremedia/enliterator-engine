@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_14_130100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_18_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -532,6 +532,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_130100) do
     t.index ["name", "computed_at"], name: "idx_enliterator_measures_on_name_computed"
     t.index ["tendable_type", "tendable_id", "name"], name: "idx_enliterator_facets_on_tendable_and_name", unique: true
     t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_measures_untendable", where: "(((name)::text = 'condition'::text) AND (score = (0.0)::double precision))"
+  end
+
+  create_table "enliterator_name_authorities", force: :cascade do |t|
+    t.string "canonical", null: false
+    t.bigint "context_id"
+    t.datetime "created_at", null: false
+    t.string "kind", default: "person", null: false
+    t.string "status", default: "auto", null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "variants", default: [], null: false
+    t.index ["canonical", "context_id", "kind"], name: "idx_enliterator_name_authorities_canonical", unique: true
+    t.index ["context_id", "kind"], name: "index_enliterator_name_authorities_on_context_id_and_kind"
+    t.index ["variants"], name: "index_enliterator_name_authorities_on_variants", using: :gin
   end
 
   create_table "enliterator_parts", force: :cascade do |t|

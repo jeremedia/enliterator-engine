@@ -212,6 +212,15 @@ module Enliterator
     # considerer (stage 2) is unchanged.
     attr_accessor :read_time_warrant
 
+    # ---- v0.45 Name authority control ------------------------------------
+
+    # The claim keys whose VALUES are person names subject to authority control
+    # (advisor, authored_by, …). Default [] ⇒ the reconciler is a no-op and the
+    # read-time resolver finds nothing ⇒ byte-identical. A host opts in by naming
+    # its name-bearing keys; the Catalog/Atlas then resolve those values to their
+    # canonical (preferred) form via NameAuthority.
+    attr_accessor :name_authority_keys
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -268,6 +277,7 @@ module Enliterator
       @considerer_min_confidence = 0.75
       @apply_approved_keys = true
       @read_time_warrant = nil
+      @name_authority_keys = []
       @heartbeat_budget_tokens = 200_000
       @heartbeat_change_share = 0.2
       @heartbeat_neighbor_threshold = 3

@@ -245,4 +245,44 @@ RSpec.describe Enliterator::Catalog do
       expect(described_class.new(embedder: embedder).overview[:stats][:enliterated]).to eq(2)
     end
   end
+
+  # v0.45: when name keys are configured AND an authority record exists, a name
+  # heading groups variant spellings under the canonical (and the click-through
+  # stays congruent). With no name keys (the default), behavior is byte-identical.
+  describe "name authority resolution" do
+    let(:ctx) { Enliterator::Context.create!(key: "chds-theses", name: "CHDS Theses") }
+
+    def advise!(name, count)
+      count.times do
+        w = enliterate!("T-#{SecureRandom.hex(3)}")
+        w.place_in_context!(ctx)
+        claim!(w, key: "advisor", value: name, context: ctx)
+      end
+    end
+
+    before do
+      advise!("Jordan Avery", 3)
+      advise!("Jordan L. Avery", 2)
+    end
+    after { Enliterator.configuration.name_authority_keys = [] }
+
+    it "groups variants under the canonical name, with congruent click-through" do
+      Enliterator.configuration.name_authority_keys = [ "advisor" ]
+      Enliterator::NameAuthority.create!(canonical: "Jordan Avery",
+        variants: [ "Jordan Avery", "Jordan L. Avery" ], context_id: ctx.id, status: "auto")
+
+      cat = described_class.new(context: ctx, embedder: embedder)
+      advisor = cat.overview[:headings].find { |h| h[:key] == "advisor" }
+      expect(advisor[:values]).to include([ "Jordan Avery", 5 ])          # 3 + 2 merged
+      expect(advisor[:values].map(&:first)).not_to include("Jordan L. Avery")
+      expect(cat.subject("advisor", "Jordan Avery")[:total]).to eq(5)     # congruence preserved
+    end
+
+    it "is byte-identical when no name keys are configured (variants stay separate)" do
+      cat = described_class.new(context: ctx, embedder: embedder)
+      advisor = cat.overview[:headings].find { |h| h[:key] == "advisor" }
+      expect(advisor[:values]).to include([ "Jordan Avery", 3 ], [ "Jordan L. Avery", 2 ])
+      expect(cat.subject("advisor", "Jordan Avery")[:total]).to eq(3)
+    end
+  end
 end
