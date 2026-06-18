@@ -196,6 +196,24 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   unnumbered foundational placement. **Stage 1 then SHIPPED in v0.41.2** (below) — the SPEC section's
   "designed, NOT yet built" language is amended to name `Suggestion.gaps` as the read-time source; the
   index/value audit + semantic-nearest retrieval remain deferred.
+- **v0.44 — the structured `:sources` event (the desk can deliver)** (engine half; committed locally,
+  UNPUSHED — gated; SPEC.md §v0.44). The realization of v0.29's deferred "structured sources event" and
+  the FOUNDATION for HSDL catalog delivery (the plan: link + in-thread PDF). `config.chat_sources`
+  (default off → byte-identical: the loop never calls the harvester). `Chat::Loop#handle_calls` emits
+  `:sources` (tool + records) AFTER the tool-result append, inside the begin — safe there only because
+  `extract_sources` NEVER raises (else the rescue would misreport a SUCCESSFUL tool call as
+  `:tool_call_error` and skip the result append, breaking the next model round). `extract_sources` =
+  host-agnostic `{type, id, label}` ONLY (never a URL), generic over the record-bearing tool shapes,
+  deduped by `[type, id]`, SYMBOL keys (dispatch returns the hash directly): record_entry/trajectory
+  top-level · provenance NESTED `result[:record]` (CHDS allow-lists it — a top-level read silently
+  misses) · search/subject_search `:records` · connections = record + record-typed edge targets,
+  EXCLUDING `neighbors[]` (semantic, NOT consulted — listing them would misrepresent + make them
+  delivery candidates) · accuracy/quote/vocabulary/overview → none. Exception-proof (guards +
+  `source_ref` drops type/id-less refs + a rescue→[]). NO web-client change (the web rail already
+  scrapes cites from widget HTML; the event's first consumer is the Slack host). Reserved numbers
+  v0.42 (patron-model) / v0.43 (turn-quality) are the conversation-tending DESIGN slots (not built) —
+  this takes the next free number. **777 green** (+8). Layers 1–2 (HSDL: link resolution +
+  DeliverThesisPdfJob) are host-side, next. Gated: push + HSDL `chat_sources = true` wait on Jeremy.
 - **v0.41.2 — read-time warrant accrual (stage 1, BUILT)** (committed locally, UNPUSHED — gated;
   SPEC.md §v0.41.2 + the amended two-stage reframe): the reframe's missing half, shipped reader-side
   only (considerer untouched). `config.read_time_warrant` (default off → byte-identical: the flag-off

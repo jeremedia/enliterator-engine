@@ -2996,3 +2996,86 @@ both thread it. The v0.1 back-compat path (`call_back_compat`) has no contract a
   live affirmation check runs against HSDL on a valid bedrock token (`enliterator:deep_read_pilot`).
 
 ---
+
+# v0.44 — The structured `:sources` event (the desk can deliver)
+
+> Version note: v0.42 (patron-model) and v0.43 (turn-quality) are the **design slots** for the
+> conversation-tending arc (`docs/superpowers/specs/2026-06-14-*-design.md`), designed but not yet
+> built. This catalog-delivery work is a separate, built capability and takes the next free number,
+> v0.44; the reserved numbers stay reserved.
+
+## Why
+The enliterated Reference Desk (v0.28–v0.41) clearly *knows* the collection — but it could not *deliver*
+it. The desk's tools find the records; the loop hands the host only the **rendered widget HTML**
+(`:tool_call_result` `html:`), which has the ids baked into inert data attributes for the web client to
+scrape — opaque to a non-web host (the Slack desk). So when a patron asked "give me a link to that," the
+desk had the record in hand and no way to surface it: it pointed at the engine-internal
+`/enliterator/status/...` path (useless to a researcher) or hand-waved at the catalog. **HSDL's flagship
+use case is delivering its PDF catalog to readers** — so the desk must turn "what do you have on drones?"
+into a clickable record and, on request, the PDF itself. This version ships the **foundation**: a
+structured, host-agnostic event naming the records a tool consulted. Link-resolution and file delivery
+are the host's job (HSDL Layers 1–2), keeping the governed desk **read-only** — it only *surfaces*; it
+never *delivers*.
+
+This is the realization of the v0.29-deferred "structured sources event."
+
+## What
+
+### `config.chat_sources` — one flag, default off
+`attr_accessor` in the chat-flag cluster (nests under `chat_federation` — only the Loop runs when that is
+on). Off ⇒ the loop emits no `:sources`, the harvester is never called, behavior is **byte-identical** to
+v0.41.x (hard rule 1, spec-pinned: an existing consumer ignores an unknown event regardless, but the
+event simply is not produced). HSDL sets it on.
+
+### The gated emit (`Chat::Loop#handle_calls`)
+After a tool dispatches, the loop emits `:sources` with the consulted records and the tool name:
+`emit(:sources, tool: call[:name], records: extract_sources(...))` — guarded by `config.chat_sources`
+and `records.any?`. **Placement is load-bearing.** The dispatch lives in a `begin/rescue`; the emit goes
+**after** `messages << tool_result_message(call, result)` (the result the model needs), so a harvest
+hiccup can never strand a tool_call without its result. And `extract_sources` **never raises** — so it
+can sit inside the `begin` without the rescue ever misreporting a *successful* tool call as a
+`:tool_call_error` (which would also skip the result append and break the next model round). Belt and
+suspenders: correct placement *and* a total harvester.
+
+### `extract_sources(tool_name, result)` — the host-agnostic harvester
+Private to the loop; returns `{type, id, label}` records **only** — never a URL (the host builds its own
+links). Generic over the record-bearing tool shapes, deduped by `[type, id]`, read with **symbol keys**
+(`Mcp.dispatch` returns the tool's hash directly — no JSON round-trip):
+- `record_entry` / `trajectory` → the top-level `{type, id, label}`.
+- `provenance` → the record nested under `result[:record]` (NOT top-level — the CHDS desk allow-lists
+  `provenance`, so a top-level read would silently miss it).
+- `search` / `subject_search` → the `result[:records]` cards.
+- `connections` → the direct record **+ only the record-typed edge targets** (`target[:kind] == "record"`).
+  **Excludes `neighbors[]`** — those are nearest-cosine *semantic* neighbors the desk did not surface as
+  consulted; listing them as sources would misrepresent related records as cited (and, downstream, make
+  them delivery candidates).
+- `accuracy` / `quote` / `vocabulary` / `collection_overview` / `browse_subjects` → no records.
+
+It is **exception-proof** (rule 3): guards (`is_a?(Hash)`, `Array(...)`, a per-ref `source_ref` that
+drops anything lacking a `type`+`id`) absorb shape drift, and a `rescue StandardError` logs and returns
+`[]` for anything that slips past. Tolerates a nil `label` (record_entry/provenance `.compact` it away;
+the host builds the visible title from its own record).
+
+## Honesty notes
+- **The desk stays read-only.** `:sources` only *names* what a tool consulted. Resolving those to
+  `next.hsdl.org/document/<docID>` links (Layer 1) and delivering the PDF in-thread on explicit request
+  (Layer 2) are **host-side side-effects** in HSDL — no new write tool joins the governed loop.
+- **No web-client change here.** The `/enliterator/chat` web rail already client-correlates citations
+  from the widget HTML's data attributes; augmenting it to consume `:sources` is a clean follow-on, out
+  of scope. The event's first consumer is the Slack host. `Chat::Eval`, `Recorder`, and web replay all
+  iterate events and ignore unknown types — a recorded turn simply gains `:sources` entries when on.
+- **Deferred (still honest):** a `sources` payload on the persisted/SSE side carries the same
+  symbol→string-key crossing every other event does; the host reads string keys off a replayed turn.
+
+## Done = all of:
+- `config.chat_sources` (gated, default off); the gated `:sources` emit placed after the tool-result
+  append; `extract_sources` + `source_ref` (generic, dedup, no-URL, neighbor-excluding, exception-proof).
+- **777 green** (8 new over the 769 v0.41.2 baseline): flag-off byte-identical (no event), flag-on
+  search (records + tool name), provenance's nested `:record`, connections (record + record-edge target,
+  neighbors excluded), no-records tool (no event), dedup, harvest-never-strands-the-tool-call, and the
+  exception-proof unit (guards + rescue). No existing example modified.
+- SPEC (this section), README, CLAUDE.md, About colophon.
+- **Gated:** push and the HSDL `config.chat_sources = true` enable wait on Jeremy's word; the live
+  end-to-end check (a real `next.hsdl.org` link, then the PDF in-thread) is HSDL Layers 1–2.
+
+---

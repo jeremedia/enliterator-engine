@@ -349,4 +349,112 @@ RSpec.describe Enliterator::Chat::Loop do
       expect(seen_on_final).to eq("CHDS OVERRIDE.")  # the SPECIALIST's stored override (register/followups off here)
     end
   end
+
+  # v0.44 — the structured :sources event. The rendered widget HTML hides the
+  # record ids; a federated host (the Slack desk) needs {type, id, label} to
+  # resolve catalog links and deliver files. Gated by config.chat_sources;
+  # host-agnostic (never a URL); byte-identical when off.
+  describe "v0.44 :sources event (config.chat_sources)" do
+    # A desk that allows every record-bearing tool these specs dispatch (the
+    # Frontdesk "F" only allows search/provenance, and the allow-list rejects
+    # before dispatch — so connections/etc. need a desk that admits them).
+    let(:desk) do
+      Enliterator::Chat::Agent.new(
+        name: "Desk", grounding: nil, system_prompt: "p",
+        tools: %w[search subject_search provenance connections record_entry vocabulary],
+        tier: "cheap", routes_to: [])
+    end
+    let(:loop_inst) { described_class.new(agent: desk, sink: ->(*) {}) }
+
+    # Dispatch ONE tool returning `result`; return the :sources event (or nil).
+    # Clears the shared events buffer first so back-to-back calls in one example
+    # don't see each other's :sources (the sink appends to the same `let` array).
+    def sources_for(tool, result)
+      events.clear
+      allow(Enliterator::Mcp).to receive(:dispatch).and_return(result)
+      described_class.new(agent: desk, llm: ScriptedLLM.new(calls({ id: "1", name: tool, arguments: {} }), "done"),
+                          sink: sink, step_cap: 4).run("hi")
+      events.find { |e| e.first == :sources }
+    end
+
+    after { Enliterator.configuration.chat_sources = nil }
+
+    it "with the flag OFF (default), emits NO :sources event (byte-identical)" do
+      allow(Enliterator::Mcp).to receive(:dispatch)
+        .and_return({ records: [ { type: "DocMetum", id: "u1", label: "A" } ] })
+      run(ScriptedLLM.new(calls({ id: "1", name: "search", arguments: {} }), "done"), agent: desk)
+      expect(events.map(&:first)).not_to include(:sources)
+    end
+
+    it "with the flag ON, a search emits the consulted records (type/id/label) and the tool name" do
+      Enliterator.configuration.chat_sources = true
+      src = sources_for("search",
+        { records: [ { type: "DocMetum", id: "u1", label: "Counter-drone", excerpt: "x" },
+                     { type: "DocMetum", id: "u2", label: "Elections" } ] })
+      expect(src).not_to be_nil
+      expect(src.last[:tool]).to eq("search")
+      expect(src.last[:records]).to eq([
+        { type: "DocMetum", id: "u1", label: "Counter-drone" },
+        { type: "DocMetum", id: "u2", label: "Elections" }
+      ])
+    end
+
+    it "harvests record_entry / provenance and reads provenance's record from the NESTED :record key" do
+      Enliterator.configuration.chat_sources = true
+      entry = sources_for("record_entry", { type: "DocMetum", id: "u7", label: "Thesis", parts: [] })
+      expect(entry.last[:records]).to eq([ { type: "DocMetum", id: "u7", label: "Thesis" } ])
+
+      prov = sources_for("provenance",
+        { claim: { key: "advisor" }, record: { type: "DocMetum", id: "u9", label: "Prov", entry: "/x" } })
+      expect(prov.last[:records]).to eq([ { type: "DocMetum", id: "u9", label: "Prov" } ])
+    end
+
+    it "for connections, harvests the record + record-typed edge targets but EXCLUDES semantic neighbors" do
+      Enliterator.configuration.chat_sources = true
+      src = sources_for("connections", {
+        type: "DocMetum", id: "u1", label: "Root",
+        edges: [ { key: "advisor",    target: { kind: "entity", label: "Dr. Voss" } },
+                 { key: "supersedes", target: { kind: "record", type: "DocMetum", id: "u2", label: "Prior" } } ],
+        neighbors: [ { type: "DocMetum", id: "u3", label: "Nearby (NOT consulted)" } ]
+      })
+      ids = src.last[:records].map { |r| r[:id] }
+      expect(ids).to contain_exactly("u1", "u2")  # the record + the record-typed edge target
+      expect(ids).not_to include("u3")            # the semantic neighbor is NOT a consulted source
+    end
+
+    it "emits NO :sources for a tool that surfaced no records (e.g. vocabulary), even with the flag on" do
+      Enliterator.configuration.chat_sources = true
+      expect(sources_for("vocabulary", { facets: [ { facet: "summary" } ] })).to be_nil
+    end
+
+    it "dedups by [type, id]" do
+      Enliterator.configuration.chat_sources = true
+      src = sources_for("search",
+        { records: [ { type: "DocMetum", id: "u1", label: "A" },
+                     { type: "DocMetum", id: "u1", label: "A (dup)" } ] })
+      expect(src.last[:records].size).to eq(1)
+    end
+
+    it "the harvest never strands a tool_call: the result still feeds back, no spurious tool_call_error" do
+      Enliterator.configuration.chat_sources = true
+      src = sources_for("search",
+        { records: [ { type: "DocMetum", id: "u1", label: "A" } ] })
+      expect(src).not_to be_nil
+      expect(events.map(&:first)).to include(:tool_call_result)   # the model still got its result
+      expect(events.map(&:first)).not_to include(:tool_call_error)
+    end
+
+    it "extract_sources never raises on shape drift, returning [] (rule 3)" do
+      # The guards (is_a?(Hash), Array()) absorb wrong types without the rescue...
+      expect(loop_inst.send(:extract_sources, "search", { records: "not-an-array" })).to eq([])
+      expect(loop_inst.send(:extract_sources, "search", { records: [ "nope", 42 ] })).to eq([])
+      expect(loop_inst.send(:extract_sources, "provenance", { record: nil })).to eq([])
+      expect(loop_inst.send(:extract_sources, "search", "garbage-not-a-hash")).to eq([])
+      # ...and a hash-like that raises on access is swallowed by the rescue.
+      raising = Object.new
+      def raising.is_a?(k) = (k == Hash)
+      def raising.[](_k) = raise("boom")
+      expect(loop_inst.send(:extract_sources, "search", { records: [ raising ] })).to eq([])
+    end
+  end
 end
