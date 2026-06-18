@@ -79,6 +79,16 @@ RSpec.describe "Enliterator MCP tools", type: :request do
       Enliterator.configure { |c| c.embedder_adapter = original }
     end
 
+    it "drops an unrecognized optional type filter instead of failing the whole search" do
+      # A reader model often guesses a domain-natural type ("thesis"/"theses") that is
+      # NOT a tended Ruby class. The optional filter must be ignored (search unfiltered),
+      # never raise and kill the search — that turned a good query into a fake outage.
+      enliterate!("Gamma", body: "counter-drone detection and response", advisor: "Dr. Voss")
+      out = nil
+      expect { out = call_tool("search", q: "counter-drone", type: "thesis") }.not_to raise_error
+      expect(out[:records].map { |c| c[:label] }).to include("Gamma")
+    end
+
     it "headings and their click-throughs agree (the v0.24 congruence, agent-shaped)" do
       enliterate!("A", advisor: "Dr. Voss")
       enliterate!("B", advisor: "Dr. Voss")
