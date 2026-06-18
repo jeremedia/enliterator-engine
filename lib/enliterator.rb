@@ -192,6 +192,15 @@ module Enliterator
     # persist (the dev/demo backend) and can be re-streamed.
     attr_accessor :chat_retention
 
+    # v0.44: gates the structured :sources event. nil/false ⇒ the loop emits no
+    # :sources (byte-identical — existing consumers ignore an unknown event
+    # anyway). true ⇒ after each record-bearing tool call, the loop emits the
+    # consulted records as {type, id, label} so a federated host (the Slack desk)
+    # can resolve catalog links and deliver files. The rendered widget HTML hides
+    # the ids; this event carries them. Host-agnostic — never a URL. Nests under
+    # chat_federation (only the Loop runs when that is on).
+    attr_accessor :chat_sources
+
     # ---- Stage 1: read-time warrant accrual ------------------------------
 
     # Gate for stage 1 of two-stage authority control (SPEC.md "Authority control
@@ -250,6 +259,7 @@ module Enliterator
       @chat_persona_editing = nil
       @chat_editor = nil
       @chat_retention = nil
+      @chat_sources = nil
       @error_detail = nil
       @allow_null_llm = false
       @conversation_tier = nil

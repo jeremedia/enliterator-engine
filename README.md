@@ -292,6 +292,7 @@ Enliterator.configure do |c|
   c.chat_persona_editing = false              # mount /desks: curator-edit personas (versioned, rollback, reset)
   c.chat_editor          = nil                # callable(request) => editor identity for persona versions
   c.chat_retention       = false              # persist + replay conversations; mount /conversations
+  c.chat_sources         = false              # emit a structured :sources event so a host can link/deliver consulted records
 end
 ```
 
@@ -311,6 +312,7 @@ end
 | `chat_persona_editing` | `false` | mount `/desks` — curator-edit each desk's persona, versioned with rollback + reset-to-seed |
 | `chat_editor` | `nil` | callable `(request) => editor` attributing persona versions; auth-agnostic (rescued) |
 | `chat_retention` | `false` | retain conversations as replayable artifacts; mount `/conversations` to browse + label |
+| `chat_sources` | `false` | emit a structured `:sources` event after each record-bearing tool call (`{type, id, label}`, host-agnostic — never a URL) so a federated host can resolve catalog links / deliver files; the governed desk stays read-only (it only surfaces) |
 
 Adapters are POROs and accept an injected `client:` so they can be stubbed in
 specs with no network and no provider gem. Provider gems are lazy-required inside

@@ -145,6 +145,15 @@ module Enliterator
             result = Enliterator::Mcp.dispatch(call[:name], args)
             emit(:tool_call_result, name: call[:name], html: Enliterator::Chat::Widget.render(call[:name], result))
             messages << tool_result_message(call, result)
+            # v0.44: surface the records this tool consulted, as {type, id, label},
+            # for a federated host (the Slack desk) to resolve into catalog links /
+            # deliver files. Placed AFTER the tool-result append the model needs, and
+            # extract_sources NEVER raises — so a harvest hiccup can neither strand a
+            # tool_call without its result nor misreport a successful call as an error.
+            if Enliterator.configuration.chat_sources
+              records = extract_sources(call[:name], result)
+              emit(:sources, tool: call[:name], records: records) if records.any?
+            end
           rescue StandardError => e
             # Floor message is STATIC (no e.message) so a tool failure never leaks the
             # raw exception in prod via :tool_call_error — the exception goes ONLY into
@@ -169,6 +178,45 @@ module Enliterator
 
       def tool_result_message(call, result)
         { "role" => "tool", "tool_call_id" => call[:id], "content" => result.to_json }
+      end
+
+      # v0.44: harvest the records a tool surfaced to the patron — {type, id, label}
+      # ONLY, host-agnostic (NEVER a URL), so a host resolves them to its own links /
+      # delivers the file. Generic over the known record-bearing tool shapes, deduped
+      # by [type, id]. Reads with SYMBOL keys: Mcp.dispatch returns the tool's hash
+      # directly (no JSON round-trip). NEVER raises (rule 3) — any shape drift logs and
+      # returns [] (the emit is guarded by .any?, so [] means no event). EXCLUDES
+      # connections' neighbors[]: those are nearest-cosine SEMANTIC neighbors the desk
+      # did NOT surface as consulted — listing them as sources would misrepresent
+      # related records as cited (and make them delivery candidates).
+      def extract_sources(tool_name, result)
+        return [] unless result.is_a?(Hash)
+        refs =
+          case tool_name.to_s
+          when "record_entry", "trajectory" then [ result ]            # the record IS the top-level hash
+          when "provenance"                 then [ result[:record] ]   # nested under :record
+          when "search", "subject_search"   then Array(result[:records])
+          when "connections"
+            # the direct record + only the record-typed edge targets (not entities, NOT neighbors)
+            [ result ] + Array(result[:edges]).map { |e| e.is_a?(Hash) ? e[:target] : nil }
+                           .select { |t| t.is_a?(Hash) && t[:kind] == "record" }
+          else [] # accuracy / quote / vocabulary / collection_overview / browse_subjects → no records
+          end
+        refs.filter_map { |r| source_ref(r) }.uniq { |r| [ r[:type], r[:id] ] }
+      rescue StandardError => e
+        Enliterator.logger&.warn("[enliterator] extract_sources(#{tool_name}) failed: #{e.class}: #{e.message}")
+        []
+      end
+
+      # A single {type, id, label} ref, or nil if the hash lacks a resolvable type+id
+      # (label may be nil — record_entry/provenance .compact it away; the host builds
+      # the visible title from its own record).
+      def source_ref(h)
+        return nil unless h.is_a?(Hash)
+        type = h[:type]
+        id   = h[:id]
+        return nil if type.nil? || id.nil?
+        { type: type.to_s, id: id.to_s, label: h[:label] }
       end
 
       # The terminal event for a tool that could not be honored. `message` is the
