@@ -84,10 +84,20 @@ module Enliterator
     # click-through. Same scope and same containment shapes as the heading
     # tally, so the count on the chip equals the total here.
     def subject(key, value, page: 1)
-      matches = heading_scope(key)
-                  .where("enliterator_claims.value @> to_jsonb(?::text)", value)
-                  .distinct.order(:tendable_type, :tendable_id)
-                  .pluck(:tendable_type, :tendable_id)
+      scope = heading_scope(key)
+      # v0.45: for a name key, the heading shows the CANONICAL form — expand it to
+      # all its variant spellings so the click-through finds every record (the
+      # congruence with the tally is preserved). Non-name keys are unchanged.
+      scope =
+        if name_key?(key)
+          variants = Enliterator::NameAuthority.variants_for(value, context: @context)
+          clause   = Array(variants).map { "enliterator_claims.value @> to_jsonb(?::text)" }.join(" OR ")
+          scope.where(clause, *variants)
+        else
+          scope.where("enliterator_claims.value @> to_jsonb(?::text)", value)
+        end
+      matches = scope.distinct.order(:tendable_type, :tendable_id)
+                     .pluck(:tendable_type, :tendable_id)
       total  = matches.size
       pages  = [ (total.to_f / PER_PAGE).ceil, 1 ].max
       pg     = page.to_i.clamp(1, pages)
@@ -143,6 +153,23 @@ module Enliterator
       scoped_understanding.where(key: key)
     end
 
+    # v0.45 name authority: is this a key whose values are person names under
+    # authority control? Empty config ⇒ always false ⇒ byte-identical.
+    def name_key?(key)
+      Enliterator.configuration.name_authority_keys.map(&:to_s).include?(key.to_s)
+    end
+
+    # The { value => canonical } resolution map for this context, loaded once.
+    # Empty (no query) when no name keys are configured ⇒ byte-identical.
+    def authority_map
+      @authority_map ||=
+        if Enliterator.configuration.name_authority_keys.present?
+          Enliterator::NameAuthority.map_for(context: @context)
+        else
+          {}
+        end
+    end
+
     # ---- the cached overview -----------------------------------------------
 
     def assemble_overview
@@ -180,9 +207,13 @@ module Enliterator
       rows   = heading_scope(key).limit(HEADING_SCAN_CAP)
                                  .pluck(:tendable_type, :tendable_id, :value)
       approx = rows.size >= HEADING_SCAN_CAP
-      tally  = {}
+      tally   = {}
+      resolve = name_key?(key) # v0.45: group variant spellings under the canonical name
       rows.each do |(t, id, v)|
-        heading_terms(v).each { |term| (tally[term] ||= Set.new) << [ t, id ] }
+        heading_terms(v).each do |term|
+          canon = resolve ? (authority_map[term] || term) : term
+          (tally[canon] ||= Set.new) << [ t, id ]
+        end
       end
       values = tally.map { |term, set| [ term, set.size ] }
                     .sort_by { |(term, n)| [ -n, term ] }

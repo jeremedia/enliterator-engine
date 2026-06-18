@@ -245,4 +245,44 @@ RSpec.describe Enliterator::Catalog do
       expect(described_class.new(embedder: embedder).overview[:stats][:enliterated]).to eq(2)
     end
   end
+
+  # v0.45: when name keys are configured AND an authority record exists, a name
+  # heading groups variant spellings under the canonical (and the click-through
+  # stays congruent). With no name keys (the default), behavior is byte-identical.
+  describe "name authority resolution" do
+    let(:ctx) { Enliterator::Context.create!(key: "chds-theses", name: "CHDS Theses") }
+
+    def advise!(name, count)
+      count.times do
+        w = enliterate!("T-#{SecureRandom.hex(3)}")
+        w.place_in_context!(ctx)
+        claim!(w, key: "advisor", value: name, context: ctx)
+      end
+    end
+
+    before do
+      advise!("Robert Simeral", 3)
+      advise!("Robert L. Simeral", 2)
+    end
+    after { Enliterator.configuration.name_authority_keys = [] }
+
+    it "groups variants under the canonical name, with congruent click-through" do
+      Enliterator.configuration.name_authority_keys = [ "advisor" ]
+      Enliterator::NameAuthority.create!(canonical: "Robert Simeral",
+        variants: [ "Robert Simeral", "Robert L. Simeral" ], context_id: ctx.id, status: "auto")
+
+      cat = described_class.new(context: ctx, embedder: embedder)
+      advisor = cat.overview[:headings].find { |h| h[:key] == "advisor" }
+      expect(advisor[:values]).to include([ "Robert Simeral", 5 ])          # 3 + 2 merged
+      expect(advisor[:values].map(&:first)).not_to include("Robert L. Simeral")
+      expect(cat.subject("advisor", "Robert Simeral")[:total]).to eq(5)     # congruence preserved
+    end
+
+    it "is byte-identical when no name keys are configured (variants stay separate)" do
+      cat = described_class.new(context: ctx, embedder: embedder)
+      advisor = cat.overview[:headings].find { |h| h[:key] == "advisor" }
+      expect(advisor[:values]).to include([ "Robert Simeral", 3 ], [ "Robert L. Simeral", 2 ])
+      expect(cat.subject("advisor", "Robert Simeral")[:total]).to eq(3)
+    end
+  end
 end

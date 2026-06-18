@@ -3079,3 +3079,69 @@ the host builds the visible title from its own record).
   end-to-end check (a real `next.hsdl.org` link, then the PDF in-thread) is HSDL Layers 1–2.
 
 ---
+
+# v0.45 — Name authority control, v1 (the value-side parallel)
+
+> Version note: v0.42 (patron-model) / v0.43 (turn-quality) remain the reserved conversation-tending
+> design slots; this built capability takes the next free number after v0.44.
+
+## Why
+The engine already does **subject** authority control — the self-governing vocabulary on claim *keys*.
+But claim *values* that are person names (advisor, author) had **no** authority control, and live testing
+showed the cost: one advisor fragments across spelling variants — `Robert Simeral` (59) + `Robert L.
+Simeral` (24) + `Robert L. Simeral (contractor)` (4) is **one person (~87)**, but the desk reported the
+dominant variant as the portfolio size, and the count even *changed between conversations* (`Erik Dahl`
+28 vs `Erik J. Dahl` 56) depending on which spelling it landed on. Extraction also occasionally
+concatenates two advisors into one value (`Robert Bach David Brannan`). This is the LCNAF/NACO-analog
+to LCSH: **name authority control**, the value-side twin of the key vocabulary. v1 ships the store + a
+deterministic reconciler + read-time resolution; the governed merge-ratification loop is deferred.
+
+## What
+
+### The store — `Enliterator::NameAuthority` (the authority record / seed)
+`enliterator_name_authorities`: `canonical` (preferred form), `variants` (jsonb see-from spellings),
+`kind` (person), `context_id` (NULL = root; scoped up the path), `status` (`auto` | `held` |
+`ratified`). Read-time resolvers: `canonical_for(value, context:)`, `variants_for(canonical, context:)`,
+and `map_for(context:)` (the `{value => canonical}` map, loaded once per build, APPLIED rows only —
+`held` never resolves). **Raw claims are never rewritten** — resolution is a read-time overlay.
+
+### The reconciler — `Enliterator::NameReconciler` (+ `rake enliterator:reconcile_names`)
+Deterministic and **high-precision — it never merges two distinct people**. Over the configured name
+keys (`config.name_authority_keys`, default `[]` ⇒ no-op) in a context: normalize (drop a trailing
+`(role)`/`(contractor)` and degree tails — NOT Jr/Sr/III; fold diacritics; tighten hyphen spacing;
+collapse case/whitespace), then cluster by **same first name + same surname + compatible middle** (one
+bare, or a shared middle initial). The preferred form is the cleanest (no parenthetical), most frequent,
+most complete variant. It **holds** (status `held`, NOT applied) what it must not guess: an *ambiguous*
+group (same first+last, two different middle initials → possibly two people) and *concatenated*
+extraction errors (a value containing two known surnames). Singletons get no record (identity).
+Idempotent: a re-run refreshes `auto`+`held`; human `ratified` rows survive. The rake logs the held list
+for review.
+
+### Read-time resolution (the only behavior change) — gated, byte-identical when empty
+- **Catalog** (`heading_terms` tally + `subject` click-through): for a name key, the tally groups raw
+  values under their canonical (so a heading shows the person's *true* count), and `subject` expands the
+  canonical to all variants (`value @> ANY`) so the click-through total still equals the heading count
+  (the v0.24 congruence, preserved).
+- **Atlas**: name-bearing terms are resolved to canonical at the single chokepoint
+  (`extracted_terms_by_claim`), so the resolution index, the unresolved cap, and the edge loop all see
+  one labeled entity node per person.
+- Both are gated by `name_key?` and an empty-or-absent authority map ⇒ **byte-identical** (no query, no
+  regrouping) — spec-pinned by the existing Catalog/Atlas suites passing unchanged.
+
+## Done = all of:
+- `enliterator_name_authorities` migration (reversible); `NameAuthority` (canonical_for/variants_for/
+  map_for, path-scoped, APPLIED-only); `NameReconciler` (normalize/cluster/hold, idempotent,
+  ratified-preserving) + `rake enliterator:reconcile_names`; `config.name_authority_keys` (default `[]`);
+  Catalog tally+subject and Atlas keying resolve through the map, name-key-gated.
+- **798 green** (+21): 8 NameAuthority, 9 NameReconciler (merge / middle-initial / diacritics /
+  never-merge-distinct / hold-ambiguous / hold-concatenated / idempotent / preserve-ratified /
+  no-op-empty-keys), 2 Catalog (group-under-canonical + congruent click-through; byte-identical when
+  off), 2 Atlas (collapse to one node; byte-identical when off). No existing example modified.
+- SPEC (this section), README, CLAUDE.md, About colophon.
+- **Gated:** engine push and the HSDL enable (`name_authority_keys`) + `reconcile_names` run + worker
+  restart + count verification (Simeral ≈ 87, Dahl ≈ 84, Brannan ≈ 107) wait on Jeremy.
+- **Deferred (the full governed layer):** propose→pressure→consider→ratify for name merges (reusing the
+  considerer), LLM adjudication of held clusters, a ratification UI, automatic concatenation-splitting,
+  external authority-file (LCNAF) lookup.
+
+---

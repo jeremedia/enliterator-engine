@@ -196,6 +196,24 @@ cycle live) · About · Settings. v0.13 contexts rule: NULL context IS root.
   unnumbered foundational placement. **Stage 1 then SHIPPED in v0.41.2** (below) — the SPEC section's
   "designed, NOT yet built" language is amended to name `Suggestion.gaps` as the read-time source; the
   index/value audit + semantic-nearest retrieval remain deferred.
+- **v0.45 — name authority control, v1 (the value-side parallel)** (engine; committed locally, UNPUSHED —
+  gated; SPEC.md §v0.45). The LCNAF/NACO-analog to the key vocabulary's LCSH: person-name claim VALUES
+  (advisor, author) put under authority control. Surfaced by reviewing a live advisor-match exchange —
+  one person fragments across spellings (`Robert Simeral` 59 / `Robert L. Simeral` 24 / `(contractor)` 4
+  = ~87; counts even differed BETWEEN conversations: `Erik Dahl` 28 vs `Erik J. Dahl` 56). `NameAuthority`
+  store (canonical + variants jsonb + context_id + status auto|held|ratified; `canonical_for`/`variants_for`/
+  `map_for`, path-scoped, APPLIED-only — held never resolves). `NameReconciler` + `rake
+  enliterator:reconcile_names`: deterministic, HIGH-PRECISION (never merges two people) — normalize (drop
+  `(role)`/`(contractor)`/degree tails [NOT Jr/Sr/III], fold diacritics, tighten hyphens, collapse
+  case/ws) → cluster by first+last+compatible-middle → preferred = cleanest/most-frequent/most-complete;
+  HOLDS ambiguous (same first+last, 2 middle initials) + concatenated errors (value w/ 2 known surnames);
+  singletons → no record; idempotent, preserves ratified. `config.name_authority_keys` (default `[]` ⇒
+  no-op). READ-TIME overlay (raw claims never rewritten): Catalog `heading_terms`/`subject` group-by-
+  canonical + expand-to-variants (v0.24 congruence preserved); Atlas resolves at the
+  `extracted_terms_by_claim` chokepoint (one entity node/person). Gated by `name_key?` + empty map ⇒
+  BYTE-IDENTICAL (existing Catalog/Atlas suites unchanged). **798 green** (+21). Deferred (full layer):
+  governed merge-ratification loop (considerer pattern), LLM adjudication of holds, ratification UI,
+  concatenation-splitting, LCNAF lookup. Gated: engine push + HSDL enable/reconcile/verify wait on Jeremy.
 - **v0.44 — the structured `:sources` event (the desk can deliver)** (engine half; committed locally,
   UNPUSHED — gated; SPEC.md §v0.44). The realization of v0.29's deferred "structured sources event" and
   the FOUNDATION for HSDL catalog delivery (the plan: link + in-thread PDF). `config.chat_sources`

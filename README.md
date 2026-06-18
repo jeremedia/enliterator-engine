@@ -293,6 +293,9 @@ Enliterator.configure do |c|
   c.chat_editor          = nil                # callable(request) => editor identity for persona versions
   c.chat_retention       = false              # persist + replay conversations; mount /conversations
   c.chat_sources         = false              # emit a structured :sources event so a host can link/deliver consulted records
+
+  # Name authority control — canonicalize person-name claim values (advisor, author):
+  c.name_authority_keys  = []                  # name-bearing keys; [] = off (byte-identical). Then: rake enliterator:reconcile_names
 end
 ```
 
@@ -313,6 +316,7 @@ end
 | `chat_editor` | `nil` | callable `(request) => editor` attributing persona versions; auth-agnostic (rescued) |
 | `chat_retention` | `false` | retain conversations as replayable artifacts; mount `/conversations` to browse + label |
 | `chat_sources` | `false` | emit a structured `:sources` event after each record-bearing tool call (`{type, id, label}`, host-agnostic — never a URL) so a federated host can resolve catalog links / deliver files; the governed desk stays read-only (it only surfaces) |
+| `name_authority_keys` | `[]` | claim keys whose values are person names (e.g. `advisor`, `authored_by`) put under **name authority control** — variant spellings of one person resolve to a canonical form in Catalog counts + the Atlas. `[]` = off (byte-identical). Populate with `rake enliterator:reconcile_names` |
 
 Adapters are POROs and accept an injected `client:` so they can be stubbed in
 specs with no network and no provider gem. Provider gems are lazy-required inside

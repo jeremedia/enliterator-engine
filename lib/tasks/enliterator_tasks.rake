@@ -247,6 +247,30 @@ namespace :enliterator do
              "auto-rejected #{s[:auto_rejected]}, #{s[:approves_recommended]} approval(s) recommended, #{s[:held]} held")
   end
 
+  # v0.45: build name-authority records — canonical advisor/author names, with
+  # variant spellings folded in and ambiguous/concatenated cases held for review.
+  # KEYS defaults to config.name_authority_keys; CONTEXT=key scopes it.
+  #   CONTEXT=chds-theses KEYS=advisor,authored_by bin/rails enliterator:reconcile_names
+  desc "Reconcile person-name values into authority records. CONTEXT=key KEYS=advisor,authored_by"
+  task reconcile_names: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:reconcile_names] #{msg}") : puts(msg) }
+    ctx  = ENV["CONTEXT"].present? ? Enliterator::Context.find_by_key!(ENV["CONTEXT"]) : nil
+    keys = ENV["KEYS"].present? ? ENV["KEYS"].split(",").map(&:strip) : nil
+    r = Enliterator::NameReconciler.reconcile!(context: ctx, keys: keys)
+    if r[:skipped]
+      log.call("skipped: #{r[:skipped]} — set config.name_authority_keys or pass KEYS=")
+    else
+      log.call("reconciled #{r[:values]} name value(s)#{ctx ? " in #{ctx.key}" : ''} → " \
+               "#{r[:auto]} authority record(s), #{r[:held]} held for review")
+      held = Enliterator::NameAuthority.where(context_id: ctx&.id, status: "held").limit(50)
+      if held.any?
+        log.call("held (need review — ambiguous or concatenated):")
+        held.each { |h| log.call("  - #{Array(h.variants).join(' | ')}") }
+      end
+    end
+  end
+
   # Tend a context's members along the context's OWN declared facets (v0.13,
   # rule 2: declaration location = tending scope — root facets tend at root via
   # enliterator:tend, not per child). Synchronous and staged like tend_theses:
