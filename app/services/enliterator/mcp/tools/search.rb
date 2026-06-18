@@ -40,13 +40,23 @@ module Enliterator
 
         private
 
+        # The OPTIONAL type filter. A reader model often guesses a domain-natural
+        # value ("thesis"/"theses") that is NOT a tended Ruby class — and an
+        # unrecognized OPTIONAL filter must never fail the whole search (doing so
+        # surfaced to the patron as a fake "search temporarily unavailable", since
+        # the loop hands the model only a generic floor, not this detail, so it
+        # can't self-correct). Drop the bad filter and search UNFILTERED; log why
+        # (rule 3). Contrast find_record! (tool.rb), whose `type` is REQUIRED and is
+        # already a real class name carried from a prior result — that one still raises.
         def safe_type(type)
           return nil if type.blank?
           klass = type.to_s.safe_constantize
-          unless Enliterator.tendable_type?(klass)
-            raise ArgumentError, "unknown type #{type.inspect} — collection_overview lists the tended types"
-          end
-          klass.name
+          return klass.name if Enliterator.tendable_type?(klass)
+
+          Enliterator.logger&.info(
+            "[enliterator] search: ignoring unknown type filter #{type.inspect} " \
+            "(not a tended type) — searching unfiltered")
+          nil
         end
 
         def search_card(c)
