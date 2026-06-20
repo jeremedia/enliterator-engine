@@ -32,6 +32,20 @@ module Enliterator
           treatments: Enliterator::Treatment.all.index_by(&:signature)
         )
       end
+
+      # v0.46: the gaps rollup — gated on any open lacuna existing (adoption is
+      # global, like audit/condition; the data is scoped to the selected context).
+      # CORE caveat: until the diagnosis layer (v0.46.1) ships, every diagnosis is
+      # `undiagnosed`, so the rollup groups by facet (a diagnosis distribution
+      # can't exist yet). open-lacunae counts are LIVE (vs the prepared frontier).
+      if (@lacunae_adopted = Enliterator::Lacuna.open.exists?)
+        scope = Enliterator::Lacuna.open
+        scope = scope.where(context_id: current_context.id) if current_context
+        @lacunae_total       = scope.count
+        @lacunae_by_facet    = scope.group(:facet).count.sort_by { |_, n| -n }
+        @lacunae_by_diagnosis = scope.group(:diagnosis).count.reject { |d, _| d == "undiagnosed" }
+                                     .sort_by { |_, n| -n }
+      end
     end
 
     def show
@@ -51,6 +65,9 @@ module Enliterator
       # Claims/visits carry their context so the view can label each lens.
       @type   = params[:type]
       @claims = @record.enliterator_claims.live.includes(:context).order(:key)
+      # v0.46: the record's open known-unknowns (the negative space of its claims).
+      # The panel renders only when present, so an unadopted host stays byte-identical.
+      @lacunae = @record.enliterator_lacunae.open.includes(:context).order(:facet, :key)
       @visits = @record.enliterator_visits.includes(:context).order(created_at: :desc).limit(20)
       @measures = @record.enliterator_measures.each_with_object({}) { |f, h| h[f.name] = f.score }
       @contexts = @record.respond_to?(:enliterator_contexts) ? @record.enliterator_contexts.order(:name) : []

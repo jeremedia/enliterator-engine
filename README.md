@@ -51,6 +51,13 @@ leaves its pile. `rake enliterator:survey` runs the initial inventory.
 
 The compounding rung is proven in the test suite: `spec/services/enliterator/tending/visitor_spec.rb` asserts that the second LLM call receives the first visit's claim in its `state`, and that an UPDATE supersedes the prior claim while preserving the provenance chain.
 
+The collection also knows its own **gaps** (v0.46 — `config.record_lacunae`): when a *required*
+term comes back unmet, the engine stops writing a contentless empty claim and opens a **lacuna** — a
+named known-unknown (the negative space of a claim), refreshed each beat it stays missing and closed
+the day a later visit supplies the value. The epistemic triad: frontier (unknown-unknown) / lacuna
+(known-unknown) / claim (known-known). Surfaced as a record-page "Known gaps" panel, a Status rollup,
+`rake enliterator:lacunae`, and the `lacunae` MCP tool. Off by default ⇒ byte-identical.
+
 ## Quick start
 
 Add the engine to the host Gemfile and mount it. (HSDL also needs the provider

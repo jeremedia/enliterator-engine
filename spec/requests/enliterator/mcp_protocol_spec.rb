@@ -30,13 +30,13 @@ RSpec.describe "Enliterator MCP protocol", type: :request do
     expect(response.body).to be_blank
   end
 
-  it "lists all fourteen tools with valid input schemas" do
+  it "lists all fifteen tools with valid input schemas" do
     out = rpc(jsonrpc: "2.0", id: 2, method: "tools/list", params: {})
     tools = out["result"]["tools"]
-    expect(tools.size).to eq(14)
+    expect(tools.size).to eq(15)
     expect(tools.map { |t| t["name"] }).to include(
       "collection_overview", "search", "record_entry", "trajectory",
-      "provenance", "quote", "accuracy", "recent_activity", "propose_term", "flag_claim"
+      "provenance", "quote", "accuracy", "recent_activity", "lacunae", "propose_term", "flag_claim"
     )
     tools.each do |t|
       expect(t["description"]).to be_present

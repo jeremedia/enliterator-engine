@@ -228,6 +228,26 @@ namespace :enliterator do
     end
   end
 
+  # v0.46: the collection's known gaps — open lacunae (required terms tending
+  # looked for and could not find), rolled up by facet and diagnosis, with a
+  # sample. Read-only inventory. Empty unless config.record_lacunae is adopted.
+  #   CONTEXT=chds-theses bin/rails enliterator:lacunae
+  desc "Inventory open lacunae (the collection's known gaps). CONTEXT=key"
+  task lacunae: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:lacunae] #{msg}") : puts(msg) }
+    ctx = ENV["CONTEXT"].present? ? Enliterator::Context.find_by_key!(ENV["CONTEXT"]) : nil
+    scope = Enliterator::Lacuna.open
+    scope = scope.where(context_id: ctx.id) if ctx
+
+    log.call("#{scope.count} open lacuna(e)#{ctx ? " in #{ctx.key}" : ''}")
+    scope.group(:facet).count.sort_by { |_, n| -n }.each { |f, n| log.call("  facet #{f}: #{n}") }
+    scope.group(:diagnosis).count.sort_by { |_, n| -n }.each { |d, n| log.call("  diagnosis #{d}: #{n}") }
+    scope.includes(:tendable).order(detections: :desc, id: :desc).limit(50).each do |l|
+      log.call("  - #{l.facet}/#{l.key} [#{l.diagnosis}] #{l.tendable_type}/#{l.tendable_id} (×#{l.detections})")
+    end
+  end
+
   # Run the considerer over the open vocabulary requests: refresh pressure, ask the
   # agent across the whole field, auto-apply the safe verdicts (maps + confident
   # rejects), hold approves for ratification. Wire this AFTER enliterator:tend in

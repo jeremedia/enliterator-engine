@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_18_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -518,6 +518,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_18_170000) do
     t.datetime "updated_at", null: false
     t.jsonb "warnings", default: []
     t.index ["started_at"], name: "index_enliterator_heartbeats_on_started_at"
+  end
+
+  create_table "enliterator_lacunae", force: :cascade do |t|
+    t.bigint "closed_by_visit_id"
+    t.string "closed_reason"
+    t.bigint "context_id"
+    t.datetime "created_at", null: false
+    t.bigint "detected_in_visit_id"
+    t.integer "detections", default: 1, null: false
+    t.string "diagnosis"
+    t.string "facet"
+    t.string "key"
+    t.datetime "last_detected_at"
+    t.text "note"
+    t.string "status", default: "open", null: false
+    t.string "tendable_id"
+    t.string "tendable_type"
+    t.datetime "updated_at", null: false
+    t.index ["context_id"], name: "index_enliterator_lacunae_on_context_id"
+    t.index ["facet", "key"], name: "idx_enliterator_lacunae_on_facet_key"
+    t.index ["status"], name: "index_enliterator_lacunae_on_status"
+    t.index ["tendable_type", "tendable_id", "facet", "key", "context_id"], name: "idx_enliterator_lacunae_open", unique: true, where: "((status)::text = 'open'::text)", nulls_not_distinct: true
+    t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_lacunae_on_tendable"
   end
 
   create_table "enliterator_measures", force: :cascade do |t|

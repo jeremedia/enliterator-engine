@@ -32,6 +32,24 @@
   <% end %>
 </div>
 
+<% if @lacunae&.any? %>
+  <h2>Known gaps <span class="subtitle">— required terms looked for and not found</span></h2>
+  <div class="card">
+    <table>
+      <tr><th>facet</th><th>key</th><th>diagnosis</th><th>note</th><th>seen</th></tr>
+      <% @lacunae.each do |l| %>
+        <tr>
+          <td class="samples"><%= l.facet %></td>
+          <td><code><%= l.key %></code></td>
+          <td><span class="chip"><%= l.diagnosis %></span></td>
+          <td class="muted"><%= l.note.presence %></td>
+          <td><%= l.detections %></td>
+        </tr>
+      <% end %>
+    </table>
+  </div>
+<% end %>
+
 <% if @trajectories.any? %>
   <h2>Understanding over time <span class="subtitle">— the compounding, visible</span></h2>
   <p class="muted samples" style="max-width:64ch">

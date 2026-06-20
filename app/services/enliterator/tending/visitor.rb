@@ -206,7 +206,7 @@ module Enliterator
         # Only the FINAL tier's visit reconciles and writes claims. It is also the
         # only place v0.3 suggestions are persisted (junior visits never persist).
         finalize_final_visit!(current_visit, current_parsed, current_tier, policy,
-                              contract: contract, required_unmet: final_unmet)
+                              contract: contract, required: required, required_unmet: final_unmet)
         Enliterator::Measures.recompute!(tendable)
         current_visit
       end
@@ -404,12 +404,21 @@ module Enliterator
       # claims whose key is in the allowed vocabulary; off-list keys are dropped (the
       # schema enum should already prevent them — this is the safety net). When no
       # contract, reconcile ALL proposed claims (v0.2, byte-identical).
-      def finalize_final_visit!(visit, parsed, tier, policy, contract: nil, required_unmet: false)
+      def finalize_final_visit!(visit, parsed, tier, policy, contract: nil, required: nil, required_unmet: false)
         # v0.5: a still-unmet required key at the top of the climb bars `verified` —
         # we never mint a verified claim for a facet that failed to produce a
         # mandated fact. When required_unmet is false this is unchanged from v0.4.
         may_verify = policy.may_verify?(tier) && !required_unmet
         claims     = contract.nil? ? parsed["claims"] : filter_claims_to_contract(parsed["claims"], contract)
+
+        # v0.46: record unmet REQUIRED terms as Lacunae and evict the standing
+        # empty-required parasite, so a gap is a named known-unknown rather than a
+        # contentless claim. Operates on the contract-filtered `claims` local (drops
+        # the blank/DELETE-on-required entries before reconcile!). Gated — off ⇒ this
+        # is skipped ⇒ `claims` is unchanged ⇒ reconcile! and the visit are byte-identical.
+        if Enliterator.configuration.record_lacunae && required.present?
+          claims = apply_lacunae!(claims, parsed: parsed, required: required, visit: visit)
+        end
 
         recon = reconcile!(
           claims, visit,
@@ -430,6 +439,82 @@ module Enliterator
         persist_suggestions!(parsed["suggestions"], visit: visit, tier: tier)
 
         recon
+      end
+
+      # v0.46 (gated): turn unmet required terms into Lacunae and evict the standing
+      # empty-required parasite. For each required term, satisfaction is judged
+      # live-aware — against BOTH this visit's claims AND the live store (a prior
+      # GOOD claim satisfies even if this visit returned blank, so we never open a
+      # lacuna for a fact already held, nor retract that good claim). This is a NEW
+      # check, deliberately NOT `required_terms_unmet?` (visit-only) — reusing that
+      # would clobber a prior good claim. Returns the (possibly reduced) claim set.
+      def apply_lacunae!(claims, parsed:, required:, visit:)
+        proposed = {}
+        Array(claims).each do |c|
+          next unless c.is_a?(Hash)
+          proposed[(c["key"] || c[:key]).to_s] = c
+        end
+        absences = absences_index(parsed)
+
+        drop = []
+        Array(required).map(&:to_s).each do |key|
+          pc     = proposed[key]
+          pc_val = pc && (pc.key?("value") ? pc["value"] : pc[:value])
+          pc_op  = pc ? (pc["op"] || pc[:op]).to_s.upcase : nil
+          live   = live_claim_for(key)
+
+          # A required key must never be blanked or DELETEd by this visit: drop any
+          # blank-valued or op=DELETE proposed claim for it BEFORE reconcile! —
+          # UNCONDITIONALLY (not only when unmet), so a prior GOOD live claim is
+          # protected from a blank/DELETE supersede even in the satisfied branch
+          # (round-6 hazard: DELETE-on-good). An omitted key has nothing to drop.
+          drop << key if pc && (pc_op == "DELETE" || blank_value?(pc_val))
+
+          visit_supplies = pc && pc_op != "DELETE" && !blank_value?(pc_val)
+          live_satisfies = live && !blank_value?(live.value)
+
+          if visit_supplies || live_satisfies
+            tendable.enliterator_lacunae.open
+                    .find_by(facet: facet, key: key, context_id: context&.id)
+                    &.close!(by_visit: visit, reason: "supplied")
+            next
+          end
+
+          # Unmet (no non-blank value in this visit or the live store): open/refresh
+          # the lacuna (diagnosis from absences, else undiagnosed).
+          diag = absences[key]
+          Enliterator::Lacuna.open_or_refresh(
+            tendable: tendable, facet: facet, key: key, context: context,
+            diagnosis: diag && diag[:diagnosis], note: diag && diag[:note], visit: visit
+          )
+          # Evict the standing live blank ATOMICALLY: scope to its id with a still-
+          # current guard (superseded_by_id IS NULL). Combined with the Ruby blank +
+          # locked checks, a concurrent good replacement can never be clobbered — its
+          # blank predecessor is already superseded (guard misses), and a good/locked
+          # claim never passes the checks. Tombstone shape (status only), matching
+          # retract_claim! / reconcile!'s DELETE.
+          if live && !live.locked && blank_value?(live.value)
+            Enliterator::Claim.where(id: live.id, superseded_by_id: nil)
+                              .update_all(status: "superseded", updated_at: Time.current)
+          end
+        end
+
+        return claims if drop.empty?
+        Array(claims).reject { |c| c.is_a?(Hash) && drop.include?((c["key"] || c[:key]).to_s) }
+      end
+
+      # {term => {diagnosis:, note:}} parsed from a model's `absences` array (the
+      # v0.46.1 diagnosis producer). Empty in the core — no adapter emits absences
+      # yet — so every gap defaults to `undiagnosed`. Tolerant of symbol/string keys.
+      def absences_index(parsed)
+        arr = parsed && (parsed["absences"] || parsed[:absences])
+        return {} unless arr.is_a?(Array)
+        arr.each_with_object({}) do |a, h|
+          next unless a.is_a?(Hash)
+          term = (a["term"] || a[:term]).to_s
+          next if term.empty?
+          h[term] = { diagnosis: (a["diagnosis"] || a[:diagnosis]), note: (a["note"] || a[:note]) }
+        end
       end
 
       # Keep only proposed claims whose key is in the contract's allowed vocabulary.

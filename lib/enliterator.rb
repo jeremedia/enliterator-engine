@@ -221,6 +221,15 @@ module Enliterator
     # canonical (preferred) form via NameAuthority.
     attr_accessor :name_authority_keys
 
+    # ---- v0.46 Lacunae (record-level known-unknowns) ---------------------
+
+    # When true, tending records an expected-but-absent REQUIRED term as a
+    # first-class Lacuna (open → refresh → close) instead of writing a contentless
+    # empty claim — the engine enumerates its own gaps. nil/false ⇒ the visitor's
+    # lacuna block never runs, no empty-required claim is dropped, the adapter
+    # schema/prompt are unchanged ⇒ byte-identical. A host opts in per collection.
+    attr_accessor :record_lacunae
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -278,6 +287,7 @@ module Enliterator
       @apply_approved_keys = true
       @read_time_warrant = nil
       @name_authority_keys = []
+      @record_lacunae = nil
       @heartbeat_budget_tokens = 200_000
       @heartbeat_change_share = 0.2
       @heartbeat_neighbor_threshold = 3

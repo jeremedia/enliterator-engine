@@ -166,6 +166,27 @@
   </div>
 <% end %>
 
+<% if @lacunae_adopted %>
+  <h2>Known gaps <span class="subtitle">— what the collection knows it's missing</span></h2>
+  <div class="card">
+    <p><strong><%= @lacunae_total %></strong> open lacuna(e)<%= " in #{current_context.key}" if current_context %>
+       — required terms tending looked for and could not find.</p>
+    <% if @lacunae_by_facet.any? %>
+      <table>
+        <tr><th>facet</th><th>open gaps</th></tr>
+        <% @lacunae_by_facet.each do |facet, n| %>
+          <tr><td><%= facet %></td><td><%= n %></td></tr>
+        <% end %>
+      </table>
+    <% end %>
+    <% if @lacunae_by_diagnosis.any? %>
+      <div class="muted samples" style="margin-top:.5rem">
+        <%= @lacunae_by_diagnosis.map { |d, n| "#{d}: #{n}" }.join(" · ") %>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
 <h2>Facets</h2>
 <div class="row">
   <% s[:facets].each do |st| %>

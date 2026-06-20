@@ -36,6 +36,7 @@ module Enliterator
         Tools::Quote,
         Tools::Accuracy,
         Tools::RecentActivity,
+        Tools::Lacunae,
         Tools::ProposeTerm,
         Tools::FlagClaim
       ]

@@ -7,6 +7,7 @@ module Enliterator
       has_many :enliterator_measures,     class_name: "Enliterator::Measure",     as: :tendable,   dependent: :destroy
       has_many :enliterator_embeddings,  class_name: "Enliterator::Embedding",  as: :embeddable, dependent: :destroy
       has_many :enliterator_suggestions, class_name: "Enliterator::Suggestion", as: :tendable,   dependent: :destroy
+      has_many :enliterator_lacunae,     class_name: "Enliterator::Lacuna",     as: :tendable,   dependent: :destroy
       # v0.13: an item lives in the root collection implicitly and in any number
       # of labeled sub-contexts explicitly (the M2M lens membership).
       has_many :enliterator_context_memberships, class_name: "Enliterator::ContextMembership",
