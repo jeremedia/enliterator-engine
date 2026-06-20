@@ -132,8 +132,11 @@ module Enliterator
         # allowed keys AND an optional top-level `suggestions` array is added.
         #
         # @param contract [Hash, nil] `{key => description}` or nil.
+        # @param required [Array, nil] the facet's REQUIRED terms (v0.46.1) — when
+        #   present AND config.record_lacunae is on, an optional top-level `absences`
+        #   array is added so the model can diagnose a required term it cannot fill.
         # @return [Hash] JSON Schema.
-        def schema_for(contract)
+        def schema_for(contract, required: nil)
           keys = allowed_terms_from(contract)
           return RESPONSE_SCHEMA if keys.nil? || keys.empty?
 
@@ -145,6 +148,14 @@ module Enliterator
           }
           schema["properties"]["suggestions"] = SUGGESTIONS_SCHEMA_PROPERTY
           # "suggestions" stays OPTIONAL — do not add it to "required".
+
+          # v0.46.1: the absences (diagnosis) channel. Added ONLY when this facet has
+          # REQUIRED terms AND lacuna-recording is on — so a host with required terms
+          # but the flag off keeps a byte-identical schema (the `&& record_lacunae`
+          # conjunct is load-bearing for rule 1). Stays OPTIONAL.
+          if Array(required).map(&:to_s).reject(&:empty?).any? && Enliterator.configuration.record_lacunae
+            schema["properties"]["absences"] = ABSENCES_SCHEMA_PROPERTY
+          end
           schema
         end
 
@@ -198,6 +209,45 @@ module Enliterator
           }
         }.freeze
 
+        # Optional top-level "absences" schema fragment (v0.46.1), attached by
+        # schema_for ONLY when a contract has REQUIRED terms and config.record_lacunae
+        # is on. Each entry is the model's sanctioned channel to DIAGNOSE a required
+        # term it could not fill, instead of asserting a contentless empty claim. The
+        # diagnosis is a hint (why the fact is missing), not a verdict; the engine's
+        # no-info default "undiagnosed" is NEVER offered here — the model picks one of
+        # the three substantive causes (Lacuna::DIAGNOSES minus undiagnosed) or abstains.
+        ABSENCES_SCHEMA_PROPERTY = {
+          "type" => "array",
+          "description" =>
+            "Sanctioned channel for diagnosing UNFILLABLE required terms. For any " \
+            "REQUIRED term you cannot assert from this record, DO NOT emit an empty " \
+            "claim — add an entry here instead. Optional; omit when every required " \
+            "term is satisfied.",
+          "items" => {
+            "type" => "object",
+            "properties" => {
+              "term" => {
+                "type" => "string",
+                "description" => "The REQUIRED term you could not fill."
+              },
+              "diagnosis" => {
+                "type" => "string",
+                "enum" => %w[defective_surrogate silent not_identified],
+                "description" =>
+                  "Why the term is unfillable: defective_surrogate = the fact is in " \
+                  "the item but our extraction lost it; silent = the item omits it " \
+                  "(an external authority may know); not_identified = genuinely " \
+                  "unrecoverable."
+              },
+              "note" => {
+                "type" => "string",
+                "description" => "Optional brief evidence for the diagnosis."
+              }
+            },
+            "required" => %w[term diagnosis]
+          }
+        }.freeze
+
         # Normalize a contract hash into a sorted list of allowed key STRINGS,
         # or nil when there is no usable contract.
         def allowed_terms_from(contract)
@@ -229,12 +279,30 @@ module Enliterator
           req = Array(required).map(&:to_s).reject(&:empty?)
           return block if req.empty?
 
-          block + "\n\n" + <<~REQUIRED.strip
-            REQUIRED terms — you MUST assert a claim for EACH of: #{req.join(', ')}.
-            These facts are present in the record; find and assert them. Only if a
-            required key is genuinely absent from the record, assert it with an empty
-            value and low confidence rather than omitting it.
-          REQUIRED
+          # v0.46.1: when lacuna-recording is on, the closing instruction is SWAPPED
+          # (not appended) — route an unfillable required term to the `absences` array
+          # with a diagnosis, instead of asserting an empty claim. The two instructions
+          # are contradictory, so only one may ship. Flag OFF → the else branch is
+          # byte-identical to the v0.5/v0.46 text (rule 1).
+          if Enliterator.configuration.record_lacunae
+            block + "\n\n" + <<~REQUIRED.strip
+              REQUIRED terms — you MUST assert a claim for EACH of: #{req.join(', ')}.
+              These facts are present in the record; find and assert them. If a required
+              term is genuinely absent from the record, DO NOT assert an empty claim for
+              it — instead add an entry to the top-level `absences` array as {term,
+              diagnosis, note}, choosing diagnosis from: defective_surrogate (the fact is
+              in the item but our extraction lost it), silent (the item omits it; an
+              external authority may know), or not_identified (genuinely unrecoverable).
+              Abstain rather than guess the diagnosis.
+            REQUIRED
+          else
+            block + "\n\n" + <<~REQUIRED.strip
+              REQUIRED terms — you MUST assert a claim for EACH of: #{req.join(', ')}.
+              These facts are present in the record; find and assert them. Only if a
+              required key is genuinely absent from the record, assert it with an empty
+              value and low confidence rather than omitting it.
+            REQUIRED
+          end
         end
 
         # Stage 1 — the CANDIDATE-vocabulary block, appended by system_for as a SIBLING

@@ -28,6 +28,20 @@ RSpec.describe "Enliterator::Tending::Visitor lacunae (staffing path)" do
     end
   end
 
+  # Minimal OpenAI-compatible client for driving the REAL Gateway adapter end-to-end
+  # (proving the adapter — not a hand-stub — is the producer of parsed["absences"]).
+  class GwClient
+    def initialize(arguments_json) = @args = arguments_json
+    def chat = self
+    def completions = self
+    def create(**_kwargs)
+      { "choices" => [ { "message" => { "role" => "assistant", "tool_calls" => [
+        { "type" => "function",
+          "function" => { "name" => Enliterator::Adapters::LLM::Base::TOOL_NAME, "arguments" => @args } } ] } } ],
+        "usage" => { "total_tokens" => 5 } }
+    end
+  end
+
   let(:widget)   { Widget.create!(title: "Thesis", body: "A thesis with a title page.") }
   let(:embedder) { Enliterator::Adapters::Embedder::Null.new }
 
@@ -160,6 +174,27 @@ RSpec.describe "Enliterator::Tending::Visitor lacunae (staffing path)" do
       lac = open_lacunae.find_by(key: "authored_by")
       expect(lac.diagnosis).to eq("defective_surrogate")
       expect(lac.note).to eq("byline dropped")
+    end
+
+    # v0.46.1 end-to-end: the REAL Gateway adapter (extract_parsed → normalize_absences)
+    # feeds the visitor, which opens the diagnosed lacuna. This exercises the serialization
+    # boundary between the adapter's string-keyed output and the Visitor's absences_index —
+    # not provable by the hand-stubbed test above (which bypasses the adapter).
+    it "captures the diagnosis end-to-end through the REAL Gateway adapter (the producer)" do
+      args = JSON.generate(
+        "claims" => [], "confidence" => 0.5,
+        "absences" => [ { "term" => "authored_by", "diagnosis" => "defective_surrogate",
+                          "note" => "byline dropped in extraction" } ]
+      )
+      gateway = Enliterator::Adapters::LLM::Gateway.new(
+        tier: "cheap", base_url: "https://llm.example.com/v1", api_key: "sk-test", client: GwClient.new(args)
+      )
+      route!(gateway)
+      tend!
+      lac = open_lacunae.find_by(key: "authored_by")
+      expect(lac).to be_present
+      expect(lac.diagnosis).to eq("defective_surrogate")
+      expect(lac.note).to eq("byline dropped in extraction")
     end
   end
 end

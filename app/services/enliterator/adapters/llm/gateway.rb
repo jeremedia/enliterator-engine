@@ -82,7 +82,7 @@ module Enliterator
                 function: {
                   name: TOOL_NAME,
                   description: "Emit the reconciled claims and overall confidence for this record.",
-                  parameters: schema_for(contract)
+                  parameters: schema_for(contract, required: required)
                 }
               }
             ],
@@ -342,6 +342,12 @@ module Enliterator
           sugg = input.key?("suggestions") ? input["suggestions"] : input[:suggestions]
           parsed["suggestions"] = normalize_suggestions(sugg) unless sugg.nil?
 
+          # v0.46.1: pass through any model-emitted absences (diagnosis channel). The
+          # Visitor's absences_index reads {term, diagnosis, note}. Absent on the
+          # no-required / flag-off path, so the key only appears when the model emits it.
+          abs = input.key?("absences") ? input["absences"] : input[:absences]
+          parsed["absences"] = normalize_absences(abs) unless abs.nil?
+
           parsed
         end
 
@@ -354,6 +360,21 @@ module Enliterator
               "proposed_key"  => h["proposed_key"]  || h[:proposed_key],
               "rationale"     => h["rationale"]     || h[:rationale],
               "example_value" => h.key?("example_value") ? h["example_value"] : h[:example_value]
+            }.compact
+          end
+        end
+
+        # Normalize the optional absences array (v0.46.1) into string-keyed hashes the
+        # Visitor's absences_index reads directly ({term, diagnosis, note}). Tolerant of
+        # symbol/string keys. .compact drops an absent note; term/diagnosis are required
+        # by the schema, so they are present when the model emits an entry.
+        def normalize_absences(absences)
+          Array(absences).map do |a|
+            h = a.is_a?(Hash) ? a : {}
+            {
+              "term"      => h["term"]      || h[:term],
+              "diagnosis" => h["diagnosis"] || h[:diagnosis],
+              "note"      => h.key?("note") ? h["note"] : h[:note]
             }.compact
           end
         end

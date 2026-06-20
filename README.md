@@ -54,7 +54,10 @@ The compounding rung is proven in the test suite: `spec/services/enliterator/ten
 The collection also knows its own **gaps** (v0.46 — `config.record_lacunae`): when a *required*
 term comes back unmet, the engine stops writing a contentless empty claim and opens a **lacuna** — a
 named known-unknown (the negative space of a claim), refreshed each beat it stays missing and closed
-the day a later visit supplies the value. The epistemic triad: frontier (unknown-unknown) / lacuna
+the day a later visit supplies the value. As of **v0.46.1** the gap is also *diagnosed* — the model
+reports, through an `absences` channel, *why* the term is unfillable: `defective_surrogate` (the fact
+is in the item but extraction lost it), `silent` (the item omits it; an authority may know), or
+`not_identified` (unrecoverable). The epistemic triad: frontier (unknown-unknown) / lacuna
 (known-unknown) / claim (known-known). Surfaced as a record-page "Known gaps" panel, a Status rollup,
 `rake enliterator:lacunae`, and the `lacunae` MCP tool. Off by default ⇒ byte-identical.
 

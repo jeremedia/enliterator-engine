@@ -80,10 +80,10 @@ module Enliterator
         # gains a controlled-vocabulary block. When absent (the default) the call
         # is byte-identical to v0.2: input_schema.json == RESPONSE_SCHEMA and the
         # original system text.
-        def tend(text:, facet:, state:, neighbors:, contract: nil, candidates: nil)
+        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil, candidates: nil)
           response = client.converse(
             model_id: @model_id,
-            system:   [ { text: system_for(contract, candidates: candidates) } ],
+            system:   [ { text: system_for(contract, required: required, candidates: candidates) } ],
             messages: [
               {
                 role: "user",
@@ -96,7 +96,7 @@ module Enliterator
                   tool_spec: {
                     name: TOOL_NAME,
                     description: "Emit the reconciled claims and overall confidence for this record.",
-                    input_schema: { json: schema_for(contract) }
+                    input_schema: { json: schema_for(contract, required: required) }
                   }
                 }
               ],
@@ -139,10 +139,48 @@ module Enliterator
           input = tool_block ? input_of(tool_use_of(tool_block)) : {}
           input = parse_input(input)
 
-          {
+          parsed = {
             "claims"     => normalize_claims(input["claims"]),
             "confidence" => normalize_confidence(input["confidence"])
           }
+
+          # v0.46.1 parity: pass through the contract-path channels the Gateway already
+          # emits. Suggestions was dropped here entirely before (a pre-existing gap);
+          # absences is the new diagnosis channel. Both keyed by string/symbol tolerance,
+          # both only present when the model emits them.
+          sugg = input.key?("suggestions") ? input["suggestions"] : input[:suggestions]
+          parsed["suggestions"] = normalize_suggestions(sugg) unless sugg.nil?
+          abs = input.key?("absences") ? input["absences"] : input[:absences]
+          parsed["absences"] = normalize_absences(abs) unless abs.nil?
+
+          parsed
+        end
+
+        # Normalize the optional suggestions array into string-keyed hashes the Visitor
+        # persists directly. Mirrors Gateway#normalize_suggestions (the per-adapter
+        # duplication matches normalize_claims/normalize_confidence above).
+        def normalize_suggestions(suggestions)
+          Array(suggestions).map do |s|
+            h = s.is_a?(Hash) ? s : {}
+            {
+              "proposed_key"  => h["proposed_key"]  || h[:proposed_key],
+              "rationale"     => h["rationale"]     || h[:rationale],
+              "example_value" => h.key?("example_value") ? h["example_value"] : h[:example_value]
+            }.compact
+          end
+        end
+
+        # Normalize the optional absences array (v0.46.1) into the {term, diagnosis, note}
+        # shape the Visitor's absences_index reads. Mirrors Gateway#normalize_absences.
+        def normalize_absences(absences)
+          Array(absences).map do |a|
+            h = a.is_a?(Hash) ? a : {}
+            {
+              "term"      => h["term"]      || h[:term],
+              "diagnosis" => h["diagnosis"] || h[:diagnosis],
+              "note"      => h.key?("note") ? h["note"] : h[:note]
+            }.compact
+          end
         end
 
         # Content blocks live at response.output.message.content (struct) or the
