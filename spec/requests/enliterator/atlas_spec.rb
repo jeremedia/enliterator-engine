@@ -2,9 +2,9 @@
 
 require "rails_helper"
 
-# v0.21 — the Atlas surface: the page embeds its data (the same viewer renders
-# live and in the standalone export), /atlas/data serves JSON, and the nav's
-# context switcher scopes it like every surface.
+# v0.21 — the Atlas surface: live mode fetches its data asynchronously, the
+# standalone export embeds it, /atlas/data serves JSON, and the nav's context
+# switcher scopes it like every surface.
 RSpec.describe "Enliterator atlas", type: :request do
   def tended_claim!(record, key:, value:)
     visit = record.enliterator_visits.create!(facet: "summary", status: "succeeded",
@@ -13,21 +13,23 @@ RSpec.describe "Enliterator atlas", type: :request do
                                       confidence: 0.8, visit: visit)
   end
 
-  it "renders the page with the data embedded and the nav link present" do
+  it "renders the live page as a fast shell with a data URL and the nav link present" do
     w = Widget.create!(title: "Continuity of Operations", body: "b")
     tended_claim!(w, key: "advisor", value: "Dr. Mara Voss")
 
     get "/enliterator/atlas"
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include("window.ATLAS_DATA")
-      .and include("Continuity of Operations")
-      .and include("Dr. Mara Voss")
+    expect(response.body).to include("window.ATLAS_DATA = null")
+      .and include("window.ATLAS_DATA_URL = \"/enliterator/atlas/data?mode=overview\"")
       .and include(">Atlas</a>")           # the nav item
+      .and include("fetch(dataUrl")
+      .and include("Enliterator Atlas renderer vendor bundle")
     expect(response.body).not_to include("window.ATLAS_EMBEDDED = true")
+    expect(response.body).not_to include("Continuity of Operations")
   end
 
-  it "renders honestly when nothing is tended (empty data, the JS shows the empty state)" do
-    get "/enliterator/atlas"
+  it "serves honest empty data when nothing is tended" do
+    get "/enliterator/atlas/data"
     expect(response).to have_http_status(:ok)
     expect(response.body).to include('"nodes":[]')
   end
@@ -39,7 +41,19 @@ RSpec.describe "Enliterator atlas", type: :request do
     get "/enliterator/atlas/data"
     json = JSON.parse(response.body)
     expect(json["meta"]["records"]).to eq(1)
+    expect(json["meta"]["mode"]).to eq("explore")
     expect(json["nodes"].map { |n| n["label"] }).to include("A Record", "Dr. Json")
+  end
+
+  it "serves overview JSON when requested by the live shell" do
+    w = Widget.create!(title: "Overview Record", body: "b")
+    tended_claim!(w, key: "advisor", value: "Dr. Overview")
+
+    get "/enliterator/atlas/data", params: { mode: "overview" }
+    json = JSON.parse(response.body)
+    expect(json["meta"]["mode"]).to eq("overview")
+    expect(json["nodes"].size).to be <= 350
+    expect(json["edges"].all? { |edge| edge.key?("category") }).to be(true)
   end
 
   it "renders the standalone export: one self-contained file, embedded data, no click-through" do
@@ -56,7 +70,10 @@ RSpec.describe "Enliterator atlas", type: :request do
       .and include("window.ATLAS_EMBEDDED = true")
       .and include("Exported Doc")
       .and include("Prepared ")
+      .and include("Enliterator Atlas renderer vendor bundle")
     expect(html).not_to include("stylesheet_link_tag")   # self-contained, no asset pipeline
+    expect(html).not_to include("javascript_include_tag")
+    expect(html).not_to include("https://cdn")
   end
 
   it "scopes through the context switcher like every surface" do
@@ -70,6 +87,11 @@ RSpec.describe "Enliterator atlas", type: :request do
     outside.enliterator_claims.create!(key: "advisor", value: "Dr. Out", status: "draft", visit: v2, context: other)
 
     get "/enliterator/atlas", params: { context: "election-security" }
+    expect(response.body).to include("/enliterator/atlas/data")
+    expect(response.body).to include("mode=overview")
+    expect(response.body).to include("context=election-security")
+
+    get "/enliterator/atlas/data", params: { context: "election-security" }
     expect(response.body).to include("Inside Doc")
     expect(response.body).not_to include("Outside Doc")
   end

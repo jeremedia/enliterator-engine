@@ -4,11 +4,12 @@
   Every record the heartbeat has read is a node; every claim that names something — an advisor,
   an agency, a superseded order, a related report — is a typed edge. The edge types ARE the
   controlled vocabulary, and every edge carries its provenance: hover a line to see who asserted
-  it, when, at what confidence, and the audit verdict where one exists. Drag the time slider (or
-  press replay) to watch the collection learn.
+  it, when, at what confidence, and the audit verdict where one exists. The overview starts with
+  context regions and bridge topics; Explore opens the capped graph; Focus follows a selected
+  node's neighborhood.
 </p>
 
-<%= render "viewer", atlas: @atlas, embedded: false %>
+<%= render "viewer", atlas: nil, embedded: false, data_url: @atlas_data_url %>
 
 <p class="muted samples" style="margin-top:.6rem">
   Entities are deduped by exact string — "DHS" and "Department of Homeland Security (DHS)" are

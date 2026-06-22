@@ -1,502 +1,673 @@
-<%# The Atlas viewer (v0.21) — dark-canvas force-directed graph, 100% inline
-    (hard rule 2: no D3, no CDN; the engine owns its ~300-line simulation).
-    Dual-mode: rendered live inside the engine layout, or standalone in the
-    exported file (locals: atlas:, embedded:). Records click through to the
-    status drill-down in live mode only. %>
+<%# Sigma-backed Atlas viewer. Self-contained by design: vendor bundle, data, styles,
+    and client code all live inline so HSDL/Sprockets and dummy/Propshaft both render it
+    without engine asset precompile dependencies. %>
 <style>
-  .atlas-wrap { background:#0b0f1a; border:1px solid var(--line, #ddd); border-radius:10px;
-                overflow:hidden; color:#cbd5e1; }
-  .atlas-bar  { display:flex; gap:.8rem; align-items:center; flex-wrap:wrap;
-                padding:.5rem .8rem; background:#0e1422; border-bottom:1px solid #1e293b;
-                font-size:.85rem; }
-  .atlas-bar input[type="search"] { font:inherit; background:#0b0f1a; color:#e2e8f0;
-                border:1px solid #1e293b; border-radius:6px; padding:.25rem .5rem; width:14rem; }
-  .atlas-bar input[type="range"]  { width:16rem; accent-color:#ec6aa0; }
-  .atlas-bar button { font:inherit; background:#1e293b; color:#e2e8f0; border:none;
-                border-radius:6px; padding:.2rem .7rem; cursor:pointer; }
-  .atlas-bar .atlas-date { font-variant-numeric:tabular-nums; color:#94a3b8; min-width:6.5rem; }
-  .atlas-stats { margin-left:auto; color:#64748b; font-size:.8rem; }
-  .atlas-stage { position:relative; }
-  .atlas-stage canvas { display:block; width:100%; height:74vh; cursor:grab; }
-  .atlas-stage canvas.dragging { cursor:grabbing; }
-  .atlas-tip  { position:absolute; pointer-events:none; background:#0e1422ee; color:#e2e8f0;
-                border:1px solid #1e293b; border-radius:8px; padding:.45rem .6rem;
-                font-size:.78rem; max-width:24rem; display:none; line-height:1.45; z-index:5; }
-  .atlas-tip .t-kind { color:#64748b; }
-  .atlas-tip .t-prov { color:#94a3b8; }
-  .atlas-legend { display:flex; gap:.35rem .9rem; flex-wrap:wrap; padding:.55rem .8rem;
-                background:#0e1422; border-top:1px solid #1e293b; font-size:.78rem; }
-  .atlas-legend .lg { display:inline-flex; align-items:center; gap:.35rem; cursor:pointer;
-                color:#cbd5e1; user-select:none; }
-  .atlas-legend .lg.off { opacity:.32; }
-  .atlas-legend .sw { width:.7rem; height:.7rem; border-radius:50%; display:inline-block; }
-  .atlas-legend .sw.diamond { border-radius:2px; transform:rotate(45deg); width:.6rem; height:.6rem; }
-  .atlas-legend .lg-sep { color:#334155; align-self:center; }
-  .atlas-warn { padding:.4rem .8rem; background:#0e1422; color:#fbbf24; font-size:.78rem;
-                border-top:1px solid #1e293b; }
-  .atlas-veil { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-                background:#0b0f1a; color:#64748b; font-size:.9rem; z-index:4;
-                font-variant-numeric:tabular-nums; }
-  .atlas-empty { padding:3rem 1rem; text-align:center; color:#64748b; }
+  .atlas-wrap {
+    --atlas-bg: #08111d;
+    --atlas-panel: #0c1726;
+    --atlas-panel-2: #101d2d;
+    --atlas-line: rgba(144, 161, 185, .22);
+    --atlas-text: #d7e0eb;
+    --atlas-muted: #8391a4;
+    --atlas-faint: #4d5b6f;
+    --atlas-accent: #f2c15f;
+    --atlas-danger: #f07f78;
+    background:
+      radial-gradient(circle at 18% 8%, rgba(242, 193, 95, .10), transparent 24rem),
+      radial-gradient(circle at 88% 18%, rgba(83, 214, 186, .08), transparent 28rem),
+      linear-gradient(180deg, #091321, var(--atlas-bg));
+    border: 1px solid var(--atlas-line, #243244);
+    border-radius: 14px;
+    overflow: hidden;
+    color: var(--atlas-text);
+    width: 100%;
+    max-width: none;
+    min-height: calc(100dvh - 11rem);
+    box-shadow: 0 20px 70px rgba(3, 10, 20, .38);
+  }
+  body.enl-atlas-page main.enl { max-width: none; width: 100%; padding-left: .75rem; padding-right: .75rem; }
+  body.enl-atlas-page main.enl > p { max-width: 88rem !important; }
+  .atlas-shell { display: grid; grid-template-columns: minmax(0, 1fr); min-height: calc(100dvh - 11rem); }
+  .atlas-wrap.inspector-open .atlas-shell { grid-template-columns: minmax(0, 1fr) 22rem; }
+  .atlas-main { min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+  .atlas-bar {
+    display: grid;
+    grid-template-columns: auto minmax(12rem, 22rem) auto auto auto 1fr;
+    gap: .55rem;
+    align-items: center;
+    padding: .62rem .75rem;
+    background: rgba(8, 17, 29, .86);
+    border-bottom: 1px solid var(--atlas-line);
+    backdrop-filter: blur(12px);
+    font-size: .82rem;
+  }
+  .atlas-mode { display: inline-flex; align-items: center; gap: .18rem; padding: .16rem; border: 1px solid var(--atlas-line); border-radius: 999px; background: rgba(255,255,255,.035); }
+  .atlas-btn, .atlas-chip, .atlas-export {
+    font: inherit;
+    color: var(--atlas-text);
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 999px;
+    padding: .28rem .62rem;
+    cursor: pointer;
+    transition: background .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
+    white-space: nowrap;
+  }
+  .atlas-btn:hover, .atlas-chip:hover, .atlas-export:hover { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.08); }
+  .atlas-btn:active, .atlas-chip:active, .atlas-export:active { transform: translateY(1px); }
+  .atlas-btn.active { background: var(--atlas-accent); color: #1d1608; font-weight: 700; }
+  .atlas-search { position: relative; min-width: 0; }
+  .atlas-search input {
+    width: 100%; box-sizing: border-box; font: inherit; color: var(--atlas-text);
+    background: rgba(255,255,255,.045); border: 1px solid var(--atlas-line);
+    border-radius: 999px; padding: .42rem .75rem .42rem 2rem; outline: none;
+  }
+  .atlas-search input:focus { border-color: rgba(242,193,95,.65); box-shadow: 0 0 0 3px rgba(242,193,95,.12); }
+  .atlas-search:before { content: "search"; position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: var(--atlas-faint); font-size: .63rem; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
+  .atlas-status { justify-self: end; color: var(--atlas-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .atlas-stage { position: relative; min-height: 34rem; height: calc(100dvh - 17rem); background: rgba(2, 8, 18, .34); }
+  .atlas-graph { position: absolute; inset: 0; }
+  .atlas-veil {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at center, rgba(12,23,38,.82), rgba(8,17,29,.96));
+    color: var(--atlas-muted); font-size: .9rem; z-index: 4; font-variant-numeric: tabular-nums;
+  }
+  .atlas-empty { padding: 3rem 1rem; text-align: center; color: var(--atlas-muted); }
+  .atlas-cats { display: flex; gap: .35rem; flex-wrap: wrap; padding: .56rem .72rem; border-top: 1px solid var(--atlas-line); background: rgba(8,17,29,.76); }
+  .atlas-chip { color: var(--atlas-muted); border-color: var(--atlas-line); padding: .22rem .52rem; font-size: .76rem; }
+  .atlas-chip.active { color: var(--atlas-text); background: rgba(255,255,255,.07); }
+  .atlas-chip[data-category="context"] { opacity: .72; }
+  .atlas-side { border-left: 1px solid var(--atlas-line); background: rgba(8,17,29,.88); display: none; grid-template-rows: auto 1fr; min-width: 0; }
+  .atlas-wrap.inspector-open .atlas-side { display: grid; }
+  .atlas-side-head { padding: .82rem .9rem; border-bottom: 1px solid var(--atlas-line); }
+  .atlas-side-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .atlas-side-kicker { color: var(--atlas-accent); text-transform: uppercase; letter-spacing: .11em; font-size: .66rem; font-weight: 800; }
+  .atlas-side-title { margin-top: .28rem; font-weight: 750; color: #f4f7fb; }
+  .atlas-side-close { border: 1px solid var(--atlas-line); background: rgba(255,255,255,.045); color: var(--atlas-muted); border-radius: 999px; font: inherit; font-size: .74rem; padding: .18rem .48rem; cursor: pointer; }
+  .atlas-side-close:hover { color: var(--atlas-text); background: rgba(255,255,255,.075); }
+  .atlas-inspector { padding: .9rem; overflow: auto; font-size: .82rem; line-height: 1.45; }
+  .atlas-inspector h3 { margin: 0 0 .32rem; font-size: 1rem; line-height: 1.2; color: #f4f7fb; text-wrap: balance; }
+  .atlas-inspector .muted { color: var(--atlas-muted); }
+  .atlas-kv { display: grid; grid-template-columns: 6.8rem minmax(0,1fr); gap: .28rem .55rem; margin-top: .8rem; }
+  .atlas-kv dt { color: var(--atlas-faint); }
+  .atlas-kv dd { margin: 0; color: var(--atlas-text); min-width: 0; overflow-wrap: anywhere; }
+  .atlas-open { display: inline-flex; margin-top: .9rem; color: #1d1608; background: var(--atlas-accent); border-radius: 999px; padding: .36rem .7rem; text-decoration: none; font-weight: 750; }
+  .atlas-warn { display: none; padding: .45rem .72rem; background: rgba(242,193,95,.10); color: #ffd88a; font-size: .78rem; border-top: 1px solid rgba(242,193,95,.18); }
+  .atlas-export { justify-self: start; border-color: var(--atlas-line); color: var(--atlas-muted); text-decoration: none; }
+  .atlas-export code { color: var(--atlas-text); font-size: .72rem; }
+  @media (max-width: 980px) {
+    .atlas-shell { grid-template-columns: 1fr; }
+    .atlas-wrap.inspector-open .atlas-shell { grid-template-columns: 1fr; }
+    .atlas-side { border-left: 0; border-top: 1px solid var(--atlas-line); min-height: 18rem; }
+    .atlas-bar { grid-template-columns: 1fr; align-items: stretch; }
+    .atlas-status { justify-self: start; }
+    .atlas-stage { height: 62dvh; }
+  }
 </style>
 
-<div class="atlas-wrap">
-  <div class="atlas-bar">
-    <input type="search" id="atlas-search" placeholder="find a record or entity…" autocomplete="off">
-    <button id="atlas-play" title="replay the collection learning">▶ replay</button>
-    <input type="range" id="atlas-time" min="0" max="1000" value="1000">
-    <span class="atlas-date" id="atlas-date"></span>
-    <span class="atlas-stats" id="atlas-stats"></span>
+<div class="atlas-wrap" data-atlas-root>
+  <div class="atlas-shell">
+    <section class="atlas-main" aria-label="Atlas graph workspace">
+      <div class="atlas-bar">
+        <div class="atlas-mode" aria-label="Atlas mode">
+          <button class="atlas-btn active" type="button" data-mode="overview">Overview</button>
+          <button class="atlas-btn" type="button" data-mode="explore">Explore</button>
+          <button class="atlas-btn" type="button" data-mode="focus">Focus</button>
+        </div>
+        <label class="atlas-search">
+          <input type="search" data-atlas-search placeholder="Find a record, subject, agency, or cited work" autocomplete="off">
+        </label>
+        <button class="atlas-btn" type="button" data-atlas-reset>Reset camera</button>
+        <button class="atlas-btn" type="button" data-atlas-inspector-toggle aria-expanded="false">Inspector</button>
+        <span class="atlas-export" title="Standalone export is generated by the Rails task"><code>rake enliterator:atlas FILE=tmp/atlas.html</code></span>
+        <span class="atlas-status" data-atlas-status>loading atlas shell</span>
+      </div>
+      <div class="atlas-stage">
+        <div class="atlas-graph" data-atlas-graph></div>
+        <div class="atlas-veil" data-atlas-veil>loading the atlas data...</div>
+      </div>
+      <div class="atlas-cats" data-atlas-categories aria-label="Edge categories"></div>
+      <div class="atlas-warn" data-atlas-warn></div>
+    </section>
+    <aside class="atlas-side" aria-label="Atlas selection inspector">
+      <div class="atlas-side-head">
+        <div class="atlas-side-top">
+          <div class="atlas-side-kicker">Selection</div>
+          <button class="atlas-side-close" type="button" data-atlas-inspector-close>Close</button>
+        </div>
+        <div class="atlas-side-title" data-atlas-side-title>Nothing selected</div>
+      </div>
+      <div class="atlas-inspector" data-atlas-inspector>
+        <p class="muted">Select a node or edge to inspect its context, degree, edge types, and provenance. The overview labels only context hubs and the most useful bridge points; search is the fastest way to jump to a known record or term.</p>
+      </div>
+    </aside>
   </div>
-  <div class="atlas-stage">
-    <canvas id="atlas-canvas"></canvas>
-    <div class="atlas-tip" id="atlas-tip"></div>
-    <div class="atlas-veil" id="atlas-veil">drawing the atlas…</div>
-  </div>
-  <div class="atlas-legend" id="atlas-legend"></div>
-  <div class="atlas-warn" id="atlas-warn" style="display:none"></div>
 </div>
 
 <script>
-  window.ATLAS_DATA = <%= raw ERB::Util.json_escape(atlas.to_json) %>;
+  window.ATLAS_DATA = <%= atlas ? raw(ERB::Util.json_escape(atlas.to_json)) : "null" %>;
+  window.ATLAS_DATA_URL = <%= local_assigns[:data_url] ? raw(ERB::Util.json_escape(local_assigns[:data_url].to_json)) : "null" %>;
   window.ATLAS_EMBEDDED = <%= embedded ? "true" : "false" %>;
 </script>
 <script>
-(function () {
+<%= raw Enliterator::Atlas.renderer_bundle %>
+</script>
+<script>
+window.EnliteratorAtlas = (function () {
   "use strict";
-  const data = window.ATLAS_DATA, embedded = window.ATLAS_EMBEDDED;
-  const stage = document.querySelector(".atlas-stage");
-  if (!data.nodes.length) {
-    stage.innerHTML = '<div class="atlas-empty">Nothing tended yet — the atlas draws itself as the heartbeat reads the collection.</div>';
-    document.getElementById("atlas-stats").textContent = "0 nodes";
-    return;
+
+  const EDGE_CATEGORIES = ["context", "citation", "authority", "agent", "subject", "evidence", "other"];
+  const CONTEXT_PALETTE = ["#53d6ba", "#6da8ff", "#f2c15f", "#ef7c8e", "#b99cff", "#7bdff2", "#f7a66a", "#8be28d"];
+  const ENTITY_COLOR = "#9aa8ba";
+  const SELECT_COLOR = "#f2c15f";
+  const EDGE_NEUTRAL = "rgba(125, 145, 170, .18)";
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>'"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[ch];
+    });
   }
 
-  // ---- palette: record groups (contexts) take the vivid hues, entity groups follow
-  const PALETTE = ["#34d399","#60a5fa","#fbbf24","#f87171","#a78bfa","#22d3ee","#fb923c","#e879f9","#4ade80","#38bdf8","#facc15","#fda4af"];
-  const CONTEXT_COLOR = "#ec6aa0", ENTITY_DIM = "#7c8aa0";
-  const recGroups = [...new Set(data.nodes.filter(n => n.kind === "record").map(n => n.group))].sort();
-  const entGroups = [...new Set(data.nodes.filter(n => n.kind === "entity").map(n => n.group))].sort();
-  const color = {};
-  recGroups.forEach((g, i) => color["r:" + g] = PALETTE[i % PALETTE.length]);
-  entGroups.forEach((g, i) => color["e:" + g] = PALETTE[(recGroups.length + i) % PALETTE.length]);
-  const nodeColor = n => n.kind === "context" ? CONTEXT_COLOR
-                       : n.kind === "record"  ? color["r:" + n.group]
-                       : color["e:" + n.group] || ENTITY_DIM;
+  function edgeId(edge, idx) {
+    return edge.id || ["edge", idx, edge.s, edge.t, edge.key].join(":");
+  }
 
-  // ---- graph setup
-  const nodes = data.nodes.map(n => Object.assign({ x: 0, y: 0, vx: 0, vy: 0 }, n));
-  const byId = new Map(nodes.map(n => [n.id, n]));
-  const edges = data.edges.map(e => Object.assign({}, e, { a: byId.get(e.s), b: byId.get(e.t) }))
-                          .filter(e => e.a && e.b);
-  const degree = new Map();
-  edges.forEach(e => { degree.set(e.s, (degree.get(e.s) || 0) + 1); degree.set(e.t, (degree.get(e.t) || 0) + 1); });
-  const radius = n => n.kind === "context" ? 14
-                    : n.kind === "record"  ? Math.min(4 + Math.sqrt(n.size) * 1.8, 13)
-                    : Math.min(2.5 + Math.sqrt(degree.get(n.id) || 1) * 1.2, 9);
-  nodes.forEach((n, i) => {
-    n.r = radius(n); n.m = 1 + n.r * 0.35;
-    n.jit = 0.78 + ((i * 2654435761) % 1000) / 1000 * 0.55;   // deterministic variance — breaks the lattice
-  });
-  edges.forEach((e, i) => {
-    e.jit = 0.65 + ((i * 40503) % 1000) / 1000 * 0.85;
-    // Gentle quadratic arc (infoguana's legibility move): deterministic bow,
-    // alternating side — parallel edges separate instead of stacking.
-    e.curve = (i % 2 ? 1 : -1) * (0.09 + ((i * 7919) % 100) / 100 * 0.08);
-  });
+  function nodeSize(node) {
+    if (node.kind === "context") return 15 + Math.min(Math.sqrt(node.size || 1) * 0.12, 2);
+    if (node.kind === "record") return 4 + Math.min(Math.sqrt(node.size || 1) * 1.35, 8);
+    return 3 + Math.min(Math.sqrt(node.degree || node.size || 1) * 1.15, 7);
+  }
 
-  // initial positions: context hubs on a ring; members near their hub; entities near a source
-  const ctxNodes = nodes.filter(n => n.kind === "context");
-  ctxNodes.forEach((c, i) => {
-    const a = (i / Math.max(ctxNodes.length, 1)) * Math.PI * 2;
-    c.x = Math.cos(a) * 620; c.y = Math.sin(a) * 620;
-  });
-  const hubOf = new Map();
-  edges.forEach(e => { if (e.key === "in-context") hubOf.set(e.s, e.b); });
-  // Entities gravitate toward the hub of their first record neighbor — keeps
-  // an advisor inside its thesis galaxy instead of drifting to the center.
-  edges.forEach(e => {
-    if (e.b.kind === "entity" && !hubOf.has(e.t) && hubOf.has(e.s)) hubOf.set(e.t, hubOf.get(e.s));
-  });
-  nodes.forEach(n => {
-    if (n.kind === "context") return;
-    const hub = hubOf.get(n.id);
-    const cx = hub ? hub.x : 0, cy = hub ? hub.y : 0;
-    n.x = cx + (Math.random() - 0.5) * 340; n.y = cy + (Math.random() - 0.5) * 340;
-  });
-  edges.forEach(e => { if (e.b.kind === "entity" && e.b.x === 0 && e.b.y === 0) { e.b.x = e.a.x + (Math.random() - 0.5) * 90; e.b.y = e.a.y + (Math.random() - 0.5) * 90; } });
+  function truncatedLabel(data) {
+    const raw = String(data.label || "");
+    const limit = data.kind === "context" ? 34 : 30;
+    return raw.length > limit ? raw.slice(0, limit - 1) + "…" : raw;
+  }
 
-  // ---- state
-  const hiddenGroups = new Set();
-  const tr = data.meta.time_range || [0, 1];
-  let tCur = tr[1], alpha = 1, settled = false, needsDraw = true;
-  let searchTerm = "", hover = null, hoverEdge = null;
-  let view = { x: 0, y: 0, k: 1 };
+  function drawAtlasNodeLabel(context, data, settings) {
+    if (!data.label) return;
+    const size = data.kind === "context" ? 13 : 12;
+    const text = truncatedLabel(data);
+    const x = data.x + data.size + 5;
+    const y = data.y + size / 3;
+    context.save();
+    context.font = (data.kind === "context" ? "800 " : "700 ") + size + "px " + settings.labelFont;
+    context.lineJoin = "round";
+    context.strokeStyle = "rgba(8,17,29,.94)";
+    context.lineWidth = data.kind === "context" ? 5 : 4;
+    context.strokeText(text, x, y);
+    context.fillStyle = data.kind === "context" ? "#f6f8fb" : "#dce5ef";
+    context.fillText(text, x, y);
+    context.restore();
+  }
 
-  const groupKey = n => n.kind === "context" ? "__ctx__" : (n.kind === "entity" ? "e:" : "r:") + n.group;
-  const nodeVisible = n => n.at <= tCur && !hiddenGroups.has(groupKey(n));
-  const edgeVisible = e => e.at <= tCur && nodeVisible(e.a) && nodeVisible(e.b);
+  function drawAtlasNodeHover(context, data, settings) {
+    context.save();
+    context.strokeStyle = SELECT_COLOR;
+    context.lineWidth = data.kind === "context" ? 2.4 : 2;
+    context.beginPath();
+    context.arc(data.x, data.y, data.size + 3, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
+    drawAtlasNodeLabel(context, data, settings);
+  }
 
-  // ---- simulation (grid-bucketed repulsion + springs + hub gravity)
-  function tick() {
-    const cell = 140, grid = new Map();
-    const vis = nodes.filter(nodeVisible);
-    vis.forEach(n => {
-      const k = Math.floor(n.x / cell) + ":" + Math.floor(n.y / cell);
-      (grid.get(k) || grid.set(k, []).get(k)).push(n);
+  function buildContextColors(nodes) {
+    const groups = Array.from(new Set(nodes.filter(n => n.kind === "record" || n.kind === "context").map(n => n.group || n.id))).sort();
+    const colors = new Map();
+    groups.forEach((group, idx) => colors.set(group, CONTEXT_PALETTE[idx % CONTEXT_PALETTE.length]));
+    return colors;
+  }
+
+  function nodeColor(node, contextColors) {
+    if (node.kind === "context") return contextColors.get(node.group || node.id) || SELECT_COLOR;
+    if (node.kind === "record") return contextColors.get(node.group || "root") || "#53d6ba";
+    return ENTITY_COLOR;
+  }
+
+  function edgeColor(edge) {
+    if (edge.category === "context") return "rgba(135,150,170,.04)";
+    return EDGE_NEUTRAL;
+  }
+
+  function multiplyAlpha(color, factor) {
+    const rgba = String(color || "").match(/^rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)$/);
+    if (!rgba) return color;
+    const alpha = Math.max(0, Math.min(1, parseFloat(rgba[4]) * factor));
+    return "rgba(" + rgba[1].trim() + "," + rgba[2].trim() + "," + rgba[3].trim() + "," + alpha.toFixed(3) + ")";
+  }
+
+  function buildGraphModel(data, vendor) {
+    if (!vendor || !vendor.Graph) throw new Error("Atlas renderer bundle did not expose Graphology");
+    const graph = new vendor.Graph({ multi: true, allowSelfLoops: false });
+    const nodes = data.nodes || [];
+    const edges = data.edges || [];
+    const contextColors = buildContextColors(nodes);
+    const rawNodes = new Map();
+    const rawEdges = new Map();
+    const degree = new Map();
+
+    nodes.forEach(function (node) {
+      rawNodes.set(node.id, node);
+      graph.addNode(node.id, {
+        label: node.label || node.id,
+        x: Number.isFinite(node.x) ? node.x : 0,
+        y: Number.isFinite(node.y) ? node.y : 0,
+        size: nodeSize(node),
+        color: nodeColor(node, contextColors),
+        kind: node.kind,
+        group: node.group,
+        path: node.path,
+        degree: node.degree || 0,
+        labelPriority: node.label_priority || 0,
+        raw: node
+      });
     });
-    vis.forEach(n => {
-      // Gravity: toward the node's OWN hub (the galaxy holds), weakly toward
-      // the center otherwise. Hubs themselves repel each other pairwise below.
-      let fx, fy;
-      const hub = hubOf.get(n.id);
-      if (hub && n.kind !== "context") {
-        fx = (hub.x - n.x) * 0.004; fy = (hub.y - n.y) * 0.004;
-      } else {
-        fx = -n.x * 0.0012; fy = -n.y * 0.0012;
+
+    edges.forEach(function (edge, idx) {
+      if (!rawNodes.has(edge.s) || !rawNodes.has(edge.t)) return;
+      const id = edgeId(edge, idx);
+      rawEdges.set(id, edge);
+      degree.set(edge.s, (degree.get(edge.s) || 0) + 1);
+      degree.set(edge.t, (degree.get(edge.t) || 0) + 1);
+      graph.addEdgeWithKey(id, edge.s, edge.t, {
+        label: edge.key,
+        size: edge.category === "context" ? 0.25 : 0.75 + Math.min(edge.w || 0.5, 1) * 1.15,
+        color: edgeColor(edge),
+        category: edge.category || "other",
+        keyName: edge.key,
+        raw: edge
+      });
+    });
+
+    return { graph, rawNodes, rawEdges, degree, contextColors };
+  }
+
+  function runHiddenLayout(graph, vendor, mode, notice) {
+    if (!vendor.forceAtlas2 || graph.order < 2) return;
+    const iterations = mode === "overview" ? 170 : (graph.order > 900 ? 70 : 115);
+    try {
+      const inferred = vendor.forceAtlas2.inferSettings ? vendor.forceAtlas2.inferSettings(graph) : {};
+      vendor.forceAtlas2.assign(graph, {
+        iterations: iterations,
+        settings: Object.assign({}, inferred, {
+          gravity: mode === "overview" ? 1.2 : 0.8,
+          scalingRatio: mode === "overview" ? 22 : 16,
+          slowDown: 1.8,
+          barnesHutOptimize: graph.order > 350
+        })
+      });
+    } catch (error) {
+      console.warn("Atlas layout fallback; using deterministic seed positions", error);
+      if (notice) notice("Layout fallback: deterministic seed positions are shown.");
+    }
+  }
+
+  function modeUrl(dataUrl, mode, focus) {
+    const url = new URL(dataUrl, window.location.href);
+    url.searchParams.set("mode", mode);
+    if (focus) url.searchParams.set("focus", focus);
+    else url.searchParams.delete("focus");
+    return url.pathname + url.search;
+  }
+
+  function chooseSearchMatch(nodes, query) {
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) return null;
+    const exact = nodes.find(n => String(n.label || "").toLowerCase() === q || String(n.id).toLowerCase() === q);
+    if (exact) return exact;
+    return nodes
+      .filter(n => String(n.label || "").toLowerCase().includes(q) || String(n.id).toLowerCase().includes(q))
+      .sort((a, b) => (b.label_priority || 0) - (a.label_priority || 0) || (b.degree || 0) - (a.degree || 0))[0] || null;
+  }
+
+  function topEdgeTypes(nodeId, edges) {
+    const counts = new Map();
+    edges.forEach(function (edge) {
+      if (edge.s !== nodeId && edge.t !== nodeId) return;
+      counts.set(edge.key, (counts.get(edge.key) || 0) + 1);
+    });
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 6);
+  }
+
+  function recordUrl(node, embedded) {
+    if (embedded || !node.path) return null;
+    const base = window.location.pathname.replace(/\/atlas\/?$/, "");
+    return base + "/" + node.path;
+  }
+
+  function inspectorForNode(node, data, embedded) {
+    const edgeTypes = topEdgeTypes(node.id, data.edges || []);
+    const open = recordUrl(node, embedded);
+    return '' +
+      '<h3>' + escapeHtml(node.label || node.id) + '</h3>' +
+      '<p class="muted">' + escapeHtml(node.kind || "node") + (node.group ? ' · ' + escapeHtml(node.group) : '') + '</p>' +
+      '<dl class="atlas-kv">' +
+        '<dt>id</dt><dd><code>' + escapeHtml(node.id) + '</code></dd>' +
+        '<dt>degree</dt><dd>' + escapeHtml(node.degree || 0) + '</dd>' +
+        '<dt>size</dt><dd>' + escapeHtml(node.size || 0) + '</dd>' +
+        '<dt>labels</dt><dd>' + (node.label_priority ? 'priority ' + escapeHtml(node.label_priority) : 'on hover/search/selection') + '</dd>' +
+        '<dt>edge types</dt><dd>' + (edgeTypes.length ? edgeTypes.map(pair => '<code>' + escapeHtml(pair[0]) + '</code> ' + pair[1]).join('<br>') : 'none in this view') + '</dd>' +
+      '</dl>' +
+      (open ? '<a class="atlas-open" href="' + escapeHtml(open) + '">Open record</a>' : '');
+  }
+
+  function inspectorForEdge(edge, model) {
+    const source = model.rawNodes.get(edge.s) || { label: edge.s };
+    const target = model.rawNodes.get(edge.t) || { label: edge.t };
+    const asserted = edge.at ? new Date(edge.at * 1000).toISOString().slice(0, 10) : "unknown";
+    return '' +
+      '<h3><code>' + escapeHtml(edge.key || "edge") + '</code></h3>' +
+      '<p class="muted">' + escapeHtml(source.label) + ' -> ' + escapeHtml(target.label) + '</p>' +
+      '<dl class="atlas-kv">' +
+        '<dt>category</dt><dd>' + escapeHtml(edge.category || "other") + '</dd>' +
+        '<dt>asserted</dt><dd>' + escapeHtml(asserted) + '</dd>' +
+        '<dt>tier</dt><dd>' + escapeHtml(edge.tier || "unknown") + '</dd>' +
+        '<dt>confidence</dt><dd>' + escapeHtml(edge.w != null ? Number(edge.w).toFixed(2) : "unknown") + '</dd>' +
+        '<dt>audit</dt><dd>' + escapeHtml(edge.verdict || "not audited") + '</dd>' +
+      '</dl>';
+  }
+
+  function createApp(options) {
+    const root = options.root;
+    const embedded = !!options.embedded;
+    const dataUrl = options.dataUrl;
+    const vendor = options.rendererVendor || window.EnliteratorAtlasRenderer;
+    const fetchImpl = options.fetch || window.fetch;
+    const els = {
+      graph: root.querySelector("[data-atlas-graph]"),
+      veil: root.querySelector("[data-atlas-veil]"),
+      status: root.querySelector("[data-atlas-status]"),
+      warn: root.querySelector("[data-atlas-warn]"),
+      categories: root.querySelector("[data-atlas-categories]"),
+      inspector: root.querySelector("[data-atlas-inspector]"),
+      sideTitle: root.querySelector("[data-atlas-side-title]"),
+      search: root.querySelector("[data-atlas-search]"),
+      reset: root.querySelector("[data-atlas-reset]"),
+      inspectorToggle: root.querySelector("[data-atlas-inspector-toggle]"),
+      inspectorClose: root.querySelector("[data-atlas-inspector-close]"),
+      modeButtons: Array.from(root.querySelectorAll("[data-mode]"))
+    };
+    const state = {
+      data: null,
+      model: null,
+      renderer: null,
+      mode: "overview",
+      selectedNode: null,
+      hoveredNode: null,
+      selectedEdge: null,
+      hoveredEdge: null,
+      query: "",
+      activeCategories: new Set(EDGE_CATEGORIES)
+    };
+
+    function setStatus(text) { els.status.textContent = text; }
+    function setWarning(text) {
+      if (!text) { els.warn.style.display = "none"; els.warn.textContent = ""; return; }
+      els.warn.style.display = "block";
+      els.warn.textContent = text;
+    }
+    function setActiveMode(mode) {
+      state.mode = mode;
+      els.modeButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === mode));
+    }
+    function setInspectorOpen(open) {
+      root.classList.toggle("inspector-open", open);
+      if (els.inspectorToggle) {
+        els.inspectorToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        els.inspectorToggle.textContent = open ? "Hide inspector" : "Inspector";
       }
-      const gx = Math.floor(n.x / cell), gy = Math.floor(n.y / cell);
-      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
-        const bucket = grid.get((gx + dx) + ":" + (gy + dy));
-        if (!bucket) continue;
-        for (const o of bucket) {
-          if (o === n) continue;
-          let ddx = n.x - o.x, ddy = n.y - o.y;
-          let d2 = ddx * ddx + ddy * ddy;
-          if (d2 < 1) { ddx = Math.random() - 0.5; ddy = Math.random() - 0.5; d2 = 1; }
-          if (d2 > cell * cell * 3.2) continue;
-          const f = 1150 * n.jit / d2;
-          fx += ddx * f; fy += ddy * f;
+      if (state.renderer && state.renderer.refresh) {
+        window.setTimeout(function () { state.renderer.refresh(); }, 80);
+      }
+    }
+    function connectedNodeIds(nodeId) {
+      const ids = new Set([nodeId]);
+      if (!state.data) return ids;
+      state.data.edges.forEach(function (edge) {
+        if (edge.s === nodeId) ids.add(edge.t);
+        if (edge.t === nodeId) ids.add(edge.s);
+      });
+      return ids;
+    }
+    function refresh() { if (state.renderer) state.renderer.refresh(); }
+
+    function updateInspectorNode(nodeId) {
+      const node = state.model.rawNodes.get(nodeId);
+      if (!node) return;
+      els.sideTitle.textContent = node.kind === "record" ? "Record" : node.kind === "context" ? "Context" : "Bridge term";
+      els.inspector.innerHTML = inspectorForNode(node, state.data, embedded);
+    }
+    function updateInspectorEdge(edgeId) {
+      const edge = state.model.rawEdges.get(edgeId);
+      if (!edge) return;
+      els.sideTitle.textContent = "Claim edge";
+      els.inspector.innerHTML = inspectorForEdge(edge, state.model);
+    }
+    function selectNode(nodeId) {
+      state.selectedNode = nodeId;
+      state.selectedEdge = null;
+      updateInspectorNode(nodeId);
+      setInspectorOpen(true);
+      refresh();
+    }
+    function selectEdge(edgeId) {
+      state.selectedEdge = edgeId;
+      state.selectedNode = null;
+      updateInspectorEdge(edgeId);
+      setInspectorOpen(true);
+      refresh();
+    }
+    function resetCamera() {
+      if (!state.renderer) return;
+      const camera = state.renderer.getCamera && state.renderer.getCamera();
+      if (camera && camera.animatedReset) camera.animatedReset({ duration: 360 });
+      else if (camera && camera.setState) camera.setState({ x: 0.5, y: 0.5, ratio: 1 });
+    }
+    function centerNode(nodeId) {
+      if (!state.renderer || !state.model.graph.hasNode(nodeId)) return;
+      const camera = state.renderer.getCamera && state.renderer.getCamera();
+      const attrs = state.model.graph.getNodeAttributes(nodeId);
+      if (camera && camera.animate) camera.animate({ x: attrs.x, y: attrs.y, ratio: Math.min((camera.ratio || 1) * 0.72, 1) }, { duration: 320 });
+    }
+    function applySearch(query) {
+      state.query = String(query || "").trim().toLowerCase();
+      if (state.query.length >= 2 && state.data) {
+        const match = chooseSearchMatch(state.data.nodes, state.query);
+        if (match) { selectNode(match.id); centerNode(match.id); }
+      }
+      refresh();
+    }
+    function categoryToggles() {
+      els.categories.innerHTML = "";
+      EDGE_CATEGORIES.forEach(function (category) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "atlas-chip active";
+        button.dataset.category = category;
+        button.textContent = category;
+        button.addEventListener("click", function () {
+          if (state.activeCategories.has(category)) state.activeCategories.delete(category);
+          else state.activeCategories.add(category);
+          button.classList.toggle("active", state.activeCategories.has(category));
+          refresh();
+        });
+        els.categories.appendChild(button);
+      });
+    }
+
+    function renderData(data) {
+      if (state.renderer && state.renderer.kill) state.renderer.kill();
+      els.graph.innerHTML = "";
+      state.data = data || { nodes: [], edges: [], meta: {} };
+      state.selectedNode = null;
+      state.selectedEdge = null;
+      state.hoveredNode = null;
+      state.hoveredEdge = null;
+      setActiveMode((state.data.meta && state.data.meta.mode) || state.mode || "overview");
+      setWarning((state.data.meta && state.data.meta.warnings || []).join(" "));
+
+      if (!state.data.nodes || state.data.nodes.length === 0) {
+        els.veil.style.display = "none";
+        els.graph.innerHTML = '<div class="atlas-empty">Nothing tended yet. The atlas draws itself as the heartbeat reads the collection.</div>';
+        setStatus("0 nodes");
+        return;
+      }
+
+      els.veil.style.display = "flex";
+      els.veil.textContent = "laying out " + state.data.nodes.length + " nodes";
+      state.model = buildGraphModel(state.data, vendor);
+      runHiddenLayout(state.model.graph, vendor, state.mode, setWarning);
+
+      state.renderer = new vendor.Sigma(state.model.graph, els.graph, {
+        allowInvalidContainer: true,
+        hideEdgesOnMove: true,
+        renderEdgeLabels: false,
+        enableEdgeEvents: true,
+        minEdgeThickness: 0.55,
+        labelFont: "Avenir Next, ui-sans-serif, system-ui, sans-serif",
+        labelWeight: "650",
+        labelColor: { color: "#d7e0eb" },
+        labelRenderedSizeThreshold: state.mode === "overview" ? 8 : 12,
+        defaultEdgeColor: EDGE_NEUTRAL,
+        defaultDrawNodeLabel: drawAtlasNodeLabel,
+        defaultDrawNodeHover: drawAtlasNodeHover,
+        nodeReducer: function (nodeId, attrs) {
+          const raw = attrs.raw || {};
+          const selected = state.selectedNode === nodeId || state.hoveredNode === nodeId;
+          const neighborhood = state.selectedNode ? connectedNodeIds(state.selectedNode) : null;
+          const matched = state.query && String(attrs.label || "").toLowerCase().includes(state.query);
+          const dim = (neighborhood && !neighborhood.has(nodeId)) || (state.query && !matched);
+          const mustLabel = raw.kind === "context" || selected || matched;
+          return Object.assign({}, attrs, {
+            label: mustLabel ? attrs.label : "",
+            color: selected ? SELECT_COLOR : attrs.color,
+            size: selected ? attrs.size + 3 : attrs.size,
+            zIndex: selected ? 20 : raw.kind === "context" ? 12 : raw.kind === "record" ? 8 : 4,
+            forceLabel: selected || matched || raw.kind === "context",
+            hidden: false,
+            highlighted: selected,
+            colorOpacity: dim ? .22 : 1
+          });
+        },
+        edgeReducer: function (edgeId, attrs) {
+          const raw = attrs.raw || {};
+          const category = attrs.category || "other";
+          const active = state.activeCategories.has(category);
+          const selected = state.selectedEdge === edgeId;
+          const nodePath = state.selectedNode && (raw.s === state.selectedNode || raw.t === state.selectedNode);
+          const dimUnconnected = state.selectedNode && !nodePath && !selected;
+          const mutedContext = category === "context" && state.mode === "overview" && !nodePath && !selected;
+          return Object.assign({}, attrs, {
+            hidden: !active || mutedContext,
+            color: selected || nodePath ? SELECT_COLOR : mutedContext ? "rgba(135,150,170,.06)" : dimUnconnected ? multiplyAlpha(attrs.color, 0.5) : attrs.color,
+            size: selected || nodePath ? Math.max(attrs.size, 2.4) : mutedContext ? .15 : dimUnconnected ? Math.max(attrs.size * 0.5, 0.55) : attrs.size,
+            zIndex: selected || nodePath ? 12 : 1
+          });
         }
-      }
-      n.fx = fx; n.fy = fy;
-    });
-    // Hub-hub long-range repulsion (a handful of pairs — full pairwise is fine):
-    // the galaxies must not merge.
-    for (let i = 0; i < ctxNodes.length; i++) for (let j = i + 1; j < ctxNodes.length; j++) {
-      const a = ctxNodes[i], b = ctxNodes[j];
-      const dx = a.x - b.x, dy = a.y - b.y;
-      const d2 = Math.max(dx * dx + dy * dy, 100);
-      const f = 900000 / d2;
-      const d = Math.sqrt(d2);
-      a.fx += (dx / d) * f; a.fy += (dy / d) * f;
-      b.fx -= (dx / d) * f; b.fy -= (dy / d) * f;
+      });
+
+      state.renderer.on("enterNode", function (event) { state.hoveredNode = event.node; refresh(); });
+      state.renderer.on("leaveNode", function () { state.hoveredNode = null; refresh(); });
+      state.renderer.on("clickNode", function (event) { selectNode(event.node); });
+      state.renderer.on("clickStage", function () { state.selectedNode = null; state.selectedEdge = null; refresh(); });
+      state.renderer.on("enterEdge", function (event) { state.hoveredEdge = event.edge; refresh(); });
+      state.renderer.on("leaveEdge", function () { state.hoveredEdge = null; refresh(); });
+      state.renderer.on("clickEdge", function (event) { selectEdge(event.edge); });
+
+      els.veil.style.display = "none";
+      setStatus(state.data.nodes.length + " nodes · " + state.data.edges.length + " edges · " + state.mode);
+      resetCamera();
     }
-    edges.forEach(e => {
-      if (!edgeVisible(e)) return;
-      const rest = (e.key === "in-context" ? 190 : (e.b.kind === "record" ? 110 : 65)) * e.jit;
-      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
-      const d = Math.sqrt(dx * dx + dy * dy) || 1;
-      const f = (d - rest) * 0.03;
-      const ux = dx / d, uy = dy / d;
-      e.a.fx += ux * f; e.a.fy += uy * f;
-      e.b.fx -= ux * f; e.b.fy -= uy * f;
-    });
-    let energy = 0;
-    vis.forEach(n => {
-      if (n.pinned) { n.vx = n.vy = 0; return; }
-      n.vx = (n.vx + (n.fx || 0) / n.m) * 0.55;
-      n.vy = (n.vy + (n.fy || 0) / n.m) * 0.55;
-      n.x += n.vx * alpha * 1.6; n.y += n.vy * alpha * 1.6;
-      energy += Math.abs(n.vx) + Math.abs(n.vy);
-    });
-    alpha *= 0.9968;
-    if (alpha < 0.02 || energy / Math.max(vis.length, 1) < 0.015) settled = true;
-    needsDraw = true;
-  }
-  function reheat(a) { alpha = Math.max(alpha, a); settled = false; }
 
-  function fitView() {
-    let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
-    nodes.forEach(n => { if (!nodeVisible(n)) return;
-      minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
-      minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y); });
-    if (minX > maxX) return;
-    view.k = Math.min(W / (maxX - minX + 140), H / (maxY - minY + 140), 1.8);
-    view.x = -(minX + maxX) / 2; view.y = -(minY + maxY) / 2;
-    needsDraw = true;
-  }
-
-  // ---- rendering
-  const canvas = document.getElementById("atlas-canvas");
-  const ctx = canvas.getContext("2d");
-  let W = 0, H = 0;   // CSS-pixel canvas size, cached (rect reads per frame thrash layout)
-  function resize() {
-    const dpr = window.devicePixelRatio || 1, rect = canvas.getBoundingClientRect();
-    W = rect.width; H = rect.height;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    needsDraw = true;
-  }
-  window.addEventListener("resize", resize);
-
-  const sx = x => (x + view.x) * view.k + W / 2;
-  const sy = y => (y + view.y) * view.k + H / 2;
-  const wx = px => (px - W / 2) / view.k - view.x;
-  const wy = py => (py - H / 2) / view.k - view.y;
-
-  const matches = n => searchTerm && n.label.toLowerCase().includes(searchTerm);
-  const Z = { entity: 0, record: 1, context: 2 };
-  const drawOrder = nodes.slice().sort((a, b) => Z[a.kind] - Z[b.kind]);
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#0b0f1a"; ctx.fillRect(0, 0, W, H);
-    const neighbors = new Set();
-    if (hover) { neighbors.add(hover.id); edges.forEach(e => { if (e.s === hover.id) neighbors.add(e.t); if (e.t === hover.id) neighbors.add(e.s); }); }
-
-    edges.forEach(e => {
-      if (!edgeVisible(e)) return;
-      const x1 = sx(e.a.x), y1 = sy(e.a.y), x2 = sx(e.b.x), y2 = sy(e.b.y);
-      const recRec = e.b.kind === "record" && e.key !== "in-context";
-      const dimmed = (hover && !(neighbors.has(e.s) && neighbors.has(e.t))) ||
-                     (searchTerm && !(matches(e.a) || matches(e.b)));
-      const wA = e.w || 0.5;   // weight-driven opacity — confident edges read stronger
-      let stroke = e.key === "in-context" ? "rgba(100,116,139,0.10)"
-                 : recRec ? "rgba(248,113,113," + (0.35 + wA * 0.3).toFixed(2) + ")"
-                 : "rgba(148,163,184," + (0.10 + wA * 0.26).toFixed(2) + ")";
-      if (e === hoverEdge) stroke = "rgba(226,232,240,0.9)";
-      ctx.strokeStyle = stroke;
-      ctx.globalAlpha = dimmed ? 0.12 : 1;
-      ctx.lineWidth = e.key === "in-context" ? 0.6 : 0.7 + (e.w || 0.5) * 1.1;
-      const cpx = (x1 + x2) / 2 - (y2 - y1) * e.curve;
-      const cpy = (y1 + y2) / 2 + (x2 - x1) * e.curve;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cpx, cpy, x2, y2); ctx.stroke();
-      if (recRec && view.k > 0.55) {            // arrowhead along the curve's end tangent
-        const ang = Math.atan2(y2 - cpy, x2 - cpx), ar = e.b.r * view.k + 4;
-        const ax = x2 - Math.cos(ang) * ar, ay = y2 - Math.sin(ang) * ar;
-        ctx.fillStyle = stroke;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(ax - Math.cos(ang - 0.45) * 7, ay - Math.sin(ang - 0.45) * 7);
-        ctx.lineTo(ax - Math.cos(ang + 0.45) * 7, ay - Math.sin(ang + 0.45) * 7);
-        ctx.fill();
+    async function fetchMode(mode, focus) {
+      if (embedded || !dataUrl) {
+        setStatus("embedded snapshot: mode data is fixed");
+        return;
       }
-      ctx.globalAlpha = 1;
-    });
+      setActiveMode(mode);
+      els.veil.style.display = "flex";
+      els.veil.textContent = "loading " + mode;
+      const url = modeUrl(dataUrl, mode, focus);
+      const response = await fetchImpl(url, { headers: { "Accept": "application/json" } });
+      if (!response.ok) throw new Error("Atlas data request failed: HTTP " + response.status);
+      renderData(await response.json());
+    }
 
-    // Z-order: entities under records under CONTEXTS — the hubs and their
-    // labels must never be buried under their own galaxy.
-    drawOrder.forEach(n => {
-      if (!nodeVisible(n)) return;
-      const x = sx(n.x), y = sy(n.y), r = n.r * Math.max(view.k, 0.5);
-      const dimmed = (hover && !neighbors.has(n.id)) || (searchTerm && !matches(n));
-      ctx.globalAlpha = dimmed ? 0.18 : 1;
-      if (n.kind === "context") {
-        // Silhouette blocker (edges occlude under the node), then a soft glow.
-        ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4);
-        ctx.fillStyle = "#0b0f1a"; ctx.fillRect(-r - 2, -r - 2, r * 2 + 4, r * 2 + 4);
-        ctx.shadowColor = CONTEXT_COLOR; ctx.shadowBlur = 14;
-        ctx.fillStyle = nodeColor(n); ctx.fillRect(-r, -r, r * 2, r * 2);
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 1.5; ctx.strokeRect(-r, -r, r * 2, r * 2);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = "#0b0f1a";                       // the blocker
-        ctx.beginPath(); ctx.arc(x, y, r + 1.4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = nodeColor(n);
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-        if (n.kind === "record" && r > 3) {              // crisp rim
-          ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 1.1; ctx.stroke();
-        }
+    function wire() {
+      categoryToggles();
+      els.search.addEventListener("input", function (event) { applySearch(event.target.value); });
+      els.reset.addEventListener("click", resetCamera);
+      if (els.inspectorToggle) els.inspectorToggle.addEventListener("click", function () {
+        setInspectorOpen(!root.classList.contains("inspector-open"));
+      });
+      if (els.inspectorClose) els.inspectorClose.addEventListener("click", function () {
+        setInspectorOpen(false);
+      });
+      els.modeButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          const nextMode = button.dataset.mode;
+          const focus = nextMode === "focus" ? state.selectedNode : null;
+          if (nextMode === "focus" && !focus) {
+            setWarning("Select a node before switching to Focus.");
+            return;
+          }
+          fetchMode(nextMode, focus).catch(function (error) {
+            console.error(error);
+            setWarning(error.message);
+            setStatus("load failed");
+            els.veil.style.display = "none";
+          });
+        });
+      });
+    }
+
+    async function start(initialData) {
+      wire();
+      if (initialData) { renderData(initialData); return; }
+      if (!dataUrl) { renderData({ nodes: [], edges: [], meta: {} }); return; }
+      try {
+        const response = await fetch(dataUrl, { headers: { "Accept": "application/json" } });
+        if (!response.ok) throw new Error("Atlas data request failed: HTTP " + response.status);
+        renderData(await response.json());
+      } catch (error) {
+        console.error(error);
+        setWarning(error.message);
+        setStatus("load failed");
+        els.veil.style.display = "none";
+        els.graph.innerHTML = '<div class="atlas-empty">The atlas data could not be loaded. Check the Rails log for the request failure.</div>';
       }
-      if (matches(n) || n === hover) {
-        ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke();
-      }
-      const label = n.kind === "context" || n === hover || matches(n) ||
-                    (n.kind === "record" && (view.k > 1.6 || n.r >= 11)) ||
-                    (n.kind === "entity" && view.k > 2.6);
-      if (label && !dimmed) {
-        ctx.font = (n.kind === "context" ? "600 12.5px" : "11px") + " system-ui, sans-serif";
-        const text = n.label.length > 34 ? n.label.slice(0, 33) + "…" : n.label;
-        if (n.kind === "context" || n === hover) {   // halo: the label must read over the galaxy
-          ctx.strokeStyle = "#0b0f1a"; ctx.lineWidth = 3.5; ctx.lineJoin = "round";
-          ctx.strokeText(text, x + r + 4, y + 3.5);
-        }
-        ctx.fillStyle = n.kind === "context" ? "#f1f5f9" : "#94a3b8";
-        ctx.fillText(text, x + r + 4, y + 3.5);
-      }
-      ctx.globalAlpha = 1;
-    });
-  }
-
-  // The simulation computes its layout LIVE. Two phases keep that watchable
-  // instead of janky: a brief VEIL hides the violent early expansion (ticks
-  // run unrendered — they're cheap without drawing), then the camera FOLLOWS
-  // the organizing graph at fitted zoom until it freezes. Any user input
-  // takes the camera over (we never fight the hand on the wheel).
-  const WARMUP = 220;
-  let warmupLeft = WARMUP, following = true;
-  const veil = document.getElementById("atlas-veil");
-  function loop() {
-    if (warmupLeft > 0) {
-      const burst = Math.min(warmupLeft, 14);
-      for (let i = 0; i < burst && !settled; i++) tick();
-      warmupLeft = settled ? 0 : warmupLeft - burst;
-      veil.textContent = "drawing the atlas… " + Math.round((1 - warmupLeft / WARMUP) * 100) + "%";
-      if (warmupLeft <= 0) { veil.style.display = "none"; fitView(); }
-      requestAnimationFrame(loop);
-      return;
     }
-    if (!settled) { tick(); if (following) fitView(); }
-    else if (following) { following = false; fitView(); }
-    if (needsDraw) { draw(); needsDraw = false; }
-    requestAnimationFrame(loop);
+
+    return { start, renderData, fetchMode, applySearch, selectNode, selectEdge, state };
   }
 
-  // ---- interactions: zoom / pan / drag / hover / click
-  let drag = null, panning = false, moved = 0, last = null;
-  canvas.addEventListener("wheel", ev => {
-    ev.preventDefault();
-    following = false;
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
-    const wxx = wx(mx), wyy = wy(my);
-    view.k *= ev.deltaY < 0 ? 1.12 : 0.89;
-    view.k = Math.min(Math.max(view.k, 0.12), 8);
-    view.x = (mx - W / 2) / view.k - wxx;
-    view.y = (my - H / 2) / view.k - wyy;
-    needsDraw = true;
-  }, { passive: false });
-
-  function nodeAt(mx, my) {
-    let best = null, bd = 1e9;
-    nodes.forEach(n => {
-      if (!nodeVisible(n)) return;
-      const dx = sx(n.x) - mx, dy = sy(n.y) - my;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < Math.max(n.r * view.k, 5) + 3 && d < bd) { best = n; bd = d; }
-    });
-    return best;
-  }
-  function segDist(mx, my, x1, y1, x2, y2) {
-    const L2 = (x2 - x1) ** 2 + (y2 - y1) ** 2; if (L2 < 1) return Math.hypot(mx - x1, my - y1);
-    let t = ((mx - x1) * (x2 - x1) + (my - y1) * (y2 - y1)) / L2;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(mx - (x1 + t * (x2 - x1)), my - (y1 + t * (y2 - y1)));
-  }
-  function edgeAt(mx, my) {
-    let best = null, bd = 6;
-    edges.forEach(e => {
-      if (!edgeVisible(e) || e.key === "in-context") return;
-      const x1 = sx(e.a.x), y1 = sy(e.a.y), x2 = sx(e.b.x), y2 = sy(e.b.y);
-      // Approximate the quadratic by two chords through its midpoint.
-      const cpx = (x1 + x2) / 2 - (y2 - y1) * e.curve, cpy = (y1 + y2) / 2 + (x2 - x1) * e.curve;
-      const qx = 0.25 * x1 + 0.5 * cpx + 0.25 * x2, qy = 0.25 * y1 + 0.5 * cpy + 0.25 * y2;
-      const d = Math.min(segDist(mx, my, x1, y1, qx, qy), segDist(mx, my, qx, qy, x2, y2));
-      if (d < bd) { best = e; bd = d; }
-    });
-    return best;
+  function bootFromPage() {
+    const root = document.querySelector("[data-atlas-root]");
+    if (!root) return;
+    document.body.classList.add("enl-atlas-page");
+    const app = createApp({ root: root, embedded: window.ATLAS_EMBEDDED, dataUrl: window.ATLAS_DATA_URL });
+    window.EnliteratorAtlas.current = app;
+    app.start(window.ATLAS_DATA);
   }
 
-  const tip = document.getElementById("atlas-tip");
-  const fmtDate = at => new Date(at * 1000).toISOString().slice(0, 10);
-  function showTip(html, mx, my) {
-    tip.innerHTML = html; tip.style.display = "block";
-    tip.style.left = Math.min(mx + 14, W - 300) + "px";
-    tip.style.top = (my + 14) + "px";
-  }
-  canvas.addEventListener("mousemove", ev => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
-    if (drag) {
-      drag.x = wx(mx); drag.y = wy(my); drag.vx = drag.vy = 0;
-      moved += 1; reheat(0.12); return;
+  return {
+    bootFromPage: bootFromPage,
+    createApp: createApp,
+    _test: {
+      buildGraphModel: buildGraphModel,
+      chooseSearchMatch: chooseSearchMatch,
+      modeUrl: modeUrl,
+      inspectorForNode: inspectorForNode,
+      inspectorForEdge: inspectorForEdge,
+      edgeId: edgeId
     }
-    if (panning) {
-      view.x += (mx - last[0]) / view.k; view.y += (my - last[1]) / view.k;
-      last = [mx, my]; moved += 1; needsDraw = true; return;
-    }
-    const n = nodeAt(mx, my);
-    hoverEdge = n ? null : edgeAt(mx, my);
-    if (n !== hover) { hover = n; needsDraw = true; }
-    if (n) {
-      const deg = degree.get(n.id) || 0;
-      let html = "<strong>" + escapeHtml(n.label) + "</strong><br>";
-      if (n.kind === "record") html += '<span class="t-kind">' + escapeHtml(n.group) + " · " + n.size + " claim(s)</span>" + (embedded ? "" : '<br><span class="t-prov">click to open the record</span>');
-      if (n.kind === "entity") html += '<span class="t-kind">named by <code>' + escapeHtml(n.group) + "</code> · " + deg + " connection(s)</span>";
-      if (n.kind === "context") html += '<span class="t-kind">context · ' + n.size + " record(s)</span>";
-      showTip(html, mx, my);
-    } else if (hoverEdge) {
-      const e = hoverEdge;
-      let html = "<strong><code>" + escapeHtml(e.key) + "</code></strong><br>" +
-        '<span class="t-prov">' + escapeHtml(e.a.label.slice(0, 40)) + " → " + escapeHtml(e.b.label.slice(0, 40)) + "</span><br>" +
-        '<span class="t-prov">asserted ' + fmtDate(e.at) + (e.tier ? " · " + escapeHtml(e.tier) : "") +
-        (e.w ? " · conf " + e.w.toFixed(2) : "") + (e.verdict ? " · audited: " + escapeHtml(e.verdict) : "") + "</span>";
-      showTip(html, mx, my); needsDraw = true;
-    } else { tip.style.display = "none"; }
-  });
-  canvas.addEventListener("mousedown", ev => {
-    following = false;
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
-    moved = 0;
-    const n = nodeAt(mx, my);
-    if (n) { drag = n; n.pinned = true; }
-    else { panning = true; last = [mx, my]; canvas.classList.add("dragging"); }
-  });
-  window.addEventListener("mouseup", () => {
-    if (drag) { drag.pinned = false; reheat(0.1); }
-    if (!drag && !panning) return;
-    const clicked = drag; drag = null; panning = false; canvas.classList.remove("dragging");
-    if (clicked && moved < 4 && clicked.kind === "record" && clicked.path && !embedded) {
-      const base = window.location.pathname.replace(/\/atlas\/?$/, "");
-      window.location.href = base + "/" + clicked.path;
-    }
-  });
-  canvas.addEventListener("mouseleave", () => { hover = null; hoverEdge = null; tip.style.display = "none"; needsDraw = true; });
-
-  // ---- search, time, legend, stats
-  function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
-  document.getElementById("atlas-search").addEventListener("input", ev => {
-    searchTerm = ev.target.value.toLowerCase().trim(); needsDraw = true;
-  });
-
-  const slider = document.getElementById("atlas-time"), dateEl = document.getElementById("atlas-date");
-  function setT(frac) {
-    tCur = tr[0] + (tr[1] - tr[0]) * frac;
-    dateEl.textContent = fmtDate(tCur);
-    reheat(0.08);
-  }
-  slider.addEventListener("input", ev => setT(ev.target.value / 1000));
-  let playing = null;
-  document.getElementById("atlas-play").addEventListener("click", ev => {
-    if (playing) { clearInterval(playing); playing = null; ev.target.textContent = "▶ replay"; return; }
-    let f = 0; slider.value = 0; setT(0);
-    ev.target.textContent = "❚❚";
-    playing = setInterval(() => {
-      f += 0.008; slider.value = Math.round(f * 1000); setT(Math.min(f, 1));
-      if (f >= 1) { clearInterval(playing); playing = null; document.getElementById("atlas-play").textContent = "▶ replay"; }
-    }, 80);
-  });
-  dateEl.textContent = fmtDate(tr[1]);
-
-  const legend = document.getElementById("atlas-legend");
-  function legendItem(key, label, col, diamond) {
-    const el = document.createElement("span");
-    el.className = "lg";
-    el.innerHTML = '<span class="sw' + (diamond ? " diamond" : "") + '" style="background:' + col + '"></span>' + escapeHtml(label);
-    el.addEventListener("click", () => {
-      if (hiddenGroups.has(key)) hiddenGroups.delete(key); else hiddenGroups.add(key);
-      el.classList.toggle("off"); reheat(0.08);
-    });
-    legend.appendChild(el);
-  }
-  if (ctxNodes.length) legendItem("__ctx__", "contexts", CONTEXT_COLOR, true);
-  if (ctxNodes.length && (recGroups.length || entGroups.length)) legend.insertAdjacentHTML("beforeend", '<span class="lg-sep">·</span>');
-  recGroups.forEach(g => legendItem("r:" + g, g, color["r:" + g]));
-  if (recGroups.length && entGroups.length) legend.insertAdjacentHTML("beforeend", '<span class="lg-sep">·</span>');
-  entGroups.forEach(g => legendItem("e:" + g, g, color["e:" + g]));
-
-  const m = data.meta;
-  document.getElementById("atlas-stats").textContent =
-    m.records + " records · " + m.entities + " entities · " + m.edge_count +
-    " connections · from " + m.claims_considered + " claims · as of " + m.generated_at.slice(0, 16).replace("T", " ");
-  if (m.warnings && m.warnings.length) {
-    const w = document.getElementById("atlas-warn");
-    w.textContent = m.warnings.join(" · "); w.style.display = "block";
-  }
-
-  resize(); loop();
+  };
 })();
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", window.EnliteratorAtlas.bootFromPage);
+} else {
+  window.EnliteratorAtlas.bootFromPage();
+}
 </script>

@@ -163,6 +163,90 @@ RSpec.describe Enliterator::Atlas do
     expect(atlas[:edges]).to all(satisfy { |e| ids.include?(e[:s]) && ids.include?(e[:t]) })
   end
 
+  it "drops one-off unresolved entity labels before capping when the graph is crowded" do
+    a = Widget.create!(title: "A", body: "b")
+    b = Widget.create!(title: "B", body: "b")
+    claim!(a, key: "keywords", value: [ "shared signal", *(1..8).map { |i| "unique a #{i}" } ])
+    claim!(b, key: "keywords", value: [ "shared signal", *(1..8).map { |i| "unique b #{i}" } ])
+
+    atlas = described_class.assemble(node_cap: 4)
+    labels = atlas[:nodes].map { |n| n[:label] }
+    expect(labels).to include("shared signal")
+    expect(labels).not_to include("unique a 1")
+    expect(atlas[:meta][:warnings].join(" ")).to include("one-off labels before node cap")
+  end
+
+  it "keeps the default data endpoint as the full capped explore graph, with additive renderer metadata" do
+    w = Widget.create!(title: "Default Explore", body: "b")
+    claim!(w, key: "advisor", value: "Dr. Full Graph")
+
+    atlas = described_class.assemble
+    expect(atlas[:nodes].map { |n| n[:label] }).to include("Default Explore", "Dr. Full Graph")
+    expect(atlas[:meta][:mode]).to eq("explore")
+    expect(atlas[:meta][:renderer]).to include("sigma@3.0.3")
+    expect(atlas[:nodes]).to all(include(:x, :y, :degree))
+  end
+
+  it "bounds overview mode and keeps every context hub visible" do
+    contexts = [
+      Enliterator::Context.create!(key: "theses", name: "CHDS Theses"),
+      Enliterator::Context.create!(key: "crs", name: "CRS Reports"),
+      Enliterator::Context.create!(key: "eo", name: "Executive Orders")
+    ]
+    contexts.each do |ctx|
+      60.times do |idx|
+        record = Widget.create!(title: "#{ctx.name} #{idx}", body: "b")
+        claim!(record, key: "keywords", value: [ "shared bridge #{idx % 7}", "#{ctx.key} local #{idx}" ], context: ctx)
+      end
+    end
+
+    atlas = described_class.assemble(mode: "overview")
+    expect(atlas[:meta][:mode]).to eq("overview")
+    expect(atlas[:nodes].size).to be <= 350
+    expect(atlas[:edges].size).to be <= 1_000
+    expect(atlas[:nodes].select { |n| n[:kind] == "context" }.map { |n| n[:label] })
+      .to include("CHDS Theses", "CRS Reports", "Executive Orders")
+  end
+
+  it "builds focus mode around the selected node and meaningful neighbors" do
+    a = Widget.create!(title: "Focus A", body: "b")
+    b = Widget.create!(title: "Focus B", body: "b")
+    c = Widget.create!(title: "Focus C", body: "b")
+    claim!(b, key: "report_number", value: "CRS-1")
+    claim!(a, key: "related_reports", value: [ "CRS-1" ])
+    claim!(a, key: "advisor", value: "Dr. Bridge")
+    claim!(c, key: "advisor", value: "Dr. Bridge")
+
+    atlas = described_class.assemble(mode: "focus", focus: "r:Widget:#{a.id}")
+    ids = atlas[:nodes].map { |n| n[:id] }
+    expect(atlas[:meta][:mode]).to eq("focus")
+    expect(atlas[:meta][:focus]).to eq("r:Widget:#{a.id}")
+    expect(ids).to include("r:Widget:#{a.id}", "r:Widget:#{b.id}", "e:dr. bridge")
+    expect(atlas[:nodes].size).to be <= 250
+  end
+
+  it "assigns edge categories for the renderer controls" do
+    ctx = Enliterator::Context.create!(key: "ctx", name: "Context")
+    w = Widget.create!(title: "Categorized", body: "b")
+    claim!(w, key: "advisor", value: "Dr. Agent", context: ctx)
+    claim!(w, key: "cited_works", value: [ "Cited Work" ], context: ctx)
+    claim!(w, key: "keywords", value: [ "Subject Term" ], context: ctx)
+    claim!(w, key: "evidence_basis", value: "Interview excerpt", context: ctx)
+    claim!(w, key: "classification_scheme", value: "Local Authority", context: ctx)
+
+    categories = described_class.assemble[:edges]
+                                .group_by { |e| e[:key] }
+                                .transform_values { |edges| edges.first[:category] }
+    expect(categories).to include(
+      "in-context" => "context",
+      "advisor" => "agent",
+      "cited_works" => "citation",
+      "keywords" => "subject",
+      "evidence_basis" => "evidence",
+      "classification_scheme" => "authority"
+    )
+  end
+
   it "renders an honest empty atlas when nothing is tended" do
     atlas = described_class.assemble
     expect(atlas[:nodes]).to eq([])
@@ -181,6 +265,38 @@ RSpec.describe Enliterator::Atlas do
       described_class.build   # key busted by the new cycle
     ensure
       Rails.cache = original
+    end
+  end
+
+  # v0.45: with name keys configured + an authority record, advisor name variants
+  # collapse to ONE labeled entity node; off (default) keeps them separate.
+  describe "name authority entity dedup" do
+    after { Enliterator.configuration.name_authority_keys = [] }
+
+    def adv!(name)
+      w = Widget.create!(title: "T-#{SecureRandom.hex(3)}", body: "b")
+      claim!(w, key: "advisor", value: name)
+    end
+
+    it "collapses variant advisor names into one entity node (label = canonical)" do
+      adv!("Jordan Avery")
+      adv!("Jordan L. Avery")
+      Enliterator::NameAuthority.create!(canonical: "Jordan Avery",
+        variants: [ "Jordan Avery", "Jordan L. Avery" ], context_id: nil, status: "auto")
+      Enliterator.configuration.name_authority_keys = [ "advisor" ]
+
+      atlas = described_class.assemble
+      ents = atlas[:nodes].select { |n| n[:kind] == "entity" && n[:group] == "advisor" }
+      expect(ents.size).to eq(1)
+      expect(ents.first[:label]).to eq("Jordan Avery")
+      expect(ents.first[:size]).to eq(2) # both records resolve to the one node
+    end
+
+    it "keeps variants separate when no name keys are configured (byte-identical)" do
+      adv!("Jordan Avery")
+      adv!("Jordan L. Avery")
+      ents = described_class.assemble[:nodes].select { |n| n[:kind] == "entity" && n[:group] == "advisor" }
+      expect(ents.size).to eq(2)
     end
   end
 end
