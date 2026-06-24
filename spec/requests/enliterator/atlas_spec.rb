@@ -95,4 +95,18 @@ RSpec.describe "Enliterator atlas", type: :request do
     expect(response.body).to include("Inside Doc")
     expect(response.body).not_to include("Outside Doc")
   end
+
+  describe "GET /enliterator/atlas/node" do
+    it "returns claims + lacunae JSON for a record node" do
+      w = Widget.create!(title: "Inspected", body: "x")
+      v = w.enliterator_visits.create!(facet: "summary", status: "succeeded", applied: true, tier: "cheap")
+      w.enliterator_claims.create!(key: "summary", value: "S", status: "draft", confidence: 0.8,
+                                   attributed_to: "cheap:x", tier: "cheap", visit: v, context_id: nil)
+      get "/enliterator/atlas/node", params: { type: "Widget", id: w.id }
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["node"]["label"]).to eq("Inspected")
+      expect(body["claims"].first["key"]).to eq("summary")
+    end
+  end
 end

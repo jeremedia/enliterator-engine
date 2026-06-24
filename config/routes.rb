@@ -44,6 +44,9 @@ Enliterator::Engine.routes.draw do
   # data this page does.
   get "atlas",      to: "atlas#index", as: :atlas
   get "atlas/data", to: "atlas#data",  as: :atlas_data
+  # v0.4X (Stage 1): the inspector endpoint — one node's claims + provenance +
+  # known gaps (lacunae) for the Ego lens drawer.
+  get "atlas/node", to: "atlas#node",  as: :atlas_node
 
   # The pulse monitor (v0.16): trigger a heartbeat cycle and watch it live.
   # `beat` opens + runs a cycle in a background thread; `pulse` is the JSON

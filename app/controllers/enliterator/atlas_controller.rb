@@ -18,5 +18,13 @@ module Enliterator
         focus: params[:focus].presence
       )
     end
+
+    # The Ego-lens inspector (Stage 1): one node's live claims with provenance
+    # plus its open lacunae. Read-only JSON; scoped by the nav context like data.
+    def node
+      render json: Enliterator::Atlas.inspect(
+        type: params[:type].to_s, id: params[:id].to_s, context: current_context
+      )
+    end
   end
 end
