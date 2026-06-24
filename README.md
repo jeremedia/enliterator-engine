@@ -90,8 +90,11 @@ through the retrieval pool, subject-heading browse over the vocabulary in use, a
 naming the active context), a **governed-vocabulary review queue**, a **claim
 quality-review queue** (the audit's human anchor), a **context tree**, an **atlas**
 (the collection drawn as a graph — records, the entities their claims name, every edge
-carrying its provenance and asserted-at date; replay it to watch the collection learn,
-or export a self-contained HTML copy with `rake enliterator:atlas`), a **heartbeat
+carrying its provenance and asserted-at date; an Overview lens for orientation and an
+**Ego lens** to explore around one record or entity — a ranked neighbor list beside the
+graph, an inspector showing a node's claims, provenance, and known gaps, and typed-edge
+filters by relation, confidence, audit, and depth; replay it to watch the collection
+learn, or export a self-contained HTML copy with `rake enliterator:atlas`), a **heartbeat
 pulse monitor** (trigger one tending cycle and watch it live), an **About explainer**,
 and a **Settings** surface — plus, when the reference desk's optional features are enabled,
 a **persona editor** for the desks (versioned, with rollback and reset-to-seed) and a
