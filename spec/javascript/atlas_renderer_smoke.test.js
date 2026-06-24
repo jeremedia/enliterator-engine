@@ -81,5 +81,21 @@ const edgeHtml = hooks.inspectorForEdge(fixture.edges[1], model);
 ok(edgeHtml.indexOf("examiner:supported") !== -1, "edge inspector includes audit provenance");
 ok(edgeHtml.indexOf("0.91") !== -1, "edge inspector includes confidence");
 
+// Stage 1: the ranked neighbor list, projected client-side from the focus payload.
+const rankFixture = {
+  nodes: [
+    { id: "r:Widget:1", kind: "record", label: "Center" },
+    { id: "e:avery", kind: "entity", label: "J. L. Avery" },
+    { id: "e:nassau",  kind: "entity", label: "Nassau County PD" }
+  ],
+  edges: [
+    { s: "r:Widget:1", t: "e:avery", key: "advisor", category: "agent", w: 0.92 },
+    { s: "r:Widget:1", t: "e:nassau",  key: "sponsor", category: "agent", w: 0.88 }
+  ]
+};
+const rankRows = hooks.rankedNeighbors(rankFixture, "r:Widget:1");
+ok(rankRows[0].relation === "advisor" && rankRows[0].confidence === 0.92, "ranked neighbors: advisor first, by relation");
+ok(rankRows.some(r => r.label === "Nassau County PD"), "ranked neighbors: includes the sponsor neighbor");
+
 console.log((fail === 0 ? "✓ ALL " : "✗ ") + pass + " passed, " + fail + " failed");
 process.exit(fail === 0 ? 0 : 1);

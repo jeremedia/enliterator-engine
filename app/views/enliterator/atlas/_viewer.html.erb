@@ -361,6 +361,37 @@ window.EnliteratorAtlas = (function () {
       .sort((a, b) => (b.label_priority || 0) - (a.label_priority || 0) || (b.degree || 0) - (a.degree || 0))[0] || null;
   }
 
+  // Stage 1: the ranked neighbor list — projected client-side from the focus
+  // payload (no new endpoint). Each edge touching the center yields one row,
+  // labelled with the relation (the vocabulary key) and the neighbor's strength.
+  // Sorts: relation (grouped), degree (hubs first), recency (newest claims first).
+  function rankedNeighbors(data, centerId, sort) {
+    sort = sort || "relation";
+    const byId = new Map((data.nodes || []).map(function (n) { return [n.id, n]; }));
+    const rows = [];
+    (data.edges || []).forEach(function (e) {
+      let otherId = null;
+      if (e.s === centerId) otherId = e.t;
+      else if (e.t === centerId) otherId = e.s;
+      if (!otherId) return;
+      const n = byId.get(otherId) || { id: otherId, label: otherId, kind: "entity" };
+      rows.push({
+        id: otherId, label: n.label || otherId, kind: n.kind,
+        relation: e.key, category: e.category || "other",
+        confidence: e.w != null ? Number(e.w) : null,
+        degree: n.degree || 0, at: e.at || 0
+      });
+    });
+    if (sort === "degree") {
+      rows.sort(function (a, b) { return (b.degree || 0) - (a.degree || 0) || (b.confidence || 0) - (a.confidence || 0); });
+    } else if (sort === "recency") {
+      rows.sort(function (a, b) { return (b.at || 0) - (a.at || 0) || (b.confidence || 0) - (a.confidence || 0); });
+    } else {
+      rows.sort(function (a, b) { return String(a.relation).localeCompare(String(b.relation)) || (b.confidence || 0) - (a.confidence || 0); });
+    }
+    return rows;
+  }
+
   function topEdgeTypes(nodeId, edges) {
     const counts = new Map();
     edges.forEach(function (edge) {
@@ -522,6 +553,7 @@ window.EnliteratorAtlas = (function () {
       state.selectedNode = nodeId;
       state.selectedEdge = null;
       updateInspectorNode(nodeId);
+      highlightNeighbor(nodeId);
       setInspectorOpen(true);
       refresh();
     }
@@ -570,6 +602,46 @@ window.EnliteratorAtlas = (function () {
       });
     }
 
+    // The Ego lens's ranked neighbor list — the center is the server-echoed
+    // focus (meta.focus), so the list and graph share one selection. Rows are
+    // clickable → selectNode, which both the graph and the inspector follow.
+    function renderNeighbors() {
+      if (!els.neighborsList) return;
+      const center = (state.data && state.data.meta && state.data.meta.focus) || state.selectedNode;
+      if (!state.data || !center) {
+        els.neighborsList.innerHTML = '<p class="atlas-neighbors-empty">Center the Ego lens on a record or entity to see its ranked neighbors.</p>';
+        return;
+      }
+      const rows = rankedNeighbors(state.data, center, state.neighborSort);
+      if (!rows.length) {
+        els.neighborsList.innerHTML = '<p class="atlas-neighbors-empty">No neighbors in this view. Loosen the filters or raise the depth.</p>';
+        return;
+      }
+      const grouped = state.neighborSort === "relation";
+      let html = "", lastRel = null;
+      rows.forEach(function (row) {
+        if (grouped && row.relation !== lastRel) {
+          html += '<div class="atlas-ngrp">' + escapeHtml(row.relation) + '</div>';
+          lastRel = row.relation;
+        }
+        const conf = row.confidence != null ? Number(row.confidence).toFixed(2) : "";
+        html += '<button type="button" class="atlas-nrow" data-neighbor="' + escapeHtml(row.id) + '">' +
+                '<span class="nlabel">' + escapeHtml(row.label) + '</span>' +
+                '<span class="nconf">' + escapeHtml(conf) + '</span></button>';
+      });
+      els.neighborsList.innerHTML = html;
+      Array.prototype.forEach.call(els.neighborsList.querySelectorAll("[data-neighbor]"), function (btn) {
+        btn.addEventListener("click", function () { selectNode(btn.dataset.neighbor); });
+      });
+      highlightNeighbor(state.selectedNode);
+    }
+    function highlightNeighbor(id) {
+      if (!els.neighborsList) return;
+      Array.prototype.forEach.call(els.neighborsList.querySelectorAll("[data-neighbor]"), function (btn) {
+        btn.classList.toggle("active", btn.dataset.neighbor === id);
+      });
+    }
+
     function renderData(data) {
       if (state.renderer && state.renderer.kill) state.renderer.kill();
       els.graph.innerHTML = "";
@@ -580,6 +652,7 @@ window.EnliteratorAtlas = (function () {
       state.hoveredEdge = null;
       setActiveMode((state.data.meta && state.data.meta.mode) || state.mode || "overview");
       setWarning((state.data.meta && state.data.meta.warnings || []).join(" "));
+      renderNeighbors();
 
       if (!state.data.nodes || state.data.nodes.length === 0) {
         els.veil.style.display = "none";
@@ -674,6 +747,10 @@ window.EnliteratorAtlas = (function () {
       els.search.addEventListener("input", function (event) { applySearch(event.target.value); });
       els.reset.addEventListener("click", resetCamera);
       if (els.swap) els.swap.addEventListener("click", toggleSwap);
+      if (els.neighborsSort) els.neighborsSort.addEventListener("change", function (event) {
+        state.neighborSort = event.target.value || "relation";
+        renderNeighbors();
+      });
       if (els.inspectorToggle) els.inspectorToggle.addEventListener("click", function () {
         setInspectorOpen(!root.classList.contains("inspector-open"));
       });
@@ -734,6 +811,7 @@ window.EnliteratorAtlas = (function () {
     _test: {
       buildGraphModel: buildGraphModel,
       chooseSearchMatch: chooseSearchMatch,
+      rankedNeighbors: rankedNeighbors,
       modeUrl: modeUrl,
       inspectorForNode: inspectorForNode,
       inspectorForEdge: inspectorForEdge,
