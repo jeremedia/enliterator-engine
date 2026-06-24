@@ -113,6 +113,8 @@
   .atlas-kv dt { color: var(--atlas-faint); }
   .atlas-kv dd { margin: 0; color: var(--atlas-text); min-width: 0; overflow-wrap: anywhere; }
   .atlas-open { display: inline-flex; margin-top: .9rem; color: #1d1608; background: var(--atlas-accent); border-radius: 999px; padding: .36rem .7rem; text-decoration: none; font-weight: 750; }
+  .atlas-gaps { margin-top: 1rem; padding-top: .7rem; border-top: 1px dashed rgba(240,127,120,.35); }
+  .atlas-gaps .gap { color: var(--atlas-danger); }
   .atlas-warn { display: none; padding: .45rem .72rem; background: rgba(242,193,95,.10); color: #ffd88a; font-size: .78rem; border-top: 1px solid rgba(242,193,95,.18); }
   .atlas-export { justify-self: start; border-color: var(--atlas-line); color: var(--atlas-muted); text-decoration: none; }
   .atlas-export code { color: var(--atlas-text); font-size: .72rem; }
@@ -439,6 +441,48 @@ window.EnliteratorAtlas = (function () {
       '</dl>';
   }
 
+  // "r:Type:id" — the id is the last colon-segment (integer or uuid, neither
+  // contains a colon); the type is everything between. Robust to "::" in a type.
+  function parseRecordId(nodeId) {
+    const body = String(nodeId || "").slice(2);
+    const idx = body.lastIndexOf(":");
+    if (idx < 0) return null;
+    return { type: body.slice(0, idx), id: body.slice(idx + 1) };
+  }
+
+  function relRecordPath(path) {
+    if (!path) return "#";
+    const base = window.location.pathname.replace(/\/atlas\/?$/, "");
+    return base + "/" + path;
+  }
+
+  // Stage 1: the record inspector — the selected node's live claims with
+  // provenance (tier · confidence · date · audit verdict) AND its known gaps
+  // (lacunae), because the gap is part of the record's truth. Everything is
+  // escaped through escapeHtml — tool/claim data is never trusted as markup.
+  function inspectorForRecord(payload, embedded) {
+    const node = payload.node || {};
+    const claims = payload.claims || [];
+    const gaps = payload.lacunae || [];
+    const open = (!embedded && node.path) ? ('<a class="atlas-open" href="' + escapeHtml(relRecordPath(node.path)) + '">Open record</a>') : '';
+    const claimRows = claims.map(function (c) {
+      const at = c.asserted_at ? new Date(c.asserted_at * 1000).toISOString().slice(0, 10) : "";
+      return '<dt>' + escapeHtml(c.key) + '</dt><dd>' +
+        escapeHtml(String(c.value == null ? "" : c.value)).slice(0, 240) +
+        ' <span class="muted">· ' + escapeHtml(c.tier || "") + ' · ' +
+        escapeHtml(c.confidence != null ? Number(c.confidence).toFixed(2) : "") +
+        (at ? ' · ' + escapeHtml(at) : '') +
+        (c.verdict ? ' · ' + escapeHtml(c.verdict) : '') + '</span></dd>';
+    }).join('');
+    const claimBlock = claimRows ? ('<dl class="atlas-kv">' + claimRows + '</dl>') : '<p class="muted">No claims recorded for this record yet.</p>';
+    const gapBlock = gaps.length ? ('<div class="atlas-gaps"><div class="atlas-side-kicker">Known gaps</div><dl class="atlas-kv">' +
+      gaps.map(function (g) {
+        return '<dt class="gap">' + escapeHtml(g.key) + '</dt><dd class="gap">' +
+          escapeHtml(g.diagnosis || "undiagnosed") + (g.note ? ' — ' + escapeHtml(g.note) : '') + '</dd>';
+      }).join('') + '</dl></div>') : '';
+    return '<h3>' + escapeHtml(node.label || "") + '</h3>' + claimBlock + gapBlock + open;
+  }
+
   function createApp(options) {
     const root = options.root;
     const embedded = !!options.embedded;
@@ -552,10 +596,39 @@ window.EnliteratorAtlas = (function () {
     function selectNode(nodeId) {
       state.selectedNode = nodeId;
       state.selectedEdge = null;
-      updateInspectorNode(nodeId);
       highlightNeighbor(nodeId);
       setInspectorOpen(true);
+      if (String(nodeId).indexOf("r:") === 0) loadRecordInspector(nodeId);
+      else updateInspectorNode(nodeId);
       refresh();
+    }
+
+    // Record nodes get the full inspector (claims + provenance + lacunae) from
+    // /atlas/node; the edge-derived summary renders immediately while it loads.
+    // Entity/context nodes keep the edge-derived inspector (no record behind them).
+    function loadRecordInspector(nodeId) {
+      const node = state.model && state.model.rawNodes.get(nodeId);
+      els.sideTitle.textContent = "Record";
+      if (node) els.inspector.innerHTML = inspectorForNode(node, state.data, embedded);
+      const parsed = parseRecordId(nodeId);
+      if (!parsed || embedded || !dataUrl) return;
+      fetchImpl(recordInspectUrl(parsed.type, parsed.id), { headers: { "Accept": "application/json" } })
+        .then(function (response) { if (!response.ok) throw new Error("inspect HTTP " + response.status); return response.json(); })
+        .then(function (payload) {
+          if (state.selectedNode !== nodeId) return;   // selection moved on; drop the stale render
+          els.inspector.innerHTML = inspectorForRecord(payload, embedded);
+        })
+        .catch(function (error) { console.warn("Atlas inspect request failed", error); });
+    }
+    function recordInspectUrl(type, id) {
+      const u = new URL(dataUrl, window.location.href);
+      u.pathname = u.pathname.replace(/\/data$/, "/node");
+      const ctx = u.searchParams.get("context");
+      u.search = "";
+      u.searchParams.set("type", type);
+      u.searchParams.set("id", id);
+      if (ctx) u.searchParams.set("context", ctx);
+      return u.pathname + u.search;
     }
     function selectEdge(edgeId) {
       state.selectedEdge = edgeId;
@@ -815,6 +888,7 @@ window.EnliteratorAtlas = (function () {
       modeUrl: modeUrl,
       inspectorForNode: inspectorForNode,
       inspectorForEdge: inspectorForEdge,
+      inspectorForRecord: inspectorForRecord,
       edgeId: edgeId
     }
   };

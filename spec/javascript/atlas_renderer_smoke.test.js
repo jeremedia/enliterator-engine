@@ -97,5 +97,17 @@ const rankRows = hooks.rankedNeighbors(rankFixture, "r:Widget:1");
 ok(rankRows[0].relation === "advisor" && rankRows[0].confidence === 0.92, "ranked neighbors: advisor first, by relation");
 ok(rankRows.some(r => r.label === "Nassau County PD"), "ranked neighbors: includes the sponsor neighbor");
 
+// Stage 1: the inspector drawer renders a record's claims + provenance + known gaps.
+const inspectPayload = {
+  node: { label: "Thesis A", path: "status/Widget/1" },
+  claims: [ { key: "summary", value: "S", tier: "quality", confidence: 0.86, asserted_at: 1719000000, verdict: "examiner:supported" } ],
+  lacunae: [ { key: "authored_by", diagnosis: "defective_surrogate", note: "byline dropped" } ]
+};
+const recordHtml = hooks.inspectorForRecord(inspectPayload, false);
+ok(recordHtml.indexOf("summary") !== -1, "record inspector shows a claim key");
+ok(recordHtml.indexOf("Known gaps") !== -1, "record inspector shows the gaps section");
+ok(recordHtml.indexOf("defective_surrogate") !== -1, "record inspector shows the lacuna diagnosis");
+ok(recordHtml.indexOf("<script") === -1, "record inspector escapes content (no script injection)");
+
 console.log((fail === 0 ? "✓ ALL " : "✗ ") + pass + " passed, " + fail + " failed");
 process.exit(fail === 0 ? 0 : 1);
