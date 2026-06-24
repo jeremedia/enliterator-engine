@@ -345,12 +345,27 @@ window.EnliteratorAtlas = (function () {
     }
   }
 
-  function modeUrl(dataUrl, mode, focus) {
+  // Stage 1: lensUrl generalizes the data-URL builder — it carries the focus and
+  // the typed-edge filters (depth/min_confidence/audit/categories/since/until) the
+  // server understands. Absent/empty values are omitted, so the default URL stays
+  // clean. modeUrl is the no-filter wrapper (kept so existing callers/tests hold).
+  const FILTER_PARAMS = ["depth", "min_confidence", "audit", "categories", "since", "until"];
+  function lensUrl(dataUrl, mode, focus, filters) {
     const url = new URL(dataUrl, window.location.href);
     url.searchParams.set("mode", mode);
     if (focus) url.searchParams.set("focus", focus);
     else url.searchParams.delete("focus");
+    const f = filters || {};
+    FILTER_PARAMS.forEach(function (key) {
+      const v = f[key];
+      const empty = v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+      if (empty) { url.searchParams.delete(key); return; }
+      url.searchParams.set(key, Array.isArray(v) ? v.join(",") : v);
+    });
     return url.pathname + url.search;
+  }
+  function modeUrl(dataUrl, mode, focus) {
+    return lensUrl(dataUrl, mode, focus, null);
   }
 
   function chooseSearchMatch(nodes, query) {
@@ -669,9 +684,66 @@ window.EnliteratorAtlas = (function () {
           if (state.activeCategories.has(category)) state.activeCategories.delete(category);
           else state.activeCategories.add(category);
           button.classList.toggle("active", state.activeCategories.has(category));
-          refresh();
+          // In the Ego lens, edge-type is a SERVER filter (it changes which
+          // neighbors are reachable); in Overview it's a client-side dim/hide.
+          if (state.mode === "focus" && egoCenter()) refetchEgo();
+          else refresh();
         });
         els.categories.appendChild(button);
+      });
+    }
+
+    // The current Ego center: the server-echoed focus, else the selected node.
+    function egoCenter() {
+      return (state.data && state.data.meta && state.data.meta.focus) || state.selectedNode;
+    }
+    // Stage 1: the Ego-lens filter controls (confidence ≥ · audit · depth). Each
+    // updates state.filters and re-fetches the focus neighborhood server-side.
+    function buildControls() {
+      if (!els.controls) return;
+      els.controls.innerHTML =
+        '<label>conf ≥ <input type="range" min="0" max="1" step="0.05" value="0" data-filter-conf aria-label="minimum confidence"> <span data-filter-conf-val>0.00</span></label>' +
+        '<label>audit <select data-filter-audit aria-label="audit verdict"><option value="any">any</option><option value="supported">supported</option><option value="unsupported">unsupported</option><option value="audited">audited</option></select></label>' +
+        '<label>depth <select data-filter-depth aria-label="neighborhood depth"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>' +
+        '<span class="muted" style="margin-left:auto">double-click a node to re-center</span>';
+      const conf = els.controls.querySelector("[data-filter-conf]");
+      const confVal = els.controls.querySelector("[data-filter-conf-val]");
+      const audit = els.controls.querySelector("[data-filter-audit]");
+      const depth = els.controls.querySelector("[data-filter-depth]");
+      function apply() {
+        state.filters.min_confidence = parseFloat(conf.value) || 0;
+        state.filters.audit = audit.value;
+        state.filters.depth = parseInt(depth.value, 10) || 1;
+        refetchEgo();
+      }
+      if (conf) conf.addEventListener("input", function () { if (confVal) confVal.textContent = Number(conf.value).toFixed(2); });
+      if (conf) conf.addEventListener("change", apply);
+      if (audit) audit.addEventListener("change", apply);
+      if (depth) depth.addEventListener("change", apply);
+    }
+    // Re-fetch the focus neighborhood with the current filters (the category
+    // chips fold in as the edge-type filter; all-active ⇒ omit, a clean default).
+    function refetchEgo() {
+      const center = egoCenter();
+      if (state.mode !== "focus" || !center) return;
+      const cats = Array.from(state.activeCategories);
+      state.filters.categories = cats.length === EDGE_CATEGORIES.length ? null : cats;
+      fetchMode("focus", center, state.filters).catch(function (error) {
+        console.error(error);
+        setWarning(error.message);
+        setStatus("load failed");
+        els.veil.style.display = "none";
+      });
+    }
+    // Center the Ego lens on a node (double-click) — enters the lens from
+    // Overview and grows the exploration from any neighbor.
+    function recenterEgo(nodeId) {
+      state.selectedNode = nodeId;
+      fetchMode("focus", nodeId, state.filters).catch(function (error) {
+        console.error(error);
+        setWarning(error.message);
+        setStatus("load failed");
+        els.veil.style.display = "none";
       });
     }
 
@@ -790,6 +862,10 @@ window.EnliteratorAtlas = (function () {
       state.renderer.on("enterNode", function (event) { state.hoveredNode = event.node; refresh(); });
       state.renderer.on("leaveNode", function () { state.hoveredNode = null; refresh(); });
       state.renderer.on("clickNode", function (event) { selectNode(event.node); });
+      state.renderer.on("doubleClickNode", function (event) {
+        if (event.preventSigmaDefault) event.preventSigmaDefault();
+        recenterEgo(event.node);
+      });
       state.renderer.on("clickStage", function () { state.selectedNode = null; state.selectedEdge = null; refresh(); });
       state.renderer.on("enterEdge", function (event) { state.hoveredEdge = event.edge; refresh(); });
       state.renderer.on("leaveEdge", function () { state.hoveredEdge = null; refresh(); });
@@ -800,15 +876,15 @@ window.EnliteratorAtlas = (function () {
       resetCamera();
     }
 
-    async function fetchMode(mode, focus) {
+    async function fetchMode(mode, focus, filters) {
       if (embedded || !dataUrl) {
         setStatus("embedded snapshot: mode data is fixed");
         return;
       }
       setActiveMode(mode);
       els.veil.style.display = "flex";
-      els.veil.textContent = "loading " + mode;
-      const url = modeUrl(dataUrl, mode, focus);
+      els.veil.textContent = "loading " + (MODE_TO_LENS[mode] || mode);
+      const url = mode === "focus" ? lensUrl(dataUrl, mode, focus, filters || state.filters) : modeUrl(dataUrl, mode, focus);
       const response = await fetchImpl(url, { headers: { "Accept": "application/json" } });
       if (!response.ok) throw new Error("Atlas data request failed: HTTP " + response.status);
       renderData(await response.json());
@@ -816,6 +892,7 @@ window.EnliteratorAtlas = (function () {
 
     function wire() {
       categoryToggles();
+      buildControls();
       applySwapPreference();
       els.search.addEventListener("input", function (event) { applySearch(event.target.value); });
       els.reset.addEventListener("click", resetCamera);
@@ -886,6 +963,7 @@ window.EnliteratorAtlas = (function () {
       chooseSearchMatch: chooseSearchMatch,
       rankedNeighbors: rankedNeighbors,
       modeUrl: modeUrl,
+      lensUrl: lensUrl,
       inspectorForNode: inspectorForNode,
       inspectorForEdge: inspectorForEdge,
       inspectorForRecord: inspectorForRecord,

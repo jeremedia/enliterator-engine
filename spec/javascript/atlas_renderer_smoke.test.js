@@ -109,5 +109,13 @@ ok(recordHtml.indexOf("Known gaps") !== -1, "record inspector shows the gaps sec
 ok(recordHtml.indexOf("defective_surrogate") !== -1, "record inspector shows the lacuna diagnosis");
 ok(recordHtml.indexOf("<script") === -1, "record inspector escapes content (no script injection)");
 
+// Stage 1: lensUrl carries the focus + the typed-edge filters to the server.
+const lensU = hooks.lensUrl("/enliterator/atlas/data", "focus", "r:Widget:1", { depth: 2, min_confidence: 0.5, audit: "supported" });
+ok(lensU.indexOf("mode=focus") !== -1 && lensU.indexOf("focus=r%3AWidget%3A1") !== -1, "lensUrl: carries mode + focus");
+ok(lensU.indexOf("depth=2") !== -1 && lensU.indexOf("min_confidence=0.5") !== -1 && lensU.indexOf("audit=supported") !== -1, "lensUrl: carries depth + filters");
+// And no filters ⇒ a clean URL (the modeUrl wrapper stays byte-compatible).
+const plainU = hooks.lensUrl("/enliterator/atlas/data?mode=overview&context=theses", "focus", "e:fema", null);
+ok(plainU.indexOf("depth=") === -1 && plainU.indexOf("context=theses") !== -1, "lensUrl: omits absent filters, preserves context");
+
 console.log((fail === 0 ? "✓ ALL " : "✗ ") + pass + " passed, " + fail + " failed");
 process.exit(fail === 0 ? 0 : 1);
