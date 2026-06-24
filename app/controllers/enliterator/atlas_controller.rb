@@ -15,7 +15,13 @@ module Enliterator
       render json: Enliterator::Atlas.build(
         context: current_context,
         mode: params[:mode].presence,
-        focus: params[:focus].presence
+        focus: params[:focus].presence,
+        depth: params[:depth].presence,
+        min_confidence: params[:min_confidence].presence,
+        audit: params[:audit].presence,
+        categories: params[:categories].presence,
+        since: params[:since].presence,
+        until: params[:until].presence
       )
     end
 

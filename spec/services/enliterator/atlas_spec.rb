@@ -299,4 +299,41 @@ RSpec.describe Enliterator::Atlas do
       expect(ents.size).to eq(2)
     end
   end
+
+  # Stage 1 of the research-instrument redesign: the Ego lens needs the focus
+  # neighborhood to honor server-side typed-edge filters and an adjustable depth.
+  describe "focus depth + filters (Stage 1)" do
+    it "drops edges below min_confidence before neighborhood selection" do
+      center = Widget.create!(title: "Center", body: "b")
+      claim!(center, key: "advisor", value: "High Conf Entity", confidence: 0.9)
+      claim!(center, key: "advisor", value: "Low Conf Entity",  confidence: 0.2)
+      focus_id = "r:Widget:#{center.id}"
+
+      strong = described_class.build(mode: "focus", focus: focus_id, node_cap: 50, min_confidence: 0.5)
+      expect(strong[:meta][:filters]["min_confidence"]).to eq(0.5)
+      labels = strong[:nodes].map { |n| n[:label] }
+      expect(labels).to include("High Conf Entity")
+      expect(labels).not_to include("Low Conf Entity")
+    end
+
+    it "echoes the requested depth in meta" do
+      center = Widget.create!(title: "Depth Center", body: "b")
+      claim!(center, key: "advisor", value: "Some Advisor")
+      result = described_class.build(mode: "focus", focus: "r:Widget:#{center.id}", depth: 2, node_cap: 50)
+      expect(result[:meta][:depth]).to eq(2)
+    end
+
+    it "leaves the default focus neighborhood (no filters) intact" do
+      a = Widget.create!(title: "Focus A", body: "b")
+      b = Widget.create!(title: "Focus B", body: "b")
+      claim!(b, key: "report_number", value: "CRS-1")
+      claim!(a, key: "related_reports", value: [ "CRS-1" ])
+      claim!(a, key: "advisor", value: "Dr. Bridge")
+
+      result = described_class.build(mode: "focus", focus: "r:Widget:#{a.id}")
+      ids = result[:nodes].map { |n| n[:id] }
+      expect(ids).to include("r:Widget:#{a.id}", "r:Widget:#{b.id}", "e:dr. bridge")
+      expect(result[:meta][:depth]).to eq(1)
+    end
+  end
 end

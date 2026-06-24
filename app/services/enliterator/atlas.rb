@@ -47,24 +47,30 @@ module Enliterator
     # never self-resolve into silence.
     IDENTIFIER_KEY_RX = /(^|_)(number|no|id|code|doi|isbn|issn|identifier)(_|$)/
 
-    def build(context: nil, node_cap: nil, mode: nil, focus: nil)
+    # v0.4X (Stage 1): focus mode accepts an Ego-lens opts bundle —
+    # depth (1–3) + server-side typed-edge filters (min_confidence/audit/
+    # categories/since/until). Captured as **opts so the no-opts path is
+    # byte-identical (empty opts ⇒ no cache fragment ⇒ unchanged key).
+    def build(context: nil, node_cap: nil, mode: nil, focus: nil, **opts)
       selected_mode = normalize_mode(mode)
       requested_cap = node_cap || Enliterator.configuration.atlas_node_cap
       cap = presentation_source_cap(selected_mode, requested_cap)
       key = [ "enliterator/atlas", CACHE_VERSION, selected_mode, focus.presence || "none",
               context&.key || "root", cap,
-              "hb#{Enliterator::Heartbeat.maximum(:id) || 0}" ].join("/")
-      Rails.cache.fetch(key, expires_in: TTL) do
-        assemble(context: context, node_cap: cap, mode: selected_mode, focus: focus)
+              "hb#{Enliterator::Heartbeat.maximum(:id) || 0}" ]
+      frag = focus_cache_fragment(opts)
+      key << "f:#{frag}" if frag
+      Rails.cache.fetch(key.join("/"), expires_in: TTL) do
+        assemble(context: context, node_cap: cap, mode: selected_mode, focus: focus, **opts)
       end
     end
 
     # The uncached computation. Returns { nodes:, edges:, meta: }.
-    def assemble(context: nil, node_cap: nil, mode: nil, focus: nil)
+    def assemble(context: nil, node_cap: nil, mode: nil, focus: nil, **opts)
       selected_mode = normalize_mode(mode)
       cap    = node_cap || Enliterator.configuration.atlas_node_cap
       claims = claims_for_mode(context, selected_mode).to_a
-      return present_atlas(empty_atlas(context), mode: selected_mode, focus: focus) if claims.empty?
+      return present_atlas(empty_atlas(context), mode: selected_mode, focus: focus, opts: opts) if claims.empty?
 
       # v0.26.1: ANALYTICAL ENTRIES ROLL UP. The atlas draws WORKS — a part's
       # claims (cited_works, index_terms, the deep read's notes) contribute
@@ -142,7 +148,7 @@ module Enliterator
       end
 
       atlas = apply_cap(nodes, edges, cap, claims, context, warnings: warnings)
-      present_atlas(atlas, mode: selected_mode, focus: focus)
+      present_atlas(atlas, mode: selected_mode, focus: focus, opts: opts)
     end
 
     # Inspector data for one node: its live claims with provenance, plus any
@@ -196,7 +202,7 @@ module Enliterator
       mode == "overview" ? [ cap, OVERVIEW_SOURCE_CAP ].min : cap
     end
 
-    def present_atlas(atlas, mode:, focus: nil)
+    def present_atlas(atlas, mode:, focus: nil, opts: {})
       working = {
         nodes: atlas[:nodes].map(&:dup),
         edges: atlas[:edges].map(&:dup),
@@ -208,7 +214,7 @@ module Enliterator
       when "overview"
         overview_atlas(working)
       when "focus"
-        focus_atlas(working, focus)
+        focus_atlas(working, focus, opts)
       else
         finalize_presentation!(working, mode: "explore", focus: focus)
       end
@@ -297,7 +303,7 @@ module Enliterator
       filter_presented_atlas(atlas, selected, mode: "overview", edge_cap: OVERVIEW_EDGE_CAP)
     end
 
-    def focus_atlas(atlas, focus)
+    def focus_atlas(atlas, focus, opts = {})
       focus_id = focus.to_s.presence
       return overview_atlas(with_warning(atlas, "focus mode needs a selected node id")) unless focus_id
 
@@ -305,26 +311,94 @@ module Enliterator
       ids = nodes.map { |n| n[:id] }.to_set
       return overview_atlas(with_warning(atlas, "selected focus node is not in the current atlas")) unless ids.include?(focus_id)
 
+      edges = filtered_focus_edges(atlas[:edges], opts)
+      depth = [ [ (opts[:depth].presence || 1).to_i, 1 ].max, 3 ].min
+
       degree = nodes.to_h { |n| [ n[:id], n[:degree].to_i ] }
       selected = Set[focus_id]
-      adjacent_edges = atlas[:edges].select { |e| e[:s] == focus_id || e[:t] == focus_id }
+      adjacent_edges = edges.select { |e| e[:s] == focus_id || e[:t] == focus_id }
       adjacent_edges.sort_by { |e| [ e[:category] == "context" ? 1 : 0, -edge_weight(e), e[:key].to_s ] }
                     .each do |edge|
                       break if selected.size >= FOCUS_NODE_CAP
                       selected << (edge[:s] == focus_id ? edge[:t] : edge[:s])
                     end
 
-      frontier = atlas[:edges].select { |e| selected.include?(e[:s]) ^ selected.include?(e[:t]) }
-      frontier.sort_by do |edge|
-        other = selected.include?(edge[:s]) ? edge[:t] : edge[:s]
-        [ edge[:category] == "context" ? 1 : 0, -degree[other], -edge_weight(edge), edge[:key].to_s ]
-      end.each do |edge|
-        break if selected.size >= FOCUS_NODE_CAP
-        other = selected.include?(edge[:s]) ? edge[:t] : edge[:s]
-        selected << other if degree[other].to_i >= 2 || edge[:category] != "context"
+      # depth 1 = adjacency + one bridge-frontier hop (the v0.21 default — one
+      # pass reproduces it byte-identically); each extra depth repeats the
+      # frontier expansion over the FILTERED edges, growing the neighborhood.
+      depth.times do
+        frontier = edges.select { |e| selected.include?(e[:s]) ^ selected.include?(e[:t]) }
+        frontier.sort_by do |edge|
+          other = selected.include?(edge[:s]) ? edge[:t] : edge[:s]
+          [ edge[:category] == "context" ? 1 : 0, -degree[other], -edge_weight(edge), edge[:key].to_s ]
+        end.each do |edge|
+          break if selected.size >= FOCUS_NODE_CAP
+          other = selected.include?(edge[:s]) ? edge[:t] : edge[:s]
+          selected << other if degree[other].to_i >= 2 || edge[:category] != "context"
+        end
       end
 
-      filter_presented_atlas(atlas, selected, mode: "focus", focus: focus_id, edge_cap: OVERVIEW_EDGE_CAP)
+      filtered_atlas = atlas.merge(edges: edges)
+      result = filter_presented_atlas(filtered_atlas, selected, mode: "focus", focus: focus_id, edge_cap: OVERVIEW_EDGE_CAP)
+      result[:meta][:depth] = depth
+      result[:meta][:filters] = focus_filters_meta(opts)
+      result
+    end
+
+    # Apply the Ego-lens typed-edge filters to the candidate edges before
+    # neighborhood selection. No active filter ⇒ the same array reference back
+    # (byte-identical default focus). edge_weight() floors un-weighted edges at
+    # 0.5, so in-context edges (w=0.2) drop under any min_confidence above 0.2.
+    def filtered_focus_edges(all_edges, opts)
+      edges = all_edges
+      if opts[:min_confidence].to_f > 0
+        mc = opts[:min_confidence].to_f
+        edges = edges.select { |e| edge_weight(e) >= mc }
+      end
+      cats = filter_categories(opts)
+      if cats.any?
+        set = cats.to_set
+        edges = edges.select { |e| set.include?(e[:category].to_s) }
+      end
+      case opts[:audit].to_s
+      when "audited"
+        edges = edges.select { |e| e[:verdict].present? }
+      when "supported", "unsupported"
+        edges = edges.select { |e| e[:verdict].to_s.end_with?(":#{opts[:audit]}") }
+      end
+      since = opts[:since].to_i
+      edges = edges.select { |e| e[:at].to_i >= since } if since > 0
+      untl = opts[:until].to_i
+      edges = edges.select { |e| e[:at].to_i <= untl } if untl > 0
+      edges
+    end
+
+    # The active filter state echoed in meta so the client shows what's applied.
+    def focus_filters_meta(opts)
+      { "min_confidence" => opts[:min_confidence].to_f,
+        "audit" => opts[:audit].to_s.presence || "any",
+        "categories" => filter_categories(opts),
+        "since" => opts[:since].to_i,
+        "until" => opts[:until].to_i }
+    end
+
+    # A stable cache fragment for non-default focus filters, or nil when none —
+    # nil keeps the cache key byte-identical to the pre-Stage-1 format.
+    def focus_cache_fragment(opts)
+      parts = []
+      parts << "d#{opts[:depth].to_i}"            if opts[:depth].present? && opts[:depth].to_i > 1
+      parts << "mc#{opts[:min_confidence].to_f}"  if opts[:min_confidence].present? && opts[:min_confidence].to_f > 0
+      parts << "a#{opts[:audit]}"                 if opts[:audit].present? && opts[:audit].to_s != "any"
+      cats = filter_categories(opts).sort
+      parts << "c#{cats.join('+')}"               if cats.any?
+      parts << "s#{opts[:since].to_i}"            if opts[:since].present? && opts[:since].to_i > 0
+      parts << "u#{opts[:until].to_i}"            if opts[:until].present? && opts[:until].to_i > 0
+      parts.any? ? parts.join(",") : nil
+    end
+
+    # Categories arrive as an array or a CSV string (controller params); normalize.
+    def filter_categories(opts)
+      Array(opts[:categories]).flat_map { |c| c.to_s.split(",") }.map(&:strip).reject(&:blank?)
     end
 
     def filter_presented_atlas(atlas, selected, mode:, edge_cap:, focus: nil)
