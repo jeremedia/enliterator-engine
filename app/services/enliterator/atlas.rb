@@ -145,6 +145,40 @@ module Enliterator
       present_atlas(atlas, mode: selected_mode, focus: focus)
     end
 
+    # Inspector data for one node: its live claims with provenance, plus any
+    # open lacunae (known gaps). Records only carry claims/lacunae; entity nodes
+    # return an empty shell and the client falls back to its edge summary.
+    # (Named to match the inspector contract; shadows Object#inspect on this
+    # module — harmless, nothing inspects the module itself, and the required
+    # kwargs make an accidental bare call fail loudly rather than silently.)
+    def inspect(type:, id:, context: nil)
+      klass = type.to_s.safe_constantize
+      rec   = klass&.where(klass.primary_key => id)&.first if klass
+      label = rec && [ "title", "name" ].filter_map { |c| rec[c] if klass.column_names.include?(c) }.find(&:present?)
+
+      claims = Enliterator::Claim.live.understanding
+                 .where(tendable_type: type.to_s, tendable_id: id.to_s)
+      claims = claims.where(context_id: context.scope_ids) if context
+      verdicts = audit_verdicts(claims.to_a)
+
+      claim_rows = claims.order(:key).map do |c|
+        { key: c.key, value: c.value, tier: c.tier, confidence: c.confidence.to_f,
+          asserted_at: c.created_at.to_i, verdict: verdicts[c.id] }.compact
+      end
+
+      lacuna_rows =
+        if Enliterator.configuration.record_lacunae
+          Enliterator::Lacuna.open.where(tendable_type: type.to_s, tendable_id: id.to_s)
+                             .order(:key).map { |l| { key: l.key, diagnosis: l.diagnosis, note: l.note }.compact }
+        else
+          []
+        end
+
+      { node: { type: type.to_s, id: id.to_s, kind: "record",
+                label: label.presence || "#{type} ##{id}", path: "status/#{type}/#{id}" },
+        claims: claim_rows, lacunae: lacuna_rows }
+    end
+
     def renderer_bundle
       @renderer_bundle ||= File.read(
         Enliterator::Engine.root.join("lib/enliterator/vendor/atlas_renderer.bundle.js")
