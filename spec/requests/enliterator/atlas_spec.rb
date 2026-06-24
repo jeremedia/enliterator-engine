@@ -28,6 +28,13 @@ RSpec.describe "Enliterator atlas", type: :request do
     expect(response.body).not_to include("Continuity of Operations")
   end
 
+  it "renders the Ego lens, the ranked-list pane, and a swap-sides control" do
+    get "/enliterator/atlas"
+    expect(response.body).to include("data-atlas-lens=\"ego\"")
+    expect(response.body).to include("data-atlas-neighbors")   # ranked list pane
+    expect(response.body).to include("data-atlas-swap")        # swap-sides control
+  end
+
   it "serves honest empty data when nothing is tended" do
     get "/enliterator/atlas/data"
     expect(response).to have_http_status(:ok)

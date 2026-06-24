@@ -27,12 +27,33 @@
   }
   body.enl-atlas-page main.enl { max-width: none; width: 100%; padding-left: .75rem; padding-right: .75rem; }
   body.enl-atlas-page main.enl > p { max-width: 88rem !important; }
-  .atlas-shell { display: grid; grid-template-columns: minmax(0, 1fr); min-height: calc(100dvh - 11rem); }
-  .atlas-wrap.inspector-open .atlas-shell { grid-template-columns: minmax(0, 1fr) 22rem; }
-  .atlas-main { min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+  .atlas-shell { display: block; min-height: calc(100dvh - 11rem); }
+  .atlas-main { min-width: 0; display: flex; flex-direction: column; min-height: calc(100dvh - 11rem); }
+  /* Stage 1 (the Ego lens): the stage splits into the graph + a ranked neighbor
+     list, co-equal and side-swappable; the inspector is a bottom drawer. */
+  .atlas-split { display: flex; flex: 1 1 auto; min-height: 0; }
+  .atlas-shell.swapped .atlas-split { flex-direction: row-reverse; }
+  .atlas-neighbors { flex: 0 0 23rem; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--atlas-line); background: rgba(8,17,29,.8); }
+  .atlas-shell.swapped .atlas-neighbors { border-left: 0; border-right: 1px solid var(--atlas-line); }
+  .atlas-neighbors[hidden] { display: none; }
+  .atlas-neighbors-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .56rem .72rem; border-bottom: 1px solid var(--atlas-line); }
+  .atlas-neighbors-sort { font: inherit; font-size: .74rem; color: var(--atlas-text); background: rgba(255,255,255,.045); border: 1px solid var(--atlas-line); border-radius: 7px; padding: .12rem .4rem; }
+  .atlas-neighbors-list { overflow: auto; padding: .35rem .35rem .8rem; min-height: 0; }
+  .atlas-ngrp { color: var(--atlas-accent); text-transform: uppercase; letter-spacing: .09em; font-size: .62rem; font-weight: 800; padding: .55rem .5rem .2rem; }
+  .atlas-nrow { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; width: 100%; text-align: left; font: inherit; color: var(--atlas-text); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: .3rem .5rem; cursor: pointer; }
+  .atlas-nrow:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.08); }
+  .atlas-nrow.active { background: rgba(242,193,95,.16); border-color: rgba(242,193,95,.3); }
+  .atlas-nrow .nlabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .atlas-nrow .nconf { color: var(--atlas-muted); font-variant-numeric: tabular-nums; font-size: .74rem; flex: none; }
+  .atlas-neighbors-empty { color: var(--atlas-muted); font-size: .8rem; padding: .8rem .6rem; }
+  .atlas-controls { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap; padding: .5rem .75rem; border-bottom: 1px solid var(--atlas-line); background: rgba(8,17,29,.7); font-size: .76rem; color: var(--atlas-muted); }
+  .atlas-controls[hidden] { display: none; }
+  .atlas-controls label { display: inline-flex; align-items: center; gap: .35rem; }
+  .atlas-controls select { color: var(--atlas-text); background: rgba(255,255,255,.045); border: 1px solid var(--atlas-line); border-radius: 7px; padding: .1rem .35rem; font: inherit; font-size: .74rem; }
+  .atlas-controls input[type="range"] { accent-color: var(--atlas-accent); }
   .atlas-bar {
     display: grid;
-    grid-template-columns: auto minmax(12rem, 22rem) auto auto auto 1fr;
+    grid-template-columns: auto minmax(9rem, 18rem) auto auto auto auto 1fr;
     gap: .55rem;
     align-items: center;
     padding: .62rem .75rem;
@@ -65,7 +86,7 @@
   .atlas-search input:focus { border-color: rgba(242,193,95,.65); box-shadow: 0 0 0 3px rgba(242,193,95,.12); }
   .atlas-search:before { content: "search"; position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: var(--atlas-faint); font-size: .63rem; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
   .atlas-status { justify-self: end; color: var(--atlas-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-  .atlas-stage { position: relative; min-height: 34rem; height: calc(100dvh - 17rem); background: rgba(2, 8, 18, .34); }
+  .atlas-stage { position: relative; flex: 1 1 0; min-width: 0; min-height: 34rem; background: rgba(2, 8, 18, .34); }
   .atlas-graph { position: absolute; inset: 0; }
   .atlas-veil {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -77,8 +98,8 @@
   .atlas-chip { color: var(--atlas-muted); border-color: var(--atlas-line); padding: .22rem .52rem; font-size: .76rem; }
   .atlas-chip.active { color: var(--atlas-text); background: rgba(255,255,255,.07); }
   .atlas-chip[data-category="context"] { opacity: .72; }
-  .atlas-side { border-left: 1px solid var(--atlas-line); background: rgba(8,17,29,.88); display: none; grid-template-rows: auto 1fr; min-width: 0; }
-  .atlas-wrap.inspector-open .atlas-side { display: grid; }
+  .atlas-side { display: none; border-top: 1px solid var(--atlas-line); background: rgba(8,17,29,.92); max-height: 44dvh; overflow: auto; }
+  .atlas-wrap.inspector-open .atlas-side { display: block; }
   .atlas-side-head { padding: .82rem .9rem; border-bottom: 1px solid var(--atlas-line); }
   .atlas-side-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
   .atlas-side-kicker { color: var(--atlas-accent); text-transform: uppercase; letter-spacing: .11em; font-size: .66rem; font-weight: 800; }
@@ -96,51 +117,66 @@
   .atlas-export { justify-self: start; border-color: var(--atlas-line); color: var(--atlas-muted); text-decoration: none; }
   .atlas-export code { color: var(--atlas-text); font-size: .72rem; }
   @media (max-width: 980px) {
-    .atlas-shell { grid-template-columns: 1fr; }
-    .atlas-wrap.inspector-open .atlas-shell { grid-template-columns: 1fr; }
-    .atlas-side { border-left: 0; border-top: 1px solid var(--atlas-line); min-height: 18rem; }
+    .atlas-split, .atlas-shell.swapped .atlas-split { flex-direction: column; }
+    .atlas-neighbors, .atlas-shell.swapped .atlas-neighbors { flex: 0 0 auto; max-height: 40dvh; border-left: 0; border-right: 0; border-top: 1px solid var(--atlas-line); }
     .atlas-bar { grid-template-columns: 1fr; align-items: stretch; }
     .atlas-status { justify-self: start; }
-    .atlas-stage { height: 62dvh; }
+    .atlas-stage { min-height: 52dvh; }
   }
 </style>
 
 <div class="atlas-wrap" data-atlas-root>
-  <div class="atlas-shell">
+  <div class="atlas-shell" data-atlas-shell>
     <section class="atlas-main" aria-label="Atlas graph workspace">
       <div class="atlas-bar">
-        <div class="atlas-mode" aria-label="Atlas mode">
-          <button class="atlas-btn active" type="button" data-mode="overview">Overview</button>
-          <button class="atlas-btn" type="button" data-mode="explore">Explore</button>
-          <button class="atlas-btn" type="button" data-mode="focus">Focus</button>
+        <div class="atlas-mode" aria-label="Atlas lens">
+          <button class="atlas-btn active" type="button" data-atlas-lens="overview">Overview</button>
+          <button class="atlas-btn" type="button" data-atlas-lens="ego">Ego</button>
         </div>
         <label class="atlas-search">
           <input type="search" data-atlas-search placeholder="Find a record, subject, agency, or cited work" autocomplete="off">
         </label>
         <button class="atlas-btn" type="button" data-atlas-reset>Reset camera</button>
+        <button class="atlas-btn" type="button" data-atlas-swap title="Swap the graph and list sides">Swap sides</button>
         <button class="atlas-btn" type="button" data-atlas-inspector-toggle aria-expanded="false">Inspector</button>
         <span class="atlas-export" title="Standalone export is generated by the Rails task"><code>rake enliterator:atlas FILE=tmp/atlas.html</code></span>
         <span class="atlas-status" data-atlas-status>loading atlas shell</span>
       </div>
-      <div class="atlas-stage">
-        <div class="atlas-graph" data-atlas-graph></div>
-        <div class="atlas-veil" data-atlas-veil>loading the atlas data...</div>
+      <div class="atlas-controls" data-atlas-controls hidden aria-label="Ego lens filters"></div>
+      <div class="atlas-split" data-atlas-split>
+        <div class="atlas-stage" data-atlas-stage>
+          <div class="atlas-graph" data-atlas-graph></div>
+          <div class="atlas-veil" data-atlas-veil>loading the atlas data...</div>
+        </div>
+        <div class="atlas-neighbors" data-atlas-neighbors hidden aria-label="Ranked neighbors">
+          <div class="atlas-neighbors-head">
+            <span class="atlas-side-kicker">Neighbors</span>
+            <select class="atlas-neighbors-sort" data-atlas-neighbors-sort aria-label="Sort neighbors">
+              <option value="relation">by relation</option>
+              <option value="degree">by degree</option>
+              <option value="recency">by recency</option>
+            </select>
+          </div>
+          <div class="atlas-neighbors-list" data-atlas-neighbors-list>
+            <p class="atlas-neighbors-empty">Center the Ego lens on a record or entity to see its ranked neighbors.</p>
+          </div>
+        </div>
       </div>
       <div class="atlas-cats" data-atlas-categories aria-label="Edge categories"></div>
       <div class="atlas-warn" data-atlas-warn></div>
-    </section>
-    <aside class="atlas-side" aria-label="Atlas selection inspector">
-      <div class="atlas-side-head">
-        <div class="atlas-side-top">
-          <div class="atlas-side-kicker">Selection</div>
-          <button class="atlas-side-close" type="button" data-atlas-inspector-close>Close</button>
+      <aside class="atlas-side" aria-label="Atlas selection inspector">
+        <div class="atlas-side-head">
+          <div class="atlas-side-top">
+            <div class="atlas-side-kicker">Selection</div>
+            <button class="atlas-side-close" type="button" data-atlas-inspector-close>Close</button>
+          </div>
+          <div class="atlas-side-title" data-atlas-side-title>Nothing selected</div>
         </div>
-        <div class="atlas-side-title" data-atlas-side-title>Nothing selected</div>
-      </div>
-      <div class="atlas-inspector" data-atlas-inspector>
-        <p class="muted">Select a node or edge to inspect its context, degree, edge types, and provenance. The overview labels only context hubs and the most useful bridge points; search is the fastest way to jump to a known record or term.</p>
-      </div>
-    </aside>
+        <div class="atlas-inspector" data-atlas-inspector>
+          <p class="muted">Select a node or edge to inspect its claims, provenance, and known gaps. The Overview lens labels only context hubs and the most useful bridge points; switch to the Ego lens (or search) to center on a known record or term and explore its neighborhood.</p>
+        </div>
+      </aside>
+    </section>
   </div>
 </div>
 
@@ -157,6 +193,10 @@ window.EnliteratorAtlas = (function () {
   "use strict";
 
   const EDGE_CATEGORIES = ["context", "citation", "authority", "agent", "subject", "evidence", "other"];
+  // Stage 1: the surface speaks "lenses"; the server still speaks "modes". The
+  // Overview lens reads the overview mode; the Ego lens reads the focus mode.
+  const LENS_TO_MODE = { overview: "overview", ego: "focus" };
+  const MODE_TO_LENS = { overview: "overview", focus: "ego", explore: "overview" };
   const CONTEXT_PALETTE = ["#53d6ba", "#6da8ff", "#f2c15f", "#ef7c8e", "#b99cff", "#7bdff2", "#f7a66a", "#8be28d"];
   const ENTITY_COLOR = "#9aa8ba";
   const SELECT_COLOR = "#f2c15f";
@@ -375,18 +415,24 @@ window.EnliteratorAtlas = (function () {
     const vendor = options.rendererVendor || window.EnliteratorAtlasRenderer;
     const fetchImpl = options.fetch || window.fetch;
     const els = {
+      shell: root.querySelector("[data-atlas-shell]"),
       graph: root.querySelector("[data-atlas-graph]"),
       veil: root.querySelector("[data-atlas-veil]"),
       status: root.querySelector("[data-atlas-status]"),
       warn: root.querySelector("[data-atlas-warn]"),
       categories: root.querySelector("[data-atlas-categories]"),
+      controls: root.querySelector("[data-atlas-controls]"),
+      neighbors: root.querySelector("[data-atlas-neighbors]"),
+      neighborsList: root.querySelector("[data-atlas-neighbors-list]"),
+      neighborsSort: root.querySelector("[data-atlas-neighbors-sort]"),
       inspector: root.querySelector("[data-atlas-inspector]"),
       sideTitle: root.querySelector("[data-atlas-side-title]"),
       search: root.querySelector("[data-atlas-search]"),
       reset: root.querySelector("[data-atlas-reset]"),
+      swap: root.querySelector("[data-atlas-swap]"),
       inspectorToggle: root.querySelector("[data-atlas-inspector-toggle]"),
       inspectorClose: root.querySelector("[data-atlas-inspector-close]"),
-      modeButtons: Array.from(root.querySelectorAll("[data-mode]"))
+      lensButtons: Array.from(root.querySelectorAll("[data-atlas-lens]"))
     };
     const state = {
       data: null,
@@ -398,7 +444,9 @@ window.EnliteratorAtlas = (function () {
       selectedEdge: null,
       hoveredEdge: null,
       query: "",
-      activeCategories: new Set(EDGE_CATEGORIES)
+      activeCategories: new Set(EDGE_CATEGORIES),
+      filters: {},
+      neighborSort: "relation"
     };
 
     function setStatus(text) { els.status.textContent = text; }
@@ -409,7 +457,33 @@ window.EnliteratorAtlas = (function () {
     }
     function setActiveMode(mode) {
       state.mode = mode;
-      els.modeButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === mode));
+      const lens = MODE_TO_LENS[mode] || "overview";
+      els.lensButtons.forEach(function (btn) { btn.classList.toggle("active", btn.dataset.atlasLens === lens); });
+      applyLensChrome(lens);
+    }
+    // The Ego-only chrome (ranked-neighbor pane + filter controls) is shown only
+    // when the Ego lens is active; the Overview lens is the full-width graph.
+    function applyLensChrome(lens) {
+      const ego = lens === "ego";
+      if (els.neighbors) els.neighbors.hidden = !ego;
+      if (els.controls) els.controls.hidden = !ego;
+    }
+    function readPref(key) {
+      try { return window.localStorage ? window.localStorage.getItem(key) : null; } catch (e) { return null; }
+    }
+    function writePref(key, value) {
+      try { if (window.localStorage) window.localStorage.setItem(key, value); } catch (e) { /* private mode */ }
+    }
+    // Side preference: graph-left for first-time visitors (an onboarding read);
+    // a swap is remembered per browser so power users keep the list (text) left.
+    function applySwapPreference() {
+      if (els.shell) els.shell.classList.toggle("swapped", readPref("enl-atlas-side") === "list-left");
+    }
+    function toggleSwap() {
+      if (!els.shell) return;
+      const swapped = els.shell.classList.toggle("swapped");
+      writePref("enl-atlas-side", swapped ? "list-left" : "graph-left");
+      if (state.renderer && state.renderer.refresh) window.setTimeout(function () { state.renderer.refresh(); }, 90);
     }
     function setInspectorOpen(open) {
       root.classList.toggle("inspector-open", open);
@@ -596,20 +670,23 @@ window.EnliteratorAtlas = (function () {
 
     function wire() {
       categoryToggles();
+      applySwapPreference();
       els.search.addEventListener("input", function (event) { applySearch(event.target.value); });
       els.reset.addEventListener("click", resetCamera);
+      if (els.swap) els.swap.addEventListener("click", toggleSwap);
       if (els.inspectorToggle) els.inspectorToggle.addEventListener("click", function () {
         setInspectorOpen(!root.classList.contains("inspector-open"));
       });
       if (els.inspectorClose) els.inspectorClose.addEventListener("click", function () {
         setInspectorOpen(false);
       });
-      els.modeButtons.forEach(function (button) {
+      els.lensButtons.forEach(function (button) {
         button.addEventListener("click", function () {
-          const nextMode = button.dataset.mode;
+          const lens = button.dataset.atlasLens;
+          const nextMode = LENS_TO_MODE[lens] || "overview";
           const focus = nextMode === "focus" ? state.selectedNode : null;
           if (nextMode === "focus" && !focus) {
-            setWarning("Select a node before switching to Focus.");
+            setWarning("Select a node (search or click one) before switching to the Ego lens.");
             return;
           }
           fetchMode(nextMode, focus).catch(function (error) {
