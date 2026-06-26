@@ -10,3 +10,11 @@
 
 # macOS Finder metadata
 .DS_Store
+
+# Internal working docs — kept local, not part of the public engine
+/CLAUDE.md
+/SPEC.md
+/HSDL_ADOPTION.md
+/AGENTS.md
+/docs/
+/.superpowers/

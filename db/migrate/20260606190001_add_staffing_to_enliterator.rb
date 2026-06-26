@@ -1,4 +1,4 @@
-# Staffing & Routing additions (SPEC.md > v0.2 > Schema additions). Additive to v0.1.
+# Staffing & Routing additions. Additive to v0.1.
 # Per-Visit tier + escalation chain are the substrate every later capability reads
 # (re-staffing, cost attribution, trust). Recorded from the first routing commit.
 class AddStaffingToEnliterator < ActiveRecord::Migration[8.1]

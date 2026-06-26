@@ -1,4 +1,4 @@
-# enliterator_claims — PROV Entity; a provenanced, reconcilable unit of understanding (SPEC.md > Schema).
+# enliterator_claims — PROV Entity; a provenanced, reconcilable unit of understanding.
 class CreateEnliteratorClaims < ActiveRecord::Migration[8.1]
   def change
     create_table :enliterator_claims do |t|

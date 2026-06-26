@@ -1,5 +1,5 @@
 module Enliterator
-  # Governed suggestion (SPEC.md > v0.3 > §3). When a facet has an output contract,
+  # Governed suggestion. When a facet has an output contract,
   # the model may not invent claim keys; instead it proposes additions here. The
   # ontology becomes a tended, governed thing — gaps surface where the vocabulary
   # is too narrow, and a human approves/maps/rejects each proposal.

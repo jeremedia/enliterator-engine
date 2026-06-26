@@ -79,7 +79,7 @@ module Enliterator
       scope.maximum(:finished_at)
     end
 
-    # Locked-claim import (SPEC.md > v0.3 > §5). Seed structured host metadata as a
+    # Locked-claim import. Seed structured host metadata as a
     # first-class, governed Claim the LLM never derives — e.g. an authoritative
     # `published_at` pulled from the source record. Upserts THIS record's live claim
     # for `key`: if a live claim exists (superseded_by_id nil AND not tombstoned) it

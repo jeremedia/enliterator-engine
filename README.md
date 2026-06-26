@@ -63,8 +63,7 @@ is in the item but extraction lost it), `silent` (the item omits it; an authorit
 
 ## Quick start
 
-Add the engine to the host Gemfile and mount it. (HSDL also needs the provider
-gems — see [HSDL_ADOPTION.md](HSDL_ADOPTION.md).)
+Add the engine to the host Gemfile and mount it.
 
 ```ruby
 # Gemfile
@@ -611,7 +610,7 @@ Suggestion machinery, no new storage); propose a *novel* key only when neither f
 Affirmation collapses synonyms at the source — warrant becomes the breadth of
 distinct records that recognize a term — so the considerer ratifies a small,
 genuinely-warranted field. Off ⇒ byte-identical (no candidate retrieval, no prompt
-change). See SPEC.md "Authority control is two-stage" + v0.41.2.
+change).
 
 ## Architecture notes
 

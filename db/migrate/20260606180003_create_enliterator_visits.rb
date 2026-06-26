@@ -1,4 +1,4 @@
-# enliterator_visits — PROV Activity; the compounding spine; immutable history (SPEC.md > Schema).
+# enliterator_visits — PROV Activity; the compounding spine; immutable history.
 class CreateEnliteratorVisits < ActiveRecord::Migration[8.1]
   def change
     create_table :enliterator_visits do |t|

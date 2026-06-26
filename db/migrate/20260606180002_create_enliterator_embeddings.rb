@@ -1,5 +1,5 @@
 # enliterator_embeddings — named vectors per record (PROV-agnostic corpus context).
-# Polymorphic *_id columns are :string to support both bigint and uuid hosts (SPEC.md > Schema).
+# Polymorphic *_id columns are :string to support both bigint and uuid hosts.
 class CreateEnliteratorEmbeddings < ActiveRecord::Migration[8.1]
   def change
     create_table :enliterator_embeddings do |t|

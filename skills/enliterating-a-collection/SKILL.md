@@ -55,7 +55,7 @@ Before defining a single facet or vocabulary term, ask: **does the field already
 
 ## The build discipline (when extending the engine)
 
-byte-identical back-compat (every feature additive + gated; suite green when unused) · 100% inline UI · no silent failures (every early return logs why) · build IN not TO · greatness or external force (no rough seams) · the process: **brainstorm → spec → plan → subagent-driven build → live-verify → memory**; versions = commits + SPEC.md section + tag. Prefer driving the desk via `Chat::Eval` / `enliterator:ask` (no browser) for evaluation.
+byte-identical back-compat (every feature additive + gated; suite green when unused) · 100% inline UI · no silent failures (every early return logs why) · build IN not TO · greatness or external force (no rough seams) · the process: **brainstorm → spec → plan → subagent-driven build → live-verify → memory**; versions = tagged commits. Prefer driving the desk via `Chat::Eval` / `enliterator:ask` (no browser) for evaluation.
 
 ## Common mistakes (from the baseline that lacked this skill)
 
@@ -79,10 +79,8 @@ Collecting is future-directed attention — "this matters enough to keep looking
 ## The deep reference (don't duplicate — read the gem's own docs)
 
 This skill is the judgment layer. The mechanics live in the gem and evolve with it — read them, don't re-document them here:
-- `SPEC.md` — the version-by-version build record (the authoritative mechanics).
 - `/enliterator/about` (`app/views/enliterator/about/index.html.erb`) — the plain-language thesis.
-- `CLAUDE.md` — the project's hard rules, vocabulary, and standing directives.
-- `docs/superpowers/specs/` & `docs/superpowers/plans/` — design docs for each feature (worked examples of the method).
+- The engine source and its RSpec suite — the authoritative, version-by-version mechanics.
 
 ## Tending log
 

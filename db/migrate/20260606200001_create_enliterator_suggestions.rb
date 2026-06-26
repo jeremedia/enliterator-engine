@@ -1,4 +1,4 @@
-# enliterator_suggestions — governed suggestion sink (SPEC.md > v0.3 > §3).
+# enliterator_suggestions — governed suggestion sink.
 # A sanctioned channel for the model to propose claim keys no contract covers,
 # instead of freelancing key drift. The ontology itself becomes a tended, governed thing.
 class CreateEnliteratorSuggestions < ActiveRecord::Migration[8.1]

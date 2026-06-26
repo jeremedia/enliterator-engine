@@ -203,8 +203,7 @@ module Enliterator
 
     # ---- Stage 1: read-time warrant accrual ------------------------------
 
-    # Gate for stage 1 of two-stage authority control (SPEC.md "Authority control
-    # is two-stage"). nil/false ⇒ readers see only the ESTABLISHED vocabulary
+    # Gate for stage 1 of two-stage authority control. nil/false ⇒ readers see only the ESTABLISHED vocabulary
     # (byte-identical to today). true ⇒ each tend on a contracted facet also threads
     # the CANDIDATE vocabulary (live `Suggestion.gaps` for the facet/context) into
     # the prompt, so readers AFFIRM an existing candidate instead of coining a

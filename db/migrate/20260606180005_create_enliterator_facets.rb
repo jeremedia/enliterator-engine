@@ -1,4 +1,4 @@
-# enliterator_facets — weighted-signal quality scorer (HSDL RecordQuality pattern; SPEC.md > Schema).
+# enliterator_facets — weighted-signal quality scorer (HSDL RecordQuality pattern).
 class CreateEnliteratorFacets < ActiveRecord::Migration[8.1]
   def change
     create_table :enliterator_facets do |t|
