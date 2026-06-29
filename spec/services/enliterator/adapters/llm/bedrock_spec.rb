@@ -211,5 +211,17 @@ RSpec.describe Enliterator::Adapters::LLM::Bedrock do
         expect(result.parsed["claims"]).to eq([])
       }.not_to raise_error
     end
+
+    # Parity: the string "[]" is a legitimate stringified empty array — JSON.parse
+    # recovers an Array, so the raise guard must NOT fire. Pins the valid-empty-JSON
+    # boundary so a future change to the guard can't start raising on empties.
+    it "does not raise when claims is the string \"[]\" (stringified empty array)" do
+      expect {
+        result = adapter_with_claims_input("[]").tend(
+          text: "x", facet: "summary", state: {}, neighbors: []
+        )
+        expect(result.parsed["claims"]).to eq([])
+      }.not_to raise_error
+    end
   end
 end

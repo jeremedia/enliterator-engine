@@ -386,5 +386,25 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
         }.not_to raise_error
       end
     end
+
+    # Pins the valid-empty-JSON boundary: claims as the STRING "[]" is a
+    # legitimate stringified empty array — JSON.parse recovers an Array, so the
+    # raise guard must NOT fire. A future change to that guard cannot start
+    # raising on legitimate empties without breaking this.
+    context "when claims is the string \"[]\" (stringified empty array — must NOT raise)" do
+      let(:fake_client) do
+        FakeOpenAIClient.new(
+          arguments_json: JSON.generate("claims" => "[]", "confidence" => 0.5),
+          usage:          usage_payload
+        )
+      end
+
+      it "returns empty claims and does not raise" do
+        expect {
+          result = adapter.tend(text: "x", facet: "summary", state: {}, neighbors: [])
+          expect(result.parsed["claims"]).to eq([])
+        }.not_to raise_error
+      end
+    end
   end
 end
