@@ -329,8 +329,28 @@ module Enliterator
           args      = tool_call ? arguments_of(tool_call) : nil
           input     = parse_arguments(args)
 
+          raw_claims = input["claims"]
+          claims     = normalize_claims(raw_claims)
+
+          # No-silent-failures (rule 3): when the model returned a non-empty claims
+          # STRING that could not be recovered as an Array by normalize_claims, raise
+          # a visible ResponseFormatError so the visitor records a retriable failed
+          # visit rather than silently producing empty claims → required_unmet → lacuna.
+          #
+          # Safe cases that must NOT raise:
+          #   - raw_claims is nil / absent / a native Array → not a String
+          #   - raw_claims is a String that JSON.parse recovers to an Array (including "[]")
+          #     → parse succeeded; empty result is a legitimate no-claims response
+          if claims.empty? && raw_claims.is_a?(String) && !raw_claims.strip.empty? &&
+               !(JSON.parse(raw_claims) rescue nil).is_a?(Array)
+            snippet = raw_claims[0, 200]
+            raise Enliterator::Adapters::LLM::ResponseFormatError,
+                  "Gateway received a non-empty claims string that could not be parsed " \
+                  "into usable claim hashes. Snippet: #{snippet.inspect}"
+          end
+
           parsed = {
-            "claims"     => normalize_claims(input["claims"]),
+            "claims"     => claims,
             "confidence" => normalize_confidence(input["confidence"])
           }
           esc = input.key?("escalate") ? input["escalate"] : input[:escalate]
@@ -483,6 +503,17 @@ module Enliterator
         end
 
         def normalize_claims(claims)
+          # Re-parse a stringified claims array. Bedrock-sonnet intermittently returns
+          # the `claims` array as a JSON string rather than a native array. Attempt
+          # recovery before falling through to the per-element normalization.
+          # When the string cannot be parsed (malformed JSON), claims stays as-is;
+          # Array(String) wraps it in a single-element array; the element is not a Hash
+          # so it normalizes to {} and is rejected below. extract_parsed detects the
+          # non-empty-string-with-empty-result case and raises ResponseFormatError.
+          if claims.is_a?(String)
+            parsed = (JSON.parse(claims) rescue nil)
+            claims = parsed if parsed.is_a?(Array)
+          end
           Array(claims).map do |c|
             h = c.is_a?(Hash) ? c : {}
             {
@@ -491,7 +522,7 @@ module Enliterator
               "confidence" => h["confidence"] || h[:confidence],
               "op"         => h["op"] || h[:op]
             }.compact
-          end
+          end.reject { |h| h["key"].nil? }
         end
 
         def normalize_confidence(conf)

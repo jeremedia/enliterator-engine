@@ -1,6 +1,14 @@
 module Enliterator
   module Adapters
     module LLM
+      # Raised when a gateway/bedrock adapter receives a non-empty claims string
+      # that cannot be parsed into usable claim hashes — i.e. the model returned
+      # a stringified JSON array that is malformed (e.g. single-escaped embedded
+      # quotes). Raising surfaces the failure as a visible, retriable Visit error
+      # rather than silently dropping all claims and opening a phantom lacuna
+      # (rule 3: no silent failures).
+      class ResponseFormatError < StandardError; end
+
       # Base interface for LLM tending adapters.
       #
       # An adapter reads a single record's text plus its compounding context

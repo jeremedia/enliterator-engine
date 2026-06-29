@@ -174,4 +174,42 @@ RSpec.describe Enliterator::Adapters::LLM::Bedrock do
       expect(adapter.tend(text: "x", facet: "summary", state: {}, neighbors: []).tokens).to eq({})
     end
   end
+
+  # Parity with Gateway: Bedrock's normalize_claims must also handle a stringified
+  # claims array and raise ResponseFormatError on malformed strings.
+  describe "stringified claims recovery — parity with Gateway" do
+    def adapter_with_claims_input(claims_input)
+      client = FakeConverseClient.new(claims: claims_input, usage: usage_payload)
+      described_class.new(model_id: "m", client: client)
+    end
+
+    it "recovers claims when the model returns them as a valid stringified JSON array" do
+      stringified = JSON.generate([
+        { "key" => "summary", "value" => "Parity check.", "confidence" => 0.9, "op" => "ADD" }
+      ])
+      result = adapter_with_claims_input(stringified).tend(
+        text: "x", facet: "summary", state: {}, neighbors: []
+      )
+      expect(result.parsed["claims"].length).to eq(1)
+      expect(result.parsed["claims"].first["key"]).to eq("summary")
+    end
+
+    it "raises ResponseFormatError on a non-empty malformed stringified claims array" do
+      malformed = '[{"key": "summary", "value": "concept of "enliteracy" here", "op": "ADD"}]'
+      expect {
+        adapter_with_claims_input(malformed).tend(
+          text: "x", facet: "summary", state: {}, neighbors: []
+        )
+      }.to raise_error(Enliterator::Adapters::LLM::ResponseFormatError)
+    end
+
+    it "does not raise when claims is genuinely empty (regression guard)" do
+      expect {
+        result = adapter_with_claims_input([]).tend(
+          text: "x", facet: "summary", state: {}, neighbors: []
+        )
+        expect(result.parsed["claims"]).to eq([])
+      }.not_to raise_error
+    end
+  end
 end

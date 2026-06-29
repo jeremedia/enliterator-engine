@@ -275,4 +275,116 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
       expect(system).not_to match(/CONTROLLED VOCABULARY/i)
     end
   end
+
+  # v0.47+: Bedrock-sonnet intermittently returns the `claims` array as a
+  # stringified JSON value instead of a native array. When the string is also
+  # malformed (model single-escapes embedded quotes), the engine must surface
+  # the error loudly (ResponseFormatError) rather than silently dropping all
+  # claims and opening a phantom lacuna (rule 3: no silent failures).
+  describe "stringified claims recovery (Bedrock-sonnet double-encoding)" do
+    def adapter_with_claims_arg(claims_arg)
+      client = FakeOpenAIClient.new(
+        arguments_json: JSON.generate("claims" => claims_arg, "confidence" => 0.75),
+        usage:          usage_payload
+      )
+      described_class.new(tier: "cheap", base_url: "https://llm.example.com/v1",
+                          api_key: "sk-test", client: client)
+    end
+
+    context "when claims is a stringified but valid JSON array" do
+      let(:stringified_claims) do
+        JSON.generate([
+          { "key" => "summary", "value" => "A valid summary.", "confidence" => 0.9, "op" => "ADD" },
+          { "key" => "topic",   "value" => "Engineering",      "confidence" => 0.8, "op" => "ADD" }
+        ])
+      end
+
+      it "recovers the claims instead of silently dropping them" do
+        result = adapter_with_claims_arg(stringified_claims).tend(
+          text: "x", facet: "summary", state: {}, neighbors: []
+        )
+        expect(result.parsed["claims"].length).to eq(2)
+        expect(result.parsed["claims"].first["key"]).to eq("summary")
+        expect(result.parsed["claims"].last["key"]).to eq("topic")
+      end
+
+      it "normalizes recovered claims to the expected key/value/confidence/op shape" do
+        result = adapter_with_claims_arg(stringified_claims).tend(
+          text: "x", facet: "summary", state: {}, neighbors: []
+        )
+        first = result.parsed["claims"].first
+        expect(first["key"]).to eq("summary")
+        expect(first["value"]).to eq("A valid summary.")
+        expect(first["op"]).to eq("ADD")
+      end
+    end
+
+    context "when claims is a non-empty stringified array with malformed JSON (single-escaped quotes)" do
+      # Simulates the real failure: model returns claims as a JSON string but
+      # does not double-escape inner quotes, producing unparseable JSON.
+      let(:malformed_claims) do
+        # Unescaped quotes around "enliteracy" make this invalid JSON when parsed
+        '[{"key": "summary", "value": "The concept of "enliteracy" is central.", ' \
+        '"confidence": 0.9, "op": "ADD"}]'
+      end
+
+      it "raises ResponseFormatError instead of silently producing empty claims" do
+        expect {
+          adapter_with_claims_arg(malformed_claims).tend(
+            text: "x", facet: "summary", state: {}, neighbors: []
+          )
+        }.to raise_error(Enliterator::Adapters::LLM::ResponseFormatError,
+                         /claims string.*could not be parsed/i)
+      end
+
+      it "includes a snippet of the offending payload in the error message" do
+        expect {
+          adapter_with_claims_arg(malformed_claims).tend(
+            text: "x", facet: "summary", state: {}, neighbors: []
+          )
+        }.to raise_error(Enliterator::Adapters::LLM::ResponseFormatError, /enliteracy/)
+      end
+    end
+
+    context "when claims is a native array (regression guard — unchanged behavior)" do
+      it "normalizes them exactly as before" do
+        result = adapter.tend(text: "x", facet: "summary", state: {}, neighbors: [])
+        expect(result.parsed["claims"].length).to eq(2)
+        expect(result.parsed["claims"].first["key"]).to eq("summary")
+        expect(result.parsed["claims"].last["key"]).to eq("authored_by")
+      end
+    end
+
+    context "when claims is genuinely empty (regression guard — must NOT raise)" do
+      let(:fake_client) do
+        FakeOpenAIClient.new(
+          arguments_json: JSON.generate("claims" => [], "confidence" => 0.5),
+          usage:          usage_payload
+        )
+      end
+
+      it "returns empty claims and does not raise" do
+        expect {
+          result = adapter.tend(text: "x", facet: "summary", state: {}, neighbors: [])
+          expect(result.parsed["claims"]).to eq([])
+        }.not_to raise_error
+      end
+    end
+
+    context "when claims key is absent from the response (regression guard — must NOT raise)" do
+      let(:fake_client) do
+        FakeOpenAIClient.new(
+          arguments_json: JSON.generate("confidence" => 0.5),
+          usage:          usage_payload
+        )
+      end
+
+      it "returns empty claims and does not raise" do
+        expect {
+          result = adapter.tend(text: "x", facet: "summary", state: {}, neighbors: [])
+          expect(result.parsed["claims"]).to eq([])
+        }.not_to raise_error
+      end
+    end
+  end
 end

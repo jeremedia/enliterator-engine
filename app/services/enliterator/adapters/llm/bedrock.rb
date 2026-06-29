@@ -139,8 +139,22 @@ module Enliterator
           input = tool_block ? input_of(tool_use_of(tool_block)) : {}
           input = parse_input(input)
 
+          raw_claims = input["claims"]
+          claims     = normalize_claims(raw_claims)
+
+          # Parity with Gateway (rule 3: no silent failures): raise ResponseFormatError
+          # when a non-empty claims string could not be recovered as an Array, so the
+          # visitor records a visible retriable failed visit instead of a phantom lacuna.
+          if claims.empty? && raw_claims.is_a?(String) && !raw_claims.strip.empty? &&
+               !(JSON.parse(raw_claims) rescue nil).is_a?(Array)
+            snippet = raw_claims[0, 200]
+            raise Enliterator::Adapters::LLM::ResponseFormatError,
+                  "Bedrock received a non-empty claims string that could not be parsed " \
+                  "into usable claim hashes. Snippet: #{snippet.inspect}"
+          end
+
           parsed = {
-            "claims"     => normalize_claims(input["claims"]),
+            "claims"     => claims,
             "confidence" => normalize_confidence(input["confidence"])
           }
 
@@ -232,6 +246,14 @@ module Enliterator
         end
 
         def normalize_claims(claims)
+          # Parity with Gateway: re-parse a stringified claims array when the model
+          # double-encodes the array as a JSON string rather than returning it natively.
+          # When the string is unparseable (malformed JSON), claims stays as-is and
+          # extract_parsed raises ResponseFormatError rather than silently dropping claims.
+          if claims.is_a?(String)
+            parsed = (JSON.parse(claims) rescue nil)
+            claims = parsed if parsed.is_a?(Array)
+          end
           Array(claims).map do |c|
             h = c.is_a?(Hash) ? c : {}
             {
@@ -240,7 +262,7 @@ module Enliterator
               "confidence" => h["confidence"] || h[:confidence],
               "op"         => h["op"] || h[:op]
             }.compact
-          end
+          end.reject { |h| h["key"].nil? }
         end
 
         def normalize_confidence(conf)
