@@ -229,4 +229,117 @@ RSpec.describe Enliterator::Tending::Visitor do
       )
     end
   end
+
+  # ── reconcile! op/existence boundary ─────────────────────────────────────────
+  # Six cases pinning the reconcile! contract at the NOOP/UPDATE × existence ×
+  # value-presence boundary. Cases 1 and 5b are the bug-fix cases (RED before
+  # the fix); cases 2–4, 5a, and 6 are regressions that must stay green.
+  describe "#reconcile! — NOOP/UPDATE on a nonexistent key" do
+    # A thin injected-llm stub — reconcile! never calls #tend, so only model_id
+    # matters (for Visitor initializer). We call reconcile! directly.
+    let(:llm) do
+      Class.new do
+        def model_id = "stub-reconcile"
+      end.new
+    end
+
+    subject(:visitor) do
+      described_class.new(widget, facet: "summary", llm: llm, embedder: embedder)
+    end
+
+    # Build a one-element proposed array with the given op and value.
+    def propose(op:, value: "synthesized-value")
+      [ { "key" => "summary", "op" => op, "value" => value, "confidence" => 0.8 } ]
+    end
+
+    # Create a minimal running Visit row so reconcile! can stamp created claims.
+    let(:run_visit) do
+      widget.enliterator_visits.create!(
+        facet: "summary", status: "running", model: "stub-reconcile",
+        tier: "cheap", applied: true, prompt_version: "v0.1",
+        started_at: Time.current
+      )
+    end
+
+    def reconcile!(proposed)
+      visitor.reconcile!(proposed, run_visit, attributed_to: "stub", tier: "cheap", may_verify: false)
+    end
+
+    # ── Case 1 (RED before fix): NOOP with value, no live claim → must ADD ────
+    it "NOOP with a non-blank value on a nonexistent key is treated as ADD" do
+      recon = reconcile!(propose(op: "NOOP", value: "synthesized-coverage"))
+
+      expect(recon[:added]).to include("summary"), "expected :added to include 'summary'"
+      expect(recon[:noop]).not_to include("summary")
+
+      claim = widget.enliterator_claims.live.find_by(key: "summary")
+      expect(claim).to be_present
+      expect(claim.value).to eq("synthesized-coverage")
+    end
+
+    # ── Case 2 (regression GREEN): UPDATE with value, no live claim → ADD ─────
+    it "UPDATE with a non-blank value on a nonexistent key is treated as ADD" do
+      recon = reconcile!(propose(op: "UPDATE", value: "introduced-concepts"))
+
+      expect(recon[:added]).to include("summary")
+      claim = widget.enliterator_claims.live.find_by(key: "summary")
+      expect(claim).to be_present
+      expect(claim.value).to eq("introduced-concepts")
+    end
+
+    # ── Case 3 (regression): NOOP against existing live claim → noop only ─────
+    it "NOOP against an existing live claim is still a noop (no duplicate written)" do
+      widget.enliterator_claims.create!(key: "summary", value: "established", confidence: 0.9, status: "draft")
+
+      recon = reconcile!(propose(op: "NOOP", value: "whatever"))
+
+      expect(recon[:noop]).to include("summary")
+      expect(recon[:added]).not_to include("summary")
+      # Exactly one live claim; value unchanged.
+      expect(widget.enliterator_claims.live.where(key: "summary").count).to eq(1)
+      expect(widget.enliterator_claims.live.find_by(key: "summary").value).to eq("established")
+    end
+
+    # ── Case 4 (regression): UPDATE against existing → supersedes it ──────────
+    it "UPDATE against an existing live claim supersedes it and writes the new value" do
+      existing = widget.enliterator_claims.create!(
+        key: "summary", value: "old-value", confidence: 0.7, status: "draft"
+      )
+
+      recon = reconcile!(propose(op: "UPDATE", value: "updated-value"))
+
+      expect(recon[:updated]).to include("summary")
+      existing.reload
+      expect(existing.status).to eq("superseded")
+      live = widget.enliterator_claims.live.find_by(key: "summary")
+      expect(live).to be_present
+      expect(live.value).to eq("updated-value")
+    end
+
+    # ── Case 5a (regression): NOOP + blank value, nonexistent → noop (not written)
+    it "NOOP with a blank value on a nonexistent key is NOT written" do
+      recon = reconcile!(propose(op: "NOOP", value: ""))
+
+      expect(recon[:noop]).to include("summary")
+      expect(recon[:added]).not_to include("summary")
+      expect(widget.enliterator_claims.live.where(key: "summary")).to be_empty
+    end
+
+    # ── Case 5b (RED before fix): UPDATE + blank value, nonexistent → noop ────
+    it "UPDATE with a blank value on a nonexistent key is NOT written" do
+      recon = reconcile!(propose(op: "UPDATE", value: ""))
+
+      expect(recon[:noop]).to include("summary"), "expected :noop to include 'summary' — blank UPDATE on nonexistent must not write"
+      expect(recon[:added]).not_to include("summary")
+      expect(widget.enliterator_claims.live.where(key: "summary")).to be_empty
+    end
+
+    # ── Case 6 (regression): DELETE on nonexistent → noop ────────────────────
+    it "DELETE on a nonexistent key is a noop" do
+      recon = reconcile!(propose(op: "DELETE", value: nil))
+
+      expect(recon[:noop]).to include("summary")
+      expect(widget.enliterator_claims.live.where(key: "summary")).to be_empty
+    end
+  end
 end

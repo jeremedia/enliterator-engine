@@ -246,12 +246,17 @@ module Enliterator
 
           when "UPDATE"
             if existing.nil?
-              # Nothing to update — treat as an ADD so the claim isn't lost.
-              create_claim(
-                key: key, value: value, confidence: confidence, visit: visit,
-                attributed_to: attributed_to, tier: tier, status: status
-              )
-              recon[:added] << key
+              if blank_value?(value)
+                # Blank on nonexistent — nothing to write; let required-unmet / lacuna path handle it.
+                recon[:noop] << key
+              else
+                # Nothing to update — treat as an ADD so the claim isn't lost.
+                create_claim(
+                  key: key, value: value, confidence: confidence, visit: visit,
+                  attributed_to: attributed_to, tier: tier, status: status
+                )
+                recon[:added] << key
+              end
             elsif existing.locked
               # Curator anchor — never auto-supersede.
               recon[:noop] << key
@@ -282,7 +287,16 @@ module Enliterator
             end
 
           else # NOOP
-            recon[:noop] << key
+            if existing.nil? && !blank_value?(value)
+              # Cannot no-op a claim that doesn't exist — the model supplied a value, so ADD it.
+              create_claim(
+                key: key, value: value, confidence: confidence, visit: visit,
+                attributed_to: attributed_to, tier: tier, status: status
+              )
+              recon[:added] << key
+            else
+              recon[:noop] << key
+            end
           end
         end
 
