@@ -19,7 +19,7 @@ The companion to `enliterating-a-collection`: that skill points the machinery at
 
 ## The procedure (4 steps, not 12)
 
-1. **Get the host's env so `rails runner` can connect — but check which mode it runs in first.** In **production** (systemd/SSH) the env isn't auto-loaded: source it inline from the host app dir, `set -a; source ~/.<app>-rails.env; set +a`. In **development** the app's dotenv `.env` loads automatically — *don't* source a prod file that may not exist (a `2>/dev/null` on a missing source silently leaves you in the wrong env); just run in the mode the pacemaker uses, e.g. `RAILS_ENV=development bin/rails runner …`. Read the pacemaker's plist/service to see the actual mode (see appendix for HSDL).
+1. **Get the host's env so `rails runner` can connect — but check which mode it runs in first.** In **production** (systemd/SSH) the env isn't auto-loaded: source it inline from the host app dir, `set -a; source ~/.<app>-rails.env; set +a`. In **development** the app's dotenv `.env` loads automatically — *don't* source a prod file that may not exist (a `2>/dev/null` on a missing source silently leaves you in the wrong env); just run in the mode the pacemaker uses, e.g. `RAILS_ENV=development bin/rails runner …`. Read the pacemaker's plist/service to see the actual mode (see **Deployment facts** below).
 2. **Run the ledger snapshot:** `bin/rails runner <engine>/skills/checking-an-enliteration/heartbeat_status.rb`. Read-only; engine schema only; works on any deployment.
 3. **Read each beat row** with the table below. `error`, `failed`, and the `deferred`/`tokens`/`considered` combination tell you everything.
 4. **Check the OTHER process(es).** An enliteration is often *two* autonomous processes: the nightly pacemaker **and** one or more continuous deep-read workers (their visits have `heartbeat_id = nil`). A healthy pacemaker does not mean the deep-read is healthy, or vice-versa. Find each worker's own launchd job + log before you report.
@@ -48,20 +48,30 @@ The companion to `enliterating-a-collection`: that skill points the machinery at
 
 Each beat carries `tokens_spent`; sum over N nights for the burn rate. Surface it unprompted — the operator is paying per token and will want the number.
 
-## HSDL appendix (the worked example — first enliteration)
+## Deployment facts live in the host app, not in this gem
 
-- Host app dir: `/Volumes/jer4TBv3/workspaces/work/hsdl-ai`. **On this dev machine** the pacemaker runs `RAILS_ENV=development` and dotenv loads the project `.env` — run the script with `RAILS_ENV=development bin/rails runner …`, **no sourcing**. (`~/.hsdl-rails.env` is the *production/staging* server pattern and does **not** exist on this box; sourcing it is a silent no-op.)
-- **Pacemaker:** launchd `app.domt.hsdl-ai-enliterator-heartbeat`, 01:30 PT (= 03:30 on the system/Central clock — the plist fires on system time, the ledger stamps app-zone Pacific). Log (NOT the authority): `~/Library/Logs/hsdl-ai-enliterator-heartbeat.log`.
-- **Second process:** launchd `chds-deepread` — a continuous `KeepAlive` worker doing analytical deep-reads of theses; its `heartbeat_id=nil` per-part failures during auth windows are retried, not lost. Check its own log.
-- **The standing caveat:** the governance/audit work runs on Bedrock; the SSO token lives ~9h and the beat is 01:30, so an unattended beat needs a fresh token. Jeremy re-auths nightly (so recent beats are clean); the permanent fix is the non-expiring NPS IAM key. A night without re-auth = a graceful **deferred** beat (id=63 / 2026-06-24: `tokens=0, deferred=43, error=nil`, drained by id=64).
-- **A deferral night still leaves heartbeat-stamped error Visits.** id=63's 43 deferred items each recorded a `heartbeat_id`-bearing Visit with a transient gateway 500 — so a deferral shows up in the *with-heartbeat* failed-visit count even though the beat's `executed.failed=0`. Cross-check the beat's `deferred` count before reading heartbeat-stamped failures as real faults.
+This skill ships in a public, multi-consumer gem, so it carries the **method** only. The **per-deployment facts** — which mode/env the pacemaker runs under, the scheduler job names and log paths, what other workers exist (deep-read, etc.), and the human/ops caveats (credential-refresh cadence, provider/credit constraints, who operates it) — belong to the **host app**: only the host knows them, and hardcoding them here would leak one site's details and be stale for every other. (Same split as `enliterating-a-collection`: the gem ships machinery + method; the deployment is the host's.)
+
+Before step 1, get this deployment's facts, in order of preference:
+
+1. **Ask the running system** — `bin/rails enliterator:deployment` (when the host/engine provides it): the live shape — mode, configured heartbeat/log paths, registered Tendable types and workers, the heartbeat schedule. Self-describing, so it can't drift.
+2. **Read the host's enliteration deployment doc** — conventionally `doc/enliterator/deployment.md` in the host app: scheduler labels, log paths, and the ops caveats the app can't introspect about itself (credential refresh, provider/credit limits, operator).
+3. **Discover it** if neither exists — read the scheduler definition (launchd plist / systemd unit / cron / `config/recurring.yml`) for the job's mode + log path, and `git grep` the host for enliterator worker/daemon definitions.
+
+When you learn a durable deployment fact this skill needed, write it to the **host doc** (option 2) — never back into this gem skill. The host doc is shared host-side infrastructure: other enliterator skills read it too.
+
+### Two facts the method assumes (engine-level, so they belong here)
+
+- **A continuous deep-read worker, if the host runs one, is a *separate* process** from the pacemaker; its visits carry `heartbeat_id = nil`. A healthy pacemaker says nothing about the worker, or vice-versa — check each.
+- **A deferral night still leaves heartbeat-stamped error Visits.** When a beat defers (provider down at beat time), each deferred item can record a `heartbeat_id`-bearing Visit with the transient error — so a deferral shows up in the *with-heartbeat* failed-visit count even though the beat's `executed.failed = 0`. Cross-check the beat's `deferred` count before reading heartbeat-stamped failures as real faults.
 
 ---
 
 ## This is a first draft — tend it through every use
 
-Like `enliterating-a-collection`, this skill is an **enliterated artifact**: harvested from one deployment, so partial and HSDL-shaped. Tend it on each use — when a new deployment's status check teaches you something the runbook missed, add it.
+Like `enliterating-a-collection`, this skill is an **enliterated artifact**: harvested from one deployment, so partial and shaped by its first deployment (HSDL). Tend it on each use — when a new deployment's status check teaches you something the runbook missed, add it (to the *method* here, or to that host's deployment doc).
 
 **Tending log**
-- **Visit 0 (HSDL, 2026-06-29):** Harvested from a real status check + a RED baseline. The baseline (fresh agent, no skill) read the log first and declared the heartbeat *failing*, then misread `heartbeat_id=nil` deep-read failures as a second broken process — two wrong turns, 12 tool-calls, two mind-changes before landing right. Those two traps are this skill's spine. Open shape for the next deployment: workers other than a `KeepAlive` deep-read daemon; ledgers without an `audits`/`considerer` column; non-Bedrock expiry modes.
-- **Visit 1 (HSDL, 2026-06-29):** GREEN-test agent ran the runbook and tended it back. Corrected three things: (1) the env step assumed a prod `~/.hsdl-rails.env` that doesn't exist on the dev box — added the dev/prod split (dev = `RAILS_ENV=development`, dotenv `.env`, no sourcing); (2) a deferral night *does* leave heartbeat-stamped error Visits (id=63 → 43 of them), so with-heartbeat failures aren't automatically faults; (3) id=63's deferred count is 43, not 33. The skill still produced a ledger-first, both-processes, no-wrong-turns investigation — the corrections were to the HSDL appendix, not the method.
+- **Visit 0 (first deployment, 2026-06-29):** Harvested from a real status check + a RED baseline. The baseline (fresh agent, no skill) read the log first and declared the heartbeat *failing*, then misread `heartbeat_id=nil` deep-read failures as a second broken process — two wrong turns, 12 tool-calls, two mind-changes before landing right. Those two traps are this skill's spine. Open shape for the next deployment: workers other than a continuous deep-read daemon; ledgers without an `audits`/`considerer` column; expiry modes other than a periodically-refreshed token.
+- **Visit 1 (first deployment, 2026-06-29):** A GREEN-test agent ran the runbook and tended it back. Corrected three things: (1) the env step assumed a production env file that didn't exist on a dev box — added the dev/prod split (dev = run in the pacemaker's mode, dotenv loads `.env`, no sourcing; prod = source the env file); (2) a deferral night *does* leave heartbeat-stamped error Visits, so with-heartbeat failures aren't automatically faults; (3) a corrected deferred-count off-by-ten. The corrections were all to deployment specifics, not the method — which is what motivated Visit 2.
+- **Visit 2 (2026-06-29):** Generalized. The deployment specifics (paths, scheduler labels, the second process, ops caveats) were moved *out* of a host-specific appendix and replaced with the **Deployment facts** section: the gem carries method, the host carries its own facts (self-describing rake → host doc → discovery). This is the rule for any skill shipped in a gem — the appendix-in-the-gem was the anti-pattern.
