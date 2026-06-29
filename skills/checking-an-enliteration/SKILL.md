@@ -54,7 +54,7 @@ This skill ships in a public, multi-consumer gem, so it carries the **method** o
 
 Before step 1, get this deployment's facts, in order of preference:
 
-1. **Ask the running system** — `bin/rails enliterator:deployment` (when the host/engine provides it): the live shape — mode, configured heartbeat/log paths, registered Tendable types and workers, the heartbeat schedule. Self-describing, so it can't drift.
+1. **Ask the running system** — `bin/rails enliterator:deployment`: the live shape — mode, gateway readiness, the full config, the staffing ladder/tiers and every facet (root + per-context) with its tier and scheduled flag, tendables, contexts, and the last beat with an inferred cadence. Self-describing, so it can't drift. It also names what it *can't* introspect and points to the host doc below. (`FORMAT=json` for the raw hash.)
 2. **Read the host's enliteration deployment doc** — conventionally `doc/enliterator/deployment.md` in the host app: scheduler labels, log paths, and the ops caveats the app can't introspect about itself (credential refresh, provider/credit limits, operator).
 3. **Discover it** if neither exists — read the scheduler definition (launchd plist / systemd unit / cron / `config/recurring.yml`) for the job's mode + log path, and `git grep` the host for enliterator worker/daemon definitions.
 

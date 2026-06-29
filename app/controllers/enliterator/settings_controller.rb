@@ -16,16 +16,15 @@ module Enliterator
       @facet_origins = Enliterator.staffing.facets_for(current_context&.path_keys)
       @facets       = facet_names
       @contracts     = @facets.map { |s| facet_config(s) }
-      @gateway_ready = @config.gateway_api_key.present? && @config.gateway_base_url.present?
+      # v0.48: gateway-ready and the tended-types idiom now have ONE definition,
+      # shared with Deployment.profile so the page and the rake can't drift.
+      @gateway_ready = Enliterator.gateway_configured?
       @conversation_tier_effective = @config.conversation_tier || @policy.ladder.last || "quality"
       @considerer_tier_effective   = @config.considerer_tier   || @policy.ladder.last || "quality"
 
-      # What this enliteration actually works on. The in-memory registry only fills as
-      # model classes autoload (lazy in dev), so the visit log is the truer authority —
-      # prefer the types that have actually been tended (host types only — v0.25:
-      # tended Parts are internal), fall back to the registry.
-      tended_types = Enliterator::Visit.host_tendable_types
-      @models = tended_types.presence || Enliterator.tendable_models.map(&:name)
+      # What this enliteration actually works on (host types only — v0.25: tended
+      # Parts are internal). Visit log first, registry fallback.
+      @models = Enliterator::Deployment.tendables
 
       # Live tally of what's accrued: approved terms now in force across all facets.
       @approved_live = @contracts.sum { |c| c[:terms].count { |t| t[:approved] } }

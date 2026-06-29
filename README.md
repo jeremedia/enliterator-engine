@@ -257,6 +257,14 @@ review queue. The agent is another patron and another set of eyes — never a ha
 edits the record: agent flags change no accuracy number (instrument-scoped, spec-pinned).
 Every response is bounded (caps + truncation flags) and self-describing (`next:` hints).
 
+`rake enliterator:deployment` prints the live deployment profile — mode and gateway
+readiness, the full config, the staffing ladder/tiers and every facet (root + per-context)
+with its tier and scheduled flag, tendables, contexts, and the last beat with an inferred
+cadence — and it names what it *cannot* introspect (the schedule, log paths — those belong to
+the host scheduler), pointing to the host's `doc/enliterator/deployment.md`. The engine
+describing its own shape, so a status check reads the system instead of guessing
+(`FORMAT=json` for the raw hash).
+
 Inspect the accumulated literacy:
 
 ```ruby

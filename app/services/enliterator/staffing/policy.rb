@@ -245,6 +245,13 @@ module Enliterator
         (@context_facets.dig(context_key.to_s, :assignments) || {}).keys
       end
 
+      # v0.48: the context keys this policy declares facets in. Lets
+      # introspection (Deployment.profile) enumerate the FULL facet set —
+      # root-declared plus every context block — not just the root facets.
+      def declared_context_keys
+        @context_facets.keys
+      end
+
       # v0.25: is the facet schedulable (not declared `scheduled: false`) in
       # the given declaration scope?
       def scheduled?(facet, context_key = nil)

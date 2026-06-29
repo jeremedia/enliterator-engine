@@ -481,3 +481,63 @@ namespace :enliterator do
     puts "\nembeddings written: #{b[:embeddings][:written]}" if b[:embeddings][:written].positive?
   end
 end
+
+namespace :enliterator do
+  desc "The live deployment profile: mode, config, staffing, tendables, contexts, last beat. FORMAT=json for the raw hash."
+  task deployment: :environment do
+    p = Enliterator::Deployment.profile
+
+    if ENV["FORMAT"] == "json"
+      require "json"
+      puts JSON.pretty_generate(p)
+      next
+    end
+
+    fmt_n = ->(n) { n.is_a?(Numeric) ? ActiveSupport::NumberHelper.number_to_delimited(n) : n }
+    at    = ->(t) { t ? t.in_time_zone.strftime("%m-%d %H:%M") : "—" }
+    onoff = ->(v) { v.nil? || v == false ? "off" : (v == true ? "on" : v.to_s) }
+
+    m = p[:mode]
+    puts "── enliterator deployment ── #{m[:rails_env]}  ·  gateway: #{m[:gateway_ready] ? 'ready' : 'NOT configured'}"
+    puts "   llm: #{m[:llm]}   embedder: #{m[:embedder]}   null-llm allowed: #{m[:allow_null_llm]}   error-detail: #{m[:error_detail]}"
+
+    c = p[:config]
+    puts "\nconfig:"
+    puts "  heartbeat: budget #{fmt_n.call(c[:heartbeat_budget_tokens])} · change_share #{c[:heartbeat_change_share]} · " \
+         "neighbor_threshold #{c[:heartbeat_neighbor_threshold]} · stale_after #{c[:stale_after_seconds] / 86_400}d · audit_sample #{c[:heartbeat_audit_sample]}"
+    puts "  tending_facets: #{c[:tending_facets].join(', ')}   apply_approved_keys: #{c[:apply_approved_keys]}   " \
+         "record_lacunae: #{onoff.call(c[:record_lacunae])}   read_time_warrant: #{onoff.call(c[:read_time_warrant])}"
+    puts "  considerer: autonomy #{c[:considerer_autonomy]} · min_conf #{c[:considerer_min_confidence]}   escalation_threshold #{c[:escalation_threshold]}"
+    puts "  gateway: timeout #{c[:gateway_timeout]}s · max_retries #{c[:gateway_max_retries]}   atlas_node_cap #{fmt_n.call(c[:atlas_node_cap])}   " \
+         "name_authority_keys: #{c[:name_authority_keys].presence&.join(', ') || '—'}"
+    puts "  chat: #{c[:chat].map { |k, v| "#{k}=#{onoff.call(v)}" }.join('  ')}"
+
+    s = p[:staffing]
+    puts "\nstaffing:"
+    puts "  ladder: #{s[:ladder].join(' → ')}   verify_floor: #{s[:verify_floor]}   embedding: #{s[:embedding_tier] || '—'}"
+    puts "  escalation_threshold #{s[:escalation_threshold]} · max_promotions #{s[:max_promotions]}   on_prem: #{s[:on_prem_tiers].presence&.join(', ') || '—'}"
+    puts "  tiers in use: #{s[:tiers].join(', ')}"
+    puts "  facets:"
+    s[:facets].each do |f|
+      puts "    #{f[:facet].to_s.ljust(18)} #{f[:tier].to_s.ljust(10)} #{f[:scheduled] ? 'scheduled' : 'unscheduled'}  (#{f[:origin]})"
+    end
+
+    puts "\ntendables: #{p[:tendables].presence&.join(', ') || '(none registered yet)'}"
+    puts "contexts: #{p[:contexts][:count]}#{" (roots: #{p[:contexts][:roots].join(', ')})" if p[:contexts][:roots].any?}"
+
+    h = p[:heartbeat]
+    puts "\nheartbeat:"
+    if h[:last]
+      l = h[:last]
+      puts "  last: ##{l[:id]}  #{at.call(l[:started_at])}→#{l[:finished_at] ? l[:finished_at].in_time_zone.strftime('%H:%M') : 'RUNNING'}  " \
+           "tokens #{fmt_n.call(l[:tokens])}  #{l[:error] ? '⚠ ABORTED' : 'ok'}"
+    else
+      puts "  last: — (no cycles yet)"
+    end
+    puts "  cadence (inferred): #{h[:inferred_cadence_hours] ? "~#{h[:inferred_cadence_hours]}h" : '—'}   schedule: #{h[:schedule]}"
+
+    e = p[:external]
+    puts "\nexternal — NOT introspectable from inside the app (see #{e[:host_doc]}):"
+    e[:not_introspectable].each { |x| puts "  • #{x}" }
+  end
+end

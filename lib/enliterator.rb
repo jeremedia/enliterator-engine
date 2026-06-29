@@ -395,13 +395,15 @@ module Enliterator
       klass == Enliterator::Part || tendable_models.include?(klass)
     end
 
-    private
-
     # True when the LiteLLM gateway has enough config to build tier adapters.
+    # Public (v0.48): the single source of truth for "gateway ready", consumed
+    # by the Settings surface and Deployment.profile.
     def gateway_configured?
       configuration.gateway_api_key.present? &&
         configuration.gateway_base_url.present?
     end
+
+    private
 
     # Per-tier memoized Gateway adapters. Cleared by reset_configuration!.
     def gateway_adapters
