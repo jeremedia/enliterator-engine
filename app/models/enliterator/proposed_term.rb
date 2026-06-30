@@ -93,5 +93,21 @@ module Enliterator
       update!(recommended_decision: nil, recommended_map_to: nil,
               recommended_rationale: nil, recommended_confidence: nil)
     end
+
+    # v0.52: after a curator correction settles a key, retire the now-stale governance
+    # signals — the held considerer recommendation (the badge) AND the monotonic
+    # "model is overruling you" counter (post_verdict_attempts, which refresh! never
+    # recomputes). BOTH this row and the counter are GLOBAL (ProposedTerm has no
+    # context_id), so only settle when the key has NO pending rows in ANY context —
+    # else a fix in one context would wipe a sibling context's still-live disagreement.
+    # nil-safe: the row may not be materialized (the /vocabulary surface doesn't run
+    # refresh!), so a missing row is simply a no-op.
+    def self.settle!(proposed_key)
+      return if Enliterator::Suggestion.pending.where(proposed_key: proposed_key).exists?
+      find_by(proposed_key: proposed_key)&.update!(
+        recommended_decision: nil, recommended_map_to: nil, recommended_rationale: nil,
+        recommended_confidence: nil, post_verdict_attempts: 0
+      )
+    end
   end
 end

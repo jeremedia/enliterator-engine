@@ -191,4 +191,20 @@ RSpec.describe Enliterator::Suggestion do
       expect(at_root).not_to include("crs_resolved", "eo_resolved")  # root reads only root
     end
   end
+
+  # v0.52: the correction methods re-adjudicate RESOLVED rows. The controller validates
+  # targets/statuses against the vocabulary; demote_key! also enforces the data-integrity
+  # invariants directly (update_all skips validations, status has no DB enum), so a
+  # programmatic caller can't write a bad status or a dangling demote-to-mapped.
+  describe "demote_key! integrity guards (defense in depth)" do
+    it "raises on a status outside mapped/rejected" do
+      expect { described_class.demote_key!("k", to_status: "approved") }
+        .to raise_error(ArgumentError, /mapped.*rejected/)
+    end
+
+    it "raises on demote-to-mapped with no target" do
+      expect { described_class.demote_key!("k", to_status: "mapped", to: nil) }
+        .to raise_error(ArgumentError, /needs a target/)
+    end
+  end
 end

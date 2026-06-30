@@ -10,6 +10,13 @@
   .auth-variants { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
   .auth-facets { margin-left: auto; display: flex; align-items: baseline; gap: var(--s2); }
   .auth-empty { color: var(--muted); font-style: italic; }
+  .ring-correct { grid-column: 1 / -1; margin-top: var(--s2); }
+  .ring-correct > summary { cursor: pointer; }
+  .correct-body { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2);
+                  padding-top: var(--s2); border-top: 1px solid var(--line); }
+  .correct-form { display: flex; gap: var(--s1); align-items: center; flex-wrap: wrap; margin: 0; }
+  .correct-form .field { width: auto; }
+  .correct-variant { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
 </style>
 
 <h1>Vocabulary <span class="subtitle">— the controlled vocabulary, as an authority file</span></h1>
@@ -55,6 +62,6 @@
     <div class="card"><span class="muted">No preferred terms yet in this context — nothing has been approved or mapped.</span></div>
   <% else %>
     <h2><%= pluralize(rings.size, "preferred term") %> <span class="subtitle">— by sprawl</span></h2>
-    <% rings.each do |ring| %><%= render "ring", ring: ring %><% end %>
+    <% rings.each do |ring| %><%= render "ring", ring: ring, canonical: @overview[:canonical] %><% end %>
   <% end %>
 <% end %>

@@ -65,6 +65,13 @@ Enliterator::Engine.routes.draw do
   # preferred terms with their UF variants, ranked by sprawl, with dumping-ground and
   # one-off-tail diagnostics. Read-only; the RESOLVED companion to the Requests queue.
   get "vocabulary", to: "authority#index", as: :vocabulary
+  # v0.52: curator corrections on the standing vocabulary — re-adjudicate RESOLVED
+  # verdicts from the surface (the verdict trio at /suggestions only touches pending).
+  post "vocabulary/reroute", to: "authority#reroute", as: :vocabulary_reroute
+  post "vocabulary/promote", to: "authority#promote", as: :vocabulary_promote
+  post "vocabulary/demote",  to: "authority#demote",  as: :vocabulary_demote
+  post "vocabulary/merge",   to: "authority#merge",   as: :vocabulary_merge
+  post "vocabulary/split",   to: "authority#split",   as: :vocabulary_split
 
   # Suggestion review (v0.7): the governed-vocabulary queue. Verdicts
   # (approve / map / reject) act per proposed_key.

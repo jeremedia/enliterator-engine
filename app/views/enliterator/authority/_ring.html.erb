@@ -1,7 +1,12 @@
 <%# v0.51: one preferred term and the UF variants folded onto it. badge-live marks a
     curator-approved term (live in the effective vocabulary); a code-canonical head that
     isn't DB-approved shows as a plain code chip. The dumping-ground chip warns when the
-    folded variants span many facets. All term names are DATA — escaped via <code>. %>
+    folded variants span many facets. All term names are DATA — escaped via <code>.
+    v0.52: a "Correct…" disclosure carries the curator corrections (reroute/promote/demote/
+    merge), tucked away so the default view stays a clean dashboard. Destructive ops
+    (demote/merge) confirm inline (vanilla onsubmit — hard rule 2, no UJS). `canonical` is
+    the legal target list passed from the surface. %>
+<% targets = canonical.reject { |t| t == ring[:term] } %>
 <div class="card auth-ring">
   <div class="ring-head">
     <code class="req-key"><%= ring[:term] %></code>
@@ -31,4 +36,49 @@
       <span class="auth-empty">no variants folded onto this term yet</span>
     <% end %>
   </div>
+
+  <details class="ring-correct">
+    <summary class="samples">Correct…</summary>
+    <div class="correct-body">
+      <% unless ring[:approved] || ring[:canonical] %>
+        <%# an unresolved target: variants point at it but it isn't a preferred term yet %>
+        <%= button_to "Promote “#{ring[:term]}” to a preferred term", vocabulary_promote_path,
+              params: { proposed_key: ring[:term] }, class: "btn btn-sm btn-affirmative" %>
+      <% end %>
+
+      <%# fold this whole ring into another preferred term (destructive — confirm) %>
+      <%= form_with url: vocabulary_merge_path, method: :post, html: { class: "correct-form",
+            onsubmit: "return confirm('Merge \"#{j ring[:term]}\" and its #{ring[:variant_count]} variant(s) into the chosen term?')" } do |f| %>
+        <%= f.hidden_field :from, value: ring[:term] %>
+        <span class="samples">merge into</span>
+        <%= f.select :into, targets, { include_blank: "choose…" }, class: "field" %>
+        <%= f.submit "Merge", class: "btn btn-sm btn-destructive" %>
+      <% end %>
+
+      <%# demote this preferred term to mapped (onto a target) or rejected (destructive — confirm) %>
+      <%= form_with url: vocabulary_demote_path, method: :post, html: { class: "correct-form",
+            onsubmit: "return confirm('Demote \"#{j ring[:term]}\"? Claims already emitted under it lose their meaning lookup.')" } do |f| %>
+        <%= f.hidden_field :proposed_key, value: ring[:term] %>
+        <span class="samples">demote</span>
+        <%= f.select :to_status, [ [ "reject", "rejected" ], [ "map onto…", "mapped" ] ], {}, class: "field" %>
+        <%= f.select :to, targets, { include_blank: "(target, if mapping)" }, class: "field" %>
+        <%= f.submit "Demote", class: "btn btn-sm btn-destructive" %>
+      <% end %>
+
+      <% if ring[:variants].any? %>
+        <div class="samples" style="margin-top:var(--s1)">re-route a variant onto a different preferred term (peels it off — the UI form of split):</div>
+        <% ring[:variants].each do |v| %>
+          <div class="correct-variant">
+            <code><%= v %></code>
+            <%= form_with url: vocabulary_reroute_path, method: :post, html: { class: "correct-form" } do |f| %>
+              <%= f.hidden_field :proposed_key, value: v %>
+              <%= f.select :to, targets, { include_blank: "re-route to…" }, class: "field" %>
+              <%= f.submit "Re-route", class: "btn btn-sm" %>
+            <% end %>
+            <%= button_to "Promote", vocabulary_promote_path, params: { proposed_key: v }, class: "btn btn-sm" %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </details>
 </div>
