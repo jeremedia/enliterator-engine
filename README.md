@@ -167,8 +167,10 @@ mount Enliterator::Engine => "/enliterator"
   term a facet's contract doesn't cover, a curator approves it, maps it onto an existing key
   (a synonym), or rejects it. The ontology tends itself. The queue ranks by accumulated **pressure**
   and flags **resurged** keys (re-proposed after a verdict). The **"Consider all requests"** button
-  (or `bin/rails enliterator:consider`) runs the considerer agent — it reads the whole field,
-  auto-applies the safe verdicts (synonym maps, confident rejects), and leaves approvals for you.
+  (or `bin/rails enliterator:consider`) runs the considerer agent — it reads the field in batches
+  (`considerer_batch_size`, so a large queue never overruns the LLM timeout), auto-applies the safe
+  verdicts (synonym maps, confident rejects), and leaves approvals for you. The web run is **async**
+  (v0.49): the button returns immediately and a live monitor polls until it converges — no blocked request.
   In **v0.9** the loop *converges* (see below): an approved key goes **live** in the effective
   contract immediately (the diff lets you codify it permanently), and a re-proposal of an
   already-resolved key is **suppressed** — counted under "Re-proposed after a verdict" rather than

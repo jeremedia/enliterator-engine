@@ -11,7 +11,9 @@ module Enliterator
   class SuggestionsController < ApplicationController
     def index
       Enliterator::ConsidererRun.reap_orphans!
-      @running      = Enliterator::ConsidererRun.unfinished.order(:started_at).last
+      @running      = Enliterator::ConsidererRun.unfinished
+                        .where("started_at > ?", Enliterator::ConsidererRun::OVERLAP_WINDOW.ago)
+                        .order(:started_at).last
       Enliterator::ProposedTerm.refresh!                            # materialize pressure
       @terms        = scoped_terms                                  # pressure-ranked, current scope
       @canonical    = canonical_keys                                # legal map targets in this context
@@ -46,7 +48,7 @@ module Enliterator
         finished:      row.finished?,
         error:         row.error,
         summary:       row.finished? ? row.summary : nil,
-        stalled:       row.pulse_at.present? && row.pulse_at < Enliterator::ConsidererRun::STALL_AFTER.ago
+        stalled:       !row.finished? && (row.pulse_at || row.started_at) < Enliterator::ConsidererRun::STALL_AFTER.ago
       }
     end
 
