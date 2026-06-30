@@ -2,8 +2,14 @@
     card: a header line (key + pressure + provenance), then evidence given room
     to breathe (rationale, example, the considerer's verdict), then the action
     group aligned right (Approve · Map · Reject). Components (.card, .chip,
-    .badge-live, .btn*, .field, .verdict) come from the layout. %>
+    .badge-live, .btn*, .field, .verdict) come from the layout.
+    v0.48: .pulse-* mirror the heartbeat monitor (inline — hard rule 2). %>
 <style>
+  .pulse-track { height: 10px; background: var(--line); border-radius: 6px; overflow: hidden; margin: .5rem 0 .3rem; }
+  .pulse-fill  { height: 100%; width: 0%; background: var(--accent); border-radius: 6px; transition: width .6s ease; }
+  .pulse-stats { display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: baseline; }
+  .pulse-banner { padding: .5rem .8rem; border-radius: 8px; margin-top: .6rem; font-size: .9rem; display: none; }
+  .pulse-banner.warn-bg { background: var(--warn-soft); color: var(--warn); display: block; }
   .request { display: grid; grid-template-columns: 1fr auto; gap: var(--s2) var(--s4); align-items: start; }
   .request .req-head { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); }
   .request .req-key { font-size: 1.02rem; }
@@ -33,11 +39,30 @@
   <strong><%= @pending %></strong> pending · <%= @resolved %> resolved.
 </p>
 
-<div class="strip" style="margin:1rem 0">
-  <%= button_to "Consider all requests →", suggestions_consider_path, class: "btn btn-affirmative",
-        data: { turbo: false } %>
-  <span class="samples">Runs the agent across all <%= @terms.size %> open key<%= "s" if @terms.size != 1 %>.</span>
-</div>
+<% if @running %>
+  <%# ── monitor mode — a considerer run is live; poll it ────────────────── %>
+  <div class="card" id="monitor"
+       data-pulse-url="<%= suggestions_consider_pulse_path(@running.id) %>"
+       data-planned="<%= @running.planned_count.to_i %>">
+    <h2 style="margin-top:0">Run #<%= @running.id %> <span class="chip tier">considering</span>
+      <span class="subtitle">— started <%= @running.started_at.strftime("%H:%M:%S") %></span></h2>
+    <div class="pulse-track"><div class="pulse-fill" id="bar"></div></div>
+    <div class="pulse-stats">
+      <span><strong id="done-count">0</strong>
+        <span class="muted">of <span id="total-count"><%= @running.planned_count.to_i %></span> term(s)</span>
+      </span>
+      <span class="muted samples" id="phase-label"></span>
+    </div>
+    <div class="pulse-banner" id="banner"></div>
+    <div id="finish"></div>
+  </div>
+<% else %>
+  <div class="strip" style="margin:1rem 0">
+    <%= button_to "Consider all requests →", suggestions_consider_path, class: "btn btn-affirmative",
+          data: { turbo: false } %>
+    <span class="samples">Runs the agent across all <%= @terms.size %> open key<%= "s" if @terms.size != 1 %>.</span>
+  </div>
+<% end %>
 
 <% if @terms.any? %>
   <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure</h2>
@@ -150,4 +175,78 @@
       <% end %>
     </table>
   </div>
+<% end %>
+
+<% if @running %>
+<%# v0.48: inline poll loop — mirrors heartbeat/index.html.erb's pattern exactly.
+    ALL inline (hard rule 2: no asset pipeline / CDN / gems). %>
+<script>
+(function () {
+  var el       = document.getElementById("monitor");
+  var pulseUrl = el.getAttribute("data-pulse-url");
+  var planned  = parseInt(el.getAttribute("data-planned"), 10) || 0;
+  var bar      = document.getElementById("bar");
+  var doneEl   = document.getElementById("done-count");
+  var totalEl  = document.getElementById("total-count");
+  var phaseEl  = document.getElementById("phase-label");
+  var banner   = document.getElementById("banner");
+  var finish   = document.getElementById("finish");
+  var failures = 0;
+
+  function render(p) {
+    failures = 0;
+    banner.className = "pulse-banner";   // clear any stall/unreachable banner
+
+    var done  = p.done_count  || 0;
+    var total = p.planned_count || planned;
+    doneEl.textContent  = done;
+    totalEl.textContent = total;
+    bar.style.width = total > 0 ? Math.min(100, Math.round(done / total * 100)) + "%" : "0%";
+
+    if (p.finished) {
+      phaseEl.textContent = "";
+      bar.style.width = "100%";
+      var html = p.error
+        ? '<div class="pulse-banner warn-bg" style="display:block">Run aborted — ' + p.error + '</div>'
+        : '<div class="muted" style="margin-top:.5rem"><strong>Done.</strong>' +
+          (p.summary ? ' Considered ' + (p.summary.considered || 0) + ' term(s): ' +
+            'auto-mapped ' + (p.summary.auto_mapped || 0) + ', auto-rejected ' +
+            (p.summary.auto_rejected || 0) + ', ' +
+            (p.summary.approves_recommended || 0) + ' approval(s) recommended.' : '') +
+          '</div>';
+      finish.innerHTML = html;
+      setTimeout(function () { location.reload(); }, 3000);
+      return;
+    }
+
+    // Stall check — keyed to pulse_at, fires in every phase.
+    if (p.stalled) {
+      banner.className = "pulse-banner warn-bg";
+      banner.textContent = "No sign of life for several minutes" +
+        (p.phase ? " (last seen: " + p.phase + ")" : "") +
+        " — the run may have crashed (server restart?). Reload to check.";
+    } else {
+      phaseEl.textContent = p.phase ? "running " + p.phase + "…" : "";
+    }
+
+    setTimeout(function tick() { pollOnce(); }, 2000);
+  }
+
+  function pollOnce() {
+    fetch(pulseUrl, { headers: { "Accept": "application/json" } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(render)
+      .catch(function () {
+        failures += 1;
+        if (failures >= 5) {
+          banner.className = "pulse-banner warn-bg";
+          banner.textContent = "Server unreachable — still trying. If it restarted, the run died with it.";
+        }
+        setTimeout(function tick() { pollOnce(); }, 2000);
+      });
+  }
+
+  pollOnce();
+})();
+</script>
 <% end %>

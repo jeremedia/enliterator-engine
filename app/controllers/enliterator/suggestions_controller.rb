@@ -10,6 +10,8 @@ module Enliterator
   # the entire pre-v0.13 universe, so flat installs are unchanged.
   class SuggestionsController < ApplicationController
     def index
+      Enliterator::ConsidererRun.reap_orphans!
+      @running      = Enliterator::ConsidererRun.unfinished.order(:started_at).last
       Enliterator::ProposedTerm.refresh!                            # materialize pressure
       @terms        = scoped_terms                                  # pressure-ranked, current scope
       @canonical    = canonical_keys                                # legal map targets in this context
@@ -21,13 +23,31 @@ module Enliterator
       @verdicts     = verdicts_for(@reproposed)                    # {proposed_key => {status:, mapped_to:}}
     end
 
-    # Run the considerer over the current scope's open field — it auto-applies the
-    # safe verdicts (maps + confident rejects) and holds approves for ratification.
+    # Open an async ConsidererRun and redirect immediately — no more blocking.
+    # The monitor on the index page polls /suggestions/consider/pulse/:id until done.
     def consider
-      s = Enliterator::Considerer.new(context: current_context).consider!
-      redirect_to suggestions_path,
-        notice: "Considered #{s[:considered]}: auto-mapped #{s[:auto_mapped]}, auto-rejected #{s[:auto_rejected]}, " \
-                "#{s[:approves_recommended]} approval(s) recommended, #{s[:held]} held."
+      run = Enliterator::ConsidererRun.open!(context: current_context)
+      run.execute_async!
+      redirect_to suggestions_path, notice: "Considering… (run ##{run.id})"
+    rescue Enliterator::ConsidererRun::Overlap => e
+      redirect_to suggestions_path, alert: e.message
+    end
+
+    # JSON pulse for the live monitor. Mirrors heartbeat#pulse exactly.
+    def consider_pulse
+      row = Enliterator::ConsidererRun.find(params[:id])
+      row.reap! if row.orphaned?
+      render json: {
+        id:            row.id,
+        status:        row.status,
+        phase:         row.phase,
+        planned_count: row.planned_count,
+        done_count:    row.done_count,
+        finished:      row.finished?,
+        error:         row.error,
+        summary:       row.finished? ? row.summary : nil,
+        stalled:       row.pulse_at.present? && row.pulse_at < Enliterator::ConsidererRun::STALL_AFTER.ago
+      }
     end
 
     def verdict

@@ -56,7 +56,7 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     expect(Enliterator::Suggestion.pending.count).to eq(2)
   end
 
-  describe "the considerer (v0.8)" do
+  describe "the considerer (v0.8 — v0.48: now async)" do
     # Resolves via configuration.llm_adapter (gateway unconfigured in tests).
     class ReqSlateStub
       def model_id = "stub"
@@ -69,13 +69,24 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     end
     before { Enliterator.configure { |c| c.llm_adapter = ReqSlateStub.new } }
 
-    it "POST consider auto-applies the map and holds the approve for ratification" do
+    it "POST consider opens a run, applies verdicts (via inline execute! stub), redirects with async notice" do
+      # Run execute! inline so we can verify the consider results synchronously in the test.
+      allow_any_instance_of(Enliterator::ConsidererRun).to receive(:execute_async!) do |run|
+        run.execute!
+        Thread.new {}
+      end
+
       post "/enliterator/suggestions/consider"
       expect(response).to redirect_to("/enliterator/suggestions")
+
+      # The considerer work ran synchronously via the stub — verify its effect.
       expect(Enliterator::Suggestion.find_by(proposed_key: "author").status).to eq("mapped")
       expect(Enliterator::ProposedTerm.find_by(proposed_key: "keywords").recommended_decision).to eq("approve")
+
       follow_redirect!
-      expect(response.body).to include("Considered").and include("keywords")
+      # v0.48: the notice says "Considering… (run #N)" — the keyword is still in the pending list
+      # (the async run hasn't reloaded the page yet) so it still appears in the page body.
+      expect(response.body).to include("Considering").and include("keywords")
     end
   end
 

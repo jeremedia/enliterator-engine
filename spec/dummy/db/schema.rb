@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_29_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -461,6 +461,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
     t.index ["superseded_by_id"], name: "idx_enliterator_claims_on_superseded_by_id"
     t.index ["tendable_type", "tendable_id", "context_id", "key"], name: "idx_enliterator_claims_on_tendable_context_key"
     t.index ["tendable_type", "tendable_id", "key"], name: "idx_enliterator_claims_on_tendable_and_key"
+  end
+
+  create_table "enliterator_considerer_runs", force: :cascade do |t|
+    t.integer "batch_size"
+    t.bigint "context_id"
+    t.datetime "created_at", null: false
+    t.integer "done_count", default: 0
+    t.text "error"
+    t.datetime "finished_at"
+    t.string "phase"
+    t.integer "planned_count"
+    t.datetime "pulse_at"
+    t.datetime "started_at"
+    t.string "status"
+    t.jsonb "summary", default: {}
+    t.datetime "updated_at", null: false
+    t.index ["finished_at"], name: "index_enliterator_considerer_runs_on_finished_at"
   end
 
   create_table "enliterator_context_memberships", force: :cascade do |t|

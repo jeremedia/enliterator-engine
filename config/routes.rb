@@ -66,7 +66,9 @@ Enliterator::Engine.routes.draw do
   get  "suggestions",          to: "suggestions#index",    as: :suggestions
   post "suggestions/verdict",  to: "suggestions#verdict",  as: :suggestions_verdict
   # v0.8: run the considerer over the whole open field (auto-apply safe verdicts).
-  post "suggestions/consider", to: "suggestions#consider", as: :suggestions_consider
+  # v0.48: now ASYNC — opens a ConsidererRun and redirects; the monitor polls pulse.
+  post "suggestions/consider",          to: "suggestions#consider",       as: :suggestions_consider
+  get  "suggestions/consider/pulse/:id", to: "suggestions#consider_pulse", as: :suggestions_consider_pulse
 
   # Desks (v0.37): edit each reference desk's persona — versioned, rollback-able.
   # Always drawn; DesksController 404s when config.chat_persona_editing is off
