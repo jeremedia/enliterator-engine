@@ -1,0 +1,34 @@
+<%# v0.51: one preferred term and the UF variants folded onto it. badge-live marks a
+    curator-approved term (live in the effective vocabulary); a code-canonical head that
+    isn't DB-approved shows as a plain code chip. The dumping-ground chip warns when the
+    folded variants span many facets. All term names are DATA — escaped via <code>. %>
+<div class="card auth-ring">
+  <div class="ring-head">
+    <code class="req-key"><%= ring[:term] %></code>
+    <% if ring[:approved] %>
+      <span class="badge-live" title="curator-approved — live in the effective vocabulary">preferred</span>
+    <% elsif ring[:canonical] %>
+      <span class="chip tier" title="defined in the staffing policy (code term)">code term</span>
+    <% else %>
+      <span class="chip warn" title="variants point here but it is not a preferred term">unresolved target</span>
+    <% end %>
+    <% if ring[:dumping_ground] %>
+      <span class="chip warn" title="folds variants from many facets — may be absorbing unrelated terms">⚠ dumping ground</span>
+    <% end %>
+    <span class="auth-facets">
+      <% if ring[:facets].any? %><span class="samples"><%= ring[:facets].join(", ") %></span><% end %>
+      <span class="big" style="font-size:1.15rem"><%= ring[:variant_count] %></span>
+      <span class="samples">variant<%= "s" if ring[:variant_count] != 1 %></span>
+    </span>
+  </div>
+
+  <div>
+    <% if ring[:variants].any? %>
+      <div class="auth-variants">
+        <% ring[:variants].each do |v| %><span class="chip"><%= v %></span><% end %>
+      </div>
+    <% else %>
+      <span class="auth-empty">no variants folded onto this term yet</span>
+    <% end %>
+  </div>
+</div>

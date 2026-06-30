@@ -248,6 +248,25 @@ namespace :enliterator do
     end
   end
 
+  desc "Vocabulary-health metrics: proliferation ratio + one-off tail + biggest rings. CONTEXT=key"
+  task vocab_metrics: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:vocab_metrics] #{msg}") : puts(msg) }
+    ctx = ENV["CONTEXT"].present? ? Enliterator::Context.find_by_key!(ENV["CONTEXT"]) : nil
+    o   = Enliterator::Authority.new(context: ctx).overview
+    m   = o[:metrics]
+    log.call("vocabulary health#{ctx ? " in #{ctx.key}" : ''}:")
+    log.call("  distinct proposed keys: #{m[:distinct_keys]}")
+    log.call("  preferred terms:        #{m[:preferred_terms]}")
+    log.call("  UF variants:            #{m[:variant_keys]}")
+    log.call("  proliferation ratio:    #{m[:proliferation] || '—'} (variants per preferred term)")
+    log.call("  one-off tail:           #{m[:one_off_pct] || '—'}% (#{m[:one_off_keys]}/#{m[:distinct_keys]} keys on 1 record)")
+    log.call("  biggest rings:")
+    o[:rings].first(10).each do |r|
+      log.call("    #{r[:term]}: #{r[:variant_count]} variant(s)#{r[:dumping_ground] ? ' ⚠ dumping ground' : ''}")
+    end
+  end
+
   # Run the considerer over the open vocabulary requests: refresh pressure, ask the
   # agent across the whole field, auto-apply the safe verdicts (maps + confident
   # rejects), hold approves for ratification. Wire this AFTER enliterator:tend in

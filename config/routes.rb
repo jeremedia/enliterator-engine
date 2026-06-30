@@ -61,6 +61,11 @@ Enliterator::Engine.routes.draw do
   get  "review",         to: "review#index",   as: :review
   post "review/verdict", to: "review#verdict", as: :review_verdict
 
+  # The authority file (v0.51): the standing controlled vocabulary as a thesaurus —
+  # preferred terms with their UF variants, ranked by sprawl, with dumping-ground and
+  # one-off-tail diagnostics. Read-only; the RESOLVED companion to the Requests queue.
+  get "vocabulary", to: "authority#index", as: :vocabulary
+
   # Suggestion review (v0.7): the governed-vocabulary queue. Verdicts
   # (approve / map / reject) act per proposed_key.
   get  "suggestions",          to: "suggestions#index",    as: :suggestions

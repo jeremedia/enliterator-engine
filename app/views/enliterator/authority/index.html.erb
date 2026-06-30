@@ -1,0 +1,60 @@
+<%# v0.51: the authority file — the standing controlled vocabulary as a thesaurus.
+    Each ring is a PREFERRED term with the UF variants folded onto it, ranked by
+    sprawl; the strip up top is the proliferation diagnostics (the one-off tail is
+    the signal that readers are coining per-record terms instead of reusing the
+    vocabulary). The RESOLVED companion to the Requests queue. Components
+    (.card, .chip, .badge-live, .strip, .big) come from the layout (hard rule 2). %>
+<style>
+  .auth-ring { display: grid; grid-template-columns: 1fr auto; gap: var(--s2) var(--s4); align-items: start; }
+  .auth-ring .ring-head { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); }
+  .auth-variants { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
+  .auth-facets { margin-left: auto; display: flex; align-items: baseline; gap: var(--s2); }
+  .auth-empty { color: var(--muted); font-style: italic; }
+</style>
+
+<h1>Vocabulary <span class="subtitle">— the controlled vocabulary, as an authority file</span></h1>
+<p class="muted">
+  The standing, <em>resolved</em> vocabulary: each <strong>preferred term</strong> with the
+  variant terms (UF references) folded onto it, ranked by how many variants it has gathered. This is
+  where the <%= link_to "Requests", suggestions_path %> queue's decisions land — and where you can
+  see the shape of the whole: a term absorbing variants from many facets (a <em>dumping ground</em>),
+  or a long <em>one-off tail</em> of terms seen on a single record (readers coining instead of reusing).
+</p>
+
+<% unless @adopted %>
+  <div class="card">
+    <p><strong>No vocabulary yet.</strong></p>
+    <p class="muted">
+      The authority file fills as the tending loop proposes terms and a curator resolves them. Run a
+      cycle from the <%= link_to "heartbeat", heartbeat_path %>, then review proposals at
+      <%= link_to "Requests", suggestions_path %> — approved terms become preferred, mapped ones become
+      UF variants, and both appear here.
+    </p>
+  </div>
+<% else %>
+  <% m = @overview[:metrics] %>
+  <div class="card" style="margin-bottom: var(--s4)">
+    <div class="strip">
+      <span><span class="big"><%= number_with_delimiter(m[:preferred_terms]) %></span>
+        <span class="muted samples">preferred terms</span></span>
+      <span><span class="big"><%= number_with_delimiter(m[:variant_keys]) %></span>
+        <span class="muted samples">UF variants</span></span>
+      <span><span class="big"><%= m[:proliferation] || "—" %></span>
+        <span class="muted samples">variants per preferred term</span></span>
+      <span><span class="big"><%= m[:one_off_pct] ? "#{m[:one_off_pct]}%" : "—" %></span>
+        <span class="muted samples"><%= number_with_delimiter(m[:one_off_keys]) %> of <%= number_with_delimiter(m[:distinct_keys]) %> keys seen on 1 record</span></span>
+    </div>
+    <p class="muted samples" style="margin: .4rem 0 0">
+      A high one-off share or a high variants-per-term ratio means the vocabulary is fragmenting faster
+      than it converges — the readers are coining where they could be reusing.
+    </p>
+  </div>
+
+  <% rings = @overview[:rings] %>
+  <% if rings.empty? %>
+    <div class="card"><span class="muted">No preferred terms yet in this context — nothing has been approved or mapped.</span></div>
+  <% else %>
+    <h2><%= pluralize(rings.size, "preferred term") %> <span class="subtitle">— by sprawl</span></h2>
+    <% rings.each do |ring| %><%= render "ring", ring: ring %><% end %>
+  <% end %>
+<% end %>
