@@ -169,7 +169,7 @@ RSpec.describe Enliterator::Considerer do
       )
     end
 
-    it "persists slice-1 verdicts even when the adapter raises on slice 2 (partial-progress durability)" do
+    it "persists first-batch verdicts even when the adapter raises on the second batch (partial-progress durability)" do
       raising_spy = RaisingOnSecondLLM.new(per_call_recs[0])
       expect { described_class.new(llm: raising_spy).consider! }.to raise_error("simulated timeout")
       # Slice 1 (author→map, extra1→reject) must already be committed to the DB

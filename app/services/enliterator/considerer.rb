@@ -51,7 +51,7 @@ module Enliterator
     # Accepts an optional block that is yielded after each batch completes:
     #   consider! { |done, total| ... }
     # No-block callers are byte-identical in behavior.
-    def consider!(&block)
+    def consider!
       Enliterator::ProposedTerm.refresh!
       terms = scoped_terms
       return empty_summary if terms.empty?
@@ -69,7 +69,7 @@ module Enliterator
           tags:      [ "enliterator", "considerer" ]
         )
         batch_summary = apply!(Array(result["recommendations"] || result[:recommendations]), canonical, slice)
-        aggregate.each_key { |k| aggregate[k] += batch_summary[k] }
+        aggregate.each_key { |k| aggregate[k] += (batch_summary[k] || 0) }
         done += slice.size
         yield(done, terms.size) if block_given?
       end
