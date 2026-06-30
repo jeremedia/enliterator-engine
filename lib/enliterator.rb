@@ -82,6 +82,9 @@ module Enliterator
     attr_accessor :considerer_autonomy
     # Min confidence for the considerer to AUTO-APPLY a map/reject (else held).
     attr_accessor :considerer_min_confidence
+    # Max terms per decide() call. Default 25 keeps each call well under the
+    # 180s gateway_timeout even at scale (was: one call over the whole field).
+    attr_accessor :considerer_batch_size
 
     # ---- v0.9 Convergence -------------------------------------------------
 
@@ -283,6 +286,7 @@ module Enliterator
       @considerer_tier = nil
       @considerer_autonomy = :auto_safe
       @considerer_min_confidence = 0.75
+      @considerer_batch_size = 25
       @apply_approved_keys = true
       @read_time_warrant = nil
       @name_authority_keys = []

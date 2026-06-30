@@ -45,21 +45,36 @@ module Enliterator
       @context        = context
     end
 
-    # Refresh pressure, ask the agent over the current scope's open field, apply
-    # per autonomy. @return [Hash] summary counts.
-    def consider!
+    # Refresh pressure, ask the agent over the current scope's open field in
+    # batches, apply per autonomy. Returns aggregate summary counts.
+    #
+    # Accepts an optional block that is yielded after each batch completes:
+    #   consider! { |done, total| ... }
+    # No-block callers are byte-identical in behavior.
+    def consider!(&block)
       Enliterator::ProposedTerm.refresh!
       terms = scoped_terms
       return empty_summary if terms.empty?
 
-      canonical = canonical_keys
-      result = adapter.decide(
-        messages:  messages_for(terms, canonical),
-        schema:    RECOMMENDATION_SCHEMA,
-        tool_name: TOOL_NAME,
-        tags:      [ "enliterator", "considerer" ]
-      )
-      apply!(Array(result["recommendations"] || result[:recommendations]), canonical, terms)
+      canonical   = canonical_keys
+      batch_size  = Enliterator.configuration.considerer_batch_size
+      aggregate   = empty_summary
+      done        = 0
+
+      terms.each_slice(batch_size) do |slice|
+        result = adapter.decide(
+          messages:  messages_for(slice, canonical),
+          schema:    RECOMMENDATION_SCHEMA,
+          tool_name: TOOL_NAME,
+          tags:      [ "enliterator", "considerer" ]
+        )
+        batch_summary = apply!(Array(result["recommendations"] || result[:recommendations]), canonical, slice)
+        aggregate.each_key { |k| aggregate[k] += batch_summary[k] }
+        done += slice.size
+        yield(done, terms.size) if block_given?
+      end
+
+      aggregate
     end
 
     private
