@@ -68,6 +68,15 @@
   <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure</h2>
   <% @terms.each do |t| %>
     <% key = t.proposed_key %>
+    <%# v0.50: the considerer's recommended map target, and whether to PRE-FILL the dropdown with it.
+        rec_target  = the target only when the rec is a map.
+        rec_pending = rec target exists but isn't a legal canonical target (it's itself a pending
+                      sibling) → show a hint, don't pre-select a value that isn't an option.
+        prefill     = pre-select ONLY a legal target whose confidence cleared the auto-apply floor —
+                      below the floor the considerer declined to apply, so we show but don't pre-pick. %>
+    <% rec_target  = t.recommended_decision == "map" ? t.recommended_map_to.presence : nil %>
+    <% rec_pending = rec_target && !@canonical.include?(rec_target) %>
+    <% prefill     = (rec_target if rec_target && @canonical.include?(rec_target) && t.recommended_confidence.to_f >= @min_conf) %>
     <div class="card request">
       <div class="req-head">
         <code class="req-key"><%= key %></code>
@@ -94,6 +103,14 @@
               <%= "· #{(t.recommended_confidence.to_f * 100).round}%" if t.recommended_confidence %>
             </span>
             <span class="samples considerer-rationale"><%= truncate(t.recommended_rationale.to_s, length: 160) %></span>
+            <% if rec_pending %>
+              <%# v0.50: the recommended target is itself a pending proposal, not yet a preferred
+                  term — so it can't be a legal USE target and isn't in the dropdown. Tell the
+                  curator why, and what to do, instead of leaving a silently blank select. %>
+              <div class="samples warn" style="margin-top:.2rem">
+                recommended target <code><%= rec_target %></code> is still pending — approve it first to map onto it.
+              </div>
+            <% end %>
           <% else %>
             <span class="samples">considerer: <span class="muted">—</span></span>
           <% end %>
@@ -106,7 +123,7 @@
         <%= form_with url: suggestions_verdict_path, method: :post, html: { class: "verdict-map" } do |f| %>
           <%= f.hidden_field :proposed_key, value: key %>
           <%= f.hidden_field :decision, value: "map" %>
-          <%= f.select :mapped_to, @canonical, { selected: t.recommended_map_to, include_blank: "map onto…" }, class: "field" %>
+          <%= f.select :mapped_to, @canonical, { selected: prefill, include_blank: "map onto…" }, class: "field" %>
           <%= f.submit "Map", class: "btn" %>
         <% end %>
         <%= button_to "Reject", suggestions_verdict_path,

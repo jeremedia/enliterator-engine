@@ -17,6 +17,13 @@ module Enliterator
       Enliterator::ProposedTerm.refresh!                            # materialize pressure
       @terms        = scoped_terms                                  # pressure-ranked, current scope
       @canonical    = canonical_keys                                # legal map targets in this context
+      # v0.50: the auto-apply floor, so the Map dropdown only PRE-FILLS the considerer's
+      # recommended target when the considerer was confident enough to have auto-applied it
+      # itself. Below the floor the rec is shown but NOT pre-selected — clicking Map then
+      # ratifies a deliberate choice, not a guess the considerer declined. `|| 0.75` mirrors
+      # the considerer's own guard (considerer.rb), since the accessor is a bare attr a host
+      # could nil (and `>= nil` raises).
+      @min_conf     = Enliterator.configuration.considerer_min_confidence || 0.75
       @additions    = Enliterator::Suggestion.where(context_id: current_context&.id).contract_additions
       @synonyms     = Enliterator::Suggestion.where(context_id: current_context&.id).synonyms
       @pending      = Enliterator::Suggestion.pending.where(context_id: current_context&.id).count
@@ -72,7 +79,14 @@ module Enliterator
         end
 
       verb = params[:decision] == "map" ? "mapped \"#{key}\" → \"#{params[:mapped_to]}\"" : "#{params[:decision]}d \"#{key}\""
-      redirect_to suggestions_path, notice: "#{verb} (#{n} record#{'s' if n != 1})."
+      # v0.50: a 0-row update is a no-op (key already resolved, wrong context, or a stale
+      # double-submit) — surface it as an ALERT, not a green success notice (rule 3: no
+      # silent failure). `update_all` returns the affected-row count.
+      if n.zero?
+        redirect_to suggestions_path, alert: "No pending \"#{key}\" in this context — nothing to #{params[:decision]} (already resolved, or wrong context?)."
+      else
+        redirect_to suggestions_path, notice: "#{verb} (#{n} record#{'s' if n != 1})."
+      end
     end
 
     private

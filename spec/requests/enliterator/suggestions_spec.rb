@@ -97,6 +97,45 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     expect(response.body.index("author")).to be < response.body.index("keywords")
   end
 
+  describe "v0.50 — pre-fill gating + actionable no-op (UI traps)" do
+    # The Map dropdown pre-selects the considerer's target ONLY when it is a legal canonical
+    # target AND confident enough that the considerer would have auto-applied it (floor 0.75).
+    def proposed_with_rec(key, map_to:, confidence:)
+      Enliterator::ProposedTerm.create!(
+        proposed_key: key, recommended_decision: "map",
+        recommended_map_to: map_to, recommended_confidence: confidence, recommended_rationale: "rec"
+      )
+    end
+
+    it "pre-fills the Map target when the rec is canonical AND clears the floor" do
+      proposed_with_rec("author", map_to: "authored_by", confidence: 0.95)
+      get "/enliterator/suggestions"
+      # authored_by is a code term (canonical) and 0.95 >= 0.75 → pre-selected
+      expect(response.body).to match(/<option selected[^>]*>authored_by<\/option>/)
+    end
+
+    it "does NOT pre-fill a below-floor rec, but still shows it" do
+      proposed_with_rec("author", map_to: "authored_by", confidence: 0.50)
+      get "/enliterator/suggestions"
+      expect(response.body).to include("· 50%")                                      # rec is shown
+      expect(response.body).not_to match(/<option selected[^>]*>authored_by<\/option>/)  # not pre-picked
+    end
+
+    it "shows a pending-sibling hint when the rec target isn't yet canonical" do
+      proposed_with_rec("author", map_to: "topics", confidence: 0.95)  # topics: neither code nor approved
+      get "/enliterator/suggestions"
+      expect(response.body).to include("still pending").and include("approve it first")
+      expect(response.body).not_to match(/<option selected[^>]*>topics<\/option>/)
+    end
+
+    it "a 0-row verdict alerts instead of a green success notice (rule 3)" do
+      post "/enliterator/suggestions/verdict", params: { proposed_key: "ghost-key", decision: "approve" }
+      expect(response).to redirect_to("/enliterator/suggestions")
+      expect(flash[:alert]).to be_present
+      expect(flash[:notice]).to be_blank
+    end
+  end
+
   describe "convergence surfaces (v0.9)" do
     it "renders the 'Re-proposed after a verdict' panel for keys the model keeps re-asking" do
       Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "thematic_focus", rationale: "r", status: "mapped", mapped_to: "summary")
