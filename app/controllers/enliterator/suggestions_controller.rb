@@ -73,6 +73,12 @@ module Enliterator
         when "map"
           target = params[:mapped_to].to_s
           return redirect_to(suggestions_path, alert: "Pick a key to map \"#{key}\" onto.") if target.blank?
+          # v0.53: the map target is now a free-text type-ahead (datalist), so validate it
+          # against the effective vocabulary — a typo'd target would write a USE-reference
+          # pointing nowhere (rule 3). @canonical isn't set on this action; recompute.
+          unless canonical_keys.include?(target)
+            return redirect_to(suggestions_path, alert: "\"#{target}\" is not a preferred term — pick one from the list.")
+          end
           Enliterator::Suggestion.map_key!(key, to: target, note: note, context: current_context)
         else
           return redirect_to(suggestions_path, alert: "Unknown decision: #{params[:decision].inspect}.")

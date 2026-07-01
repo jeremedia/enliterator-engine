@@ -97,35 +97,56 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     expect(response.body.index("author")).to be < response.body.index("keywords")
   end
 
-  describe "v0.50 — pre-fill gating + actionable no-op (UI traps)" do
-    # The Map dropdown pre-selects the considerer's target ONLY when it is a legal canonical
-    # target AND confident enough that the considerer would have auto-applied it (floor 0.75).
-    def proposed_with_rec(key, map_to:, confidence:)
+  describe "v0.53 — reviewer-flow-first cards (recommendation-led, pre-filled, type-ahead)" do
+    def proposed_with_rec(key, decision: "map", map_to: nil, confidence: 0.95)
       Enliterator::ProposedTerm.create!(
-        proposed_key: key, recommended_decision: "map",
+        proposed_key: key, recommended_decision: decision,
         recommended_map_to: map_to, recommended_confidence: confidence, recommended_rationale: "rec"
       )
     end
+    # the Map target is a type-ahead input over a shared datalist; a pre-filled input carries
+    # name="mapped_to" ... value="<term>". (value="<term>" also appears on datalist <option>s,
+    # so we match against the INPUT specifically.)
+    def prefilled?(body, term) = body.match?(/name="mapped_to"[^>]*value="#{Regexp.escape(term)}"/)
 
-    it "pre-fills the Map target when the rec is canonical AND clears the floor" do
+    it "always pre-fills a canonical map target — above the floor" do
       proposed_with_rec("author", map_to: "authored_by", confidence: 0.95)
       get "/enliterator/suggestions"
-      # authored_by is a code term (canonical) and 0.95 >= 0.75 → pre-selected
-      expect(response.body).to match(/<option selected[^>]*>authored_by<\/option>/)
+      expect(prefilled?(response.body, "authored_by")).to be(true)
+      expect(response.body).to include("rec-map")   # the Map action leads
     end
 
-    it "does NOT pre-fill a below-floor rec, but still shows it" do
+    it "ALSO pre-fills below the floor, but flags it low-confidence (v0.50 gate removed)" do
       proposed_with_rec("author", map_to: "authored_by", confidence: 0.50)
       get "/enliterator/suggestions"
-      expect(response.body).to include("· 50%")                                      # rec is shown
-      expect(response.body).not_to match(/<option selected[^>]*>authored_by<\/option>/)  # not pre-picked
+      expect(prefilled?(response.body, "authored_by")).to be(true)   # now pre-filled
+      expect(response.body).to include("· 50%").and include("low confidence")  # but marked
     end
 
-    it "shows a pending-sibling hint when the rec target isn't yet canonical" do
-      proposed_with_rec("author", map_to: "topics", confidence: 0.95)  # topics: neither code nor approved
+    it "renders a shared type-ahead datalist of the preferred vocabulary" do
+      proposed_with_rec("author", map_to: "authored_by")
+      get "/enliterator/suggestions"
+      expect(response.body).to include('<datalist id="canonical-terms"')
+      expect(response.body).to include('<option value="authored_by">')
+    end
+
+    it "leads with Approve when the recommendation is approve" do
+      proposed_with_rec("author", decision: "approve")
+      get "/enliterator/suggestions"
+      expect(response.body).to include("rec-approve")
+    end
+
+    it "shows a pending-sibling hint (and no pre-fill) when the target isn't yet canonical" do
+      proposed_with_rec("author", map_to: "topics", confidence: 0.95)   # topics: not a preferred term
       get "/enliterator/suggestions"
       expect(response.body).to include("still pending").and include("approve it first")
-      expect(response.body).not_to match(/<option selected[^>]*>topics<\/option>/)
+      expect(prefilled?(response.body, "topics")).to be(false)
+    end
+
+    it "map onto a non-canonical target alerts and changes nothing (free-text guard)" do
+      post "/enliterator/suggestions/verdict", params: { proposed_key: "author", decision: "map", mapped_to: "not_a_term" }
+      expect(flash[:alert]).to be_present
+      expect(Enliterator::Suggestion.find_by(proposed_key: "author").status).to eq("pending")
     end
 
     it "a 0-row verdict alerts instead of a green success notice (rule 3)" do

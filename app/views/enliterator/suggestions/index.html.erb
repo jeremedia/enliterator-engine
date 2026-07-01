@@ -24,6 +24,11 @@
   .request .req-actions .verdict-map .field { flex: 1; min-width: 0; }
   .request .req-actions form { display: flex; margin: 0; }
   .request .req-actions form .btn { flex: 1; justify-content: center; }
+  /* v0.53: lead with the considerer's recommended action — reorder it to the top of the
+     column (flex order) so the reviewer's eye lands on the one-click accept. Markup order
+     is fixed (Approve · Map · Reject); only the recommended lane moves. */
+  .request .req-actions.rec-map .act-map { order: -1; }
+  .request .req-actions.rec-reject .act-reject { order: -1; }
   @media (max-width: 640px) {
     .request { grid-template-columns: 1fr; }
     .request .req-actions { min-width: 0; }
@@ -66,17 +71,27 @@
 
 <% if @terms.any? %>
   <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure</h2>
+  <%# v0.53: one shared type-ahead source for every card's Map target (the preferred-term
+      vocabulary). Rendered once; each Map input references it via list="canonical-terms". %>
+  <datalist id="canonical-terms">
+    <% @canonical.each do |term| %><option value="<%= term %>"></option><% end %>
+  </datalist>
   <% @terms.each do |t| %>
     <% key = t.proposed_key %>
-    <%# v0.50: the considerer's recommended map target, and whether to PRE-FILL the dropdown with it.
-        rec_target  = the target only when the rec is a map.
-        rec_pending = rec target exists but isn't a legal canonical target (it's itself a pending
-                      sibling) → show a hint, don't pre-select a value that isn't an option.
-        prefill     = pre-select ONLY a legal target whose confidence cleared the auto-apply floor —
-                      below the floor the considerer declined to apply, so we show but don't pre-pick. %>
-    <% rec_target  = t.recommended_decision == "map" ? t.recommended_map_to.presence : nil %>
+    <%# v0.53: reviewer-flow-first. The card LEADS with the considerer's recommended action
+        (primary + green, ordered first via .rec-*), and the map target is ALWAYS pre-selected
+        when it's a legal preferred term — so accepting the recommendation is one click.
+        rec        = the recommended decision (map/approve/reject or nil).
+        rec_target = the map target when rec is map.
+        rec_pending= the target isn't yet a preferred term (a pending sibling) → hint, no pre-fill.
+        prefill    = the legal pre-filled target (no confidence gate — v0.50's gate removed;
+                     confidence is instead surfaced, and marked ⚠ when below the auto-apply floor).
+        low_conf   = the recommendation's confidence is below the considerer's auto-apply floor. %>
+    <% rec         = t.recommended_decision %>
+    <% rec_target  = rec == "map" ? t.recommended_map_to.presence : nil %>
     <% rec_pending = rec_target && !@canonical.include?(rec_target) %>
-    <% prefill     = (rec_target if rec_target && @canonical.include?(rec_target) && t.recommended_confidence.to_f >= @min_conf) %>
+    <% prefill     = (rec_target if rec_target && @canonical.include?(rec_target)) %>
+    <% low_conf    = t.recommended_confidence.present? && t.recommended_confidence.to_f < @min_conf %>
     <div class="card request">
       <div class="req-head">
         <code class="req-key"><%= key %></code>
@@ -100,8 +115,9 @@
           <% if t.recommended_decision.present? %>
             <span class="badge-live">
               <%= t.recommended_decision %><%= " → #{t.recommended_map_to}" if t.recommended_map_to.present? %>
-              <%= "· #{(t.recommended_confidence.to_f * 100).round}%" if t.recommended_confidence %>
+              <% if t.recommended_confidence %>· <%= (t.recommended_confidence.to_f * 100).round %>%<% end %>
             </span>
+            <% if low_conf %><span class="chip warn" title="below the considerer's auto-apply floor — pre-filled, but verify before accepting">⚠ low confidence</span><% end %>
             <span class="samples considerer-rationale"><%= truncate(t.recommended_rationale.to_s, length: 160) %></span>
             <% if rec_pending %>
               <%# v0.50: the recommended target is itself a pending proposal, not yet a preferred
@@ -117,17 +133,24 @@
         </div>
       </div>
 
-      <div class="req-actions verdict">
+      <%# v0.53: markup order stays Approve · Map · Reject; the .rec-* class reorders the
+          RECOMMENDED action to the top (flex `order`) and greens it, so the reviewer's eye
+          lands on the one-click accept. Map target is a type-ahead over the shared datalist
+          (the list is long — pre-filled + filterable beats a 60-item scroll). %>
+      <div class="req-actions verdict rec-<%= rec.presence || 'none' %>">
         <%= button_to "Approve", suggestions_verdict_path,
-              params: { proposed_key: key, decision: "approve" }, class: "btn btn-affirmative" %>
-        <%= form_with url: suggestions_verdict_path, method: :post, html: { class: "verdict-map" } do |f| %>
+              params: { proposed_key: key, decision: "approve" },
+              class: "btn act-approve #{'btn-affirmative' if rec == 'approve' || rec.blank?}" %>
+        <%= form_with url: suggestions_verdict_path, method: :post, html: { class: "verdict-map act-map" } do |f| %>
           <%= f.hidden_field :proposed_key, value: key %>
           <%= f.hidden_field :decision, value: "map" %>
-          <%= f.select :mapped_to, @canonical, { selected: prefill, include_blank: "map onto…" }, class: "field" %>
-          <%= f.submit "Map", class: "btn" %>
+          <input class="field" type="text" name="mapped_to" list="canonical-terms"
+                 value="<%= prefill %>" placeholder="map onto…" autocomplete="off"
+                 aria-label="map <%= key %> onto a preferred term">
+          <%= f.submit "Map", class: "btn #{'btn-affirmative' if rec == 'map'}" %>
         <% end %>
         <%= button_to "Reject", suggestions_verdict_path,
-              params: { proposed_key: key, decision: "reject" }, class: "btn btn-destructive" %>
+              params: { proposed_key: key, decision: "reject" }, class: "btn btn-destructive act-reject" %>
       </div>
     </div>
   <% end %>
