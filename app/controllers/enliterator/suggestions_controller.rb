@@ -124,14 +124,41 @@ module Enliterator
     end
 
     # v0.54: every record's rationale + example for each pending key (deduped, capped) — the
-    # full evidence a reviewer reads to decide, behind the card's Evidence expander.
-    # {proposed_key => [{rationale:, example:}, ...]}.
+    # full evidence a reviewer reads to decide, behind the card's Evidence expander. v0.54.1:
+    # each row carries the SOURCE record's human title (a reviewer who knows the material reads
+    # provenance as signal), linkable to its entry.
+    # {proposed_key => [{rationale:, example:, source:, type:, id:}, ...]}.
     def full_evidence(keys)
       return {} if keys.empty?
-      Enliterator::Suggestion.where(context_id: current_context&.id, proposed_key: keys)
-        .order(:id).pluck(:proposed_key, :rationale, :example_value)
-        .group_by(&:first)
-        .transform_values { |rows| rows.map { |_, r, e| { rationale: r, example: e } }.uniq.first(12) }
+      rows = Enliterator::Suggestion.where(context_id: current_context&.id, proposed_key: keys)
+               .order(:id).pluck(:proposed_key, :rationale, :example_value, :tendable_type, :tendable_id)
+               .uniq { |k, r, e, tt, ti| [ k, tt, ti, r, e ] }   # collapse re-tend dupes, keep per-record
+      labels = record_labels(rows.map { |r| [ r[3], r[4] ] }.uniq)
+      rows.group_by(&:first).transform_values do |rs|
+        rs.map { |_, r, e, tt, ti|
+          lbl = labels[[ tt, ti ]]
+          { rationale: r, example: e, source: lbl[:title], position: lbl[:position], type: tt, id: ti }
+        }.sort_by { |h| [ h[:position] || Float::INFINITY, h[:source].to_s ] }.first(12)  # book order (v0.54.2)
+      end
+    end
+
+    # Human labels for [type, id] pairs, batched per type — {[type, id] => {title:, position:}}.
+    # Title = the Catalog convention (title → name → "Type #id"), so no UUID faces the reviewer.
+    # Position = the host's `position` if it has one (an ordered composite work — a manuscript's
+    # chapters); nil for a bag-of-documents corpus, so this stays byte-identical for a flat host.
+    def record_labels(pairs)
+      pairs.group_by(&:first).each_with_object({}) do |(type, ps), out|
+        klass = type.to_s.safe_constantize
+        ids   = ps.map(&:last)
+        recs  = (klass && Enliterator.tendable_type?(klass)) ? klass.where(id: ids).index_by { |r| r.id.to_s } : {}
+        ids.each do |id|
+          rec = recs[id.to_s]
+          out[[ type, id ]] = {
+            title:    rec&.try(:title).presence || rec&.try(:name).presence || "#{type.to_s.demodulize} ##{id}",
+            position: rec&.try(:position)
+          }
+        end
+      end
     end
 
     # v0.54: what already maps onto each RECOMMENDED map target — so a reviewer can see the

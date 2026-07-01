@@ -1,3 +1,11 @@
+<%# Per-record view — claim values shown in FULL (this is the review surface for one
+    document; truncation makes it impossible to review). List values render as chips, hashes
+    as pretty JSON. Layout-only (hard rule 2). %>
+<style>
+  .claims-table td.claim-value { white-space: normal; word-break: break-word; max-width: 60ch; }
+  .claim-list { display: flex; flex-wrap: wrap; gap: var(--s1); margin: 0; }
+  .claim-json { white-space: pre-wrap; margin: 0; font-size: var(--fs-sm); }
+</style>
 <p><%= link_to "← Status", root_path %></p>
 <h1><%= @record.try(:title) || @record.try(:name) || "#{@type}/#{@record.id}" %></h1>
 <p class="muted mono"><%= @type %>/<%= @record.id %></p>
@@ -14,13 +22,22 @@
 <h2>Live claims <span class="subtitle">(<%= @claims.size %>)</span></h2>
 <div class="card">
   <% if @claims.any? %>
-    <table>
+    <table class="claims-table">
       <tr><th>key</th><th>context</th><th>value</th><th>conf</th><th>status</th><th></th></tr>
       <% @claims.each do |c| %>
         <tr>
           <td><code><%= c.key %></code></td>
           <td class="samples"><%= c.context&.key || "root" %></td>
-          <td><%= truncate(c.value.is_a?(String) ? c.value : c.value.to_json, length: 240) %></td>
+          <td class="claim-value">
+            <% val = c.value %>
+            <% if val.is_a?(Array) %>
+              <div class="claim-list"><% val.each do |item| %><span class="chip"><%= item.is_a?(String) ? item : item.to_json %></span><% end %></div>
+            <% elsif val.is_a?(Hash) %>
+              <pre class="mono claim-json"><%= JSON.pretty_generate(val) %></pre>
+            <% else %>
+              <%= val %>
+            <% end %>
+          </td>
           <td><%= c.confidence %></td>
           <td><span class="chip"><%= c.status %></span></td>
           <td><%= "🔒" if c.locked %></td>

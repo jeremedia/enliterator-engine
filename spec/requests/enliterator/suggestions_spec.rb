@@ -149,15 +149,18 @@ RSpec.describe "Enliterator suggestion review", type: :request do
       expect(Enliterator::Suggestion.find_by(proposed_key: "author").status).to eq("pending")
     end
 
-    it "reveals FULL per-record evidence in an expander — no truncation dead-end (v0.54)" do
+    it "reveals FULL per-record evidence with the source title, linked (v0.54)" do
+      src  = Widget.create!(title: "The Terrace", body: "x")
       long = "The chapter grounds its whole argument in thermodynamic dispersal structure. " * 6  # > 240 chars
-      Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "author",
+      Enliterator::Suggestion.create!(tendable: src, facet: "summary", proposed_key: "author",
                                       rationale: long, example_value: "a full, specific example claim value", status: "pending")
       proposed_with_rec("author", decision: "approve")
       get "/enliterator/suggestions"
       expect(response.body).to include("Evidence —")
       expect(response.body).to include(long.strip)                              # full rationale, untruncated
       expect(response.body).to include("a full, specific example claim value")  # the example too
+      expect(response.body).to include("The Terrace")                          # the SOURCE title, not a uuid
+      expect(response.body).to include("/status/Widget/#{src.id}")             # linked to the record's entry
     end
 
     it "reveals the map target's definition and what already folds onto it (v0.54)" do

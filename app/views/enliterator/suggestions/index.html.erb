@@ -31,6 +31,10 @@
   .request .req-more > summary { cursor: pointer; }
   .request .req-evidence-full .ev-row { padding: var(--s2) 0; border-top: 1px solid var(--line); }
   .request .req-evidence-full .ev-row:first-child { border-top: 0; }
+  .request .ev-source { font-size: var(--fs-sm); font-weight: 600; color: var(--accent); margin-bottom: var(--s1); }
+  .request .ev-pos { display: inline-block; min-width: 1.6em; padding: 0 .35em; margin-right: .15em;
+    background: var(--chip); color: var(--muted); border-radius: var(--r-sm); text-align: center;
+    font-variant-numeric: tabular-nums; font-weight: 700; }
   .request .target-info { margin-top: var(--s2); padding-left: var(--s3); border-left: 2px solid var(--line); }
   .request .target-vars { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
   /* v0.53: lead with the considerer's recommended action — reorder it to the top of the
@@ -129,6 +133,7 @@
             <div class="req-evidence-full">
               <% ev.each do |e| %>
                 <div class="ev-row">
+                  <div class="ev-source"><% if e[:position] %><span class="ev-pos"><%= e[:position] %></span> <% end %><%= e[:source] ? link_to(e[:source], status_record_path(e[:type], e[:id])) : "—" %></div>
                   <div><%= e[:rationale] %></div>
                   <% if e[:example].present? %>
                     <div class="samples"><em><%= e[:example].is_a?(String) ? e[:example] : e[:example].to_json %></em></div>
