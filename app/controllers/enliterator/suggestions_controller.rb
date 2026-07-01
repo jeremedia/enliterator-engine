@@ -15,8 +15,16 @@ module Enliterator
                         .where("started_at > ?", Enliterator::ConsidererRun::OVERLAP_WINDOW.ago)
                         .order(:started_at).last
       Enliterator::ProposedTerm.refresh!                            # materialize pressure
-      @terms        = scoped_terms                                  # pressure-ranked, current scope
-      @canonical    = canonical_keys                                # legal map targets in this context
+      @pending_keys = pending_keys                                  # current-scope pending proposed keys
+      @terms        = Enliterator::ProposedTerm.open.by_pressure.where(proposed_key: @pending_keys)
+      @vocab        = effective_vocabulary                          # {term => description} across facets
+      @canonical    = @vocab.keys.sort                              # legal map targets in this context
+      # v0.54: what a reviewer needs to actually decide — the FULL per-record evidence for
+      # each key (every rationale + example, no dead-end truncation), and for a map
+      # recommendation, what already lives under the suggested target (its definition + the
+      # variants folded onto it) so the reviewer can judge the fit.
+      @evidence        = full_evidence(@pending_keys)
+      @target_variants = target_variants(@terms)
       # v0.50: the auto-apply floor, so the Map dropdown only PRE-FILLS the considerer's
       # recommended target when the considerer was confident enough to have auto-applied it
       # itself. Below the floor the rec is shown but NOT pre-selected — clicking Map then
@@ -97,20 +105,42 @@ module Enliterator
 
     private
 
-    # The pressure-ranked queue, filtered to terms with pending proposals in the
-    # CURRENT scope (pressure itself stays a global signal on ProposedTerm).
-    def scoped_terms
-      pending_keys = Enliterator::Suggestion.pending
-                       .where(context_id: current_context&.id)
-                       .distinct.pluck(:proposed_key)
-      Enliterator::ProposedTerm.open.by_pressure.where(proposed_key: pending_keys)
+    # The current-scope pending proposed keys (the queue's membership).
+    def pending_keys
+      Enliterator::Suggestion.pending.where(context_id: current_context&.id).distinct.pluck(:proposed_key)
     end
 
-    # Every term in the current context's EFFECTIVE vocabulary (inherited + own,
-    # code + approved) — the legal targets a synonym can map onto.
+    # The current context's EFFECTIVE vocabulary WITH descriptions (inherited + own, code +
+    # approved): {term => description}. First definition per term wins (code before approved).
+    def effective_vocabulary
+      Enliterator.staffing.facets_for(current_context&.path_keys).keys.each_with_object({}) do |facet, h|
+        (Enliterator::Vocabulary.for(facet, context: current_context) || {}).each { |term, desc| h[term] ||= desc }
+      end
+    end
+
+    # Legal map targets — the effective vocabulary's terms. Used by #verdict's target guard.
     def canonical_keys
-      Enliterator.staffing.facets_for(current_context&.path_keys).keys
-        .flat_map { |s| (Enliterator::Vocabulary.for(s, context: current_context) || {}).keys }.uniq.sort
+      effective_vocabulary.keys.sort
+    end
+
+    # v0.54: every record's rationale + example for each pending key (deduped, capped) — the
+    # full evidence a reviewer reads to decide, behind the card's Evidence expander.
+    # {proposed_key => [{rationale:, example:}, ...]}.
+    def full_evidence(keys)
+      return {} if keys.empty?
+      Enliterator::Suggestion.where(context_id: current_context&.id, proposed_key: keys)
+        .order(:id).pluck(:proposed_key, :rationale, :example_value)
+        .group_by(&:first)
+        .transform_values { |rows| rows.map { |_, r, e| { rationale: r, example: e } }.uniq.first(12) }
+    end
+
+    # v0.54: what already maps onto each RECOMMENDED map target — so a reviewer can see the
+    # target's ring before folding onto it. {target => [variant proposed_key, ...]}.
+    def target_variants(terms)
+      targets = terms.filter_map { |t| t.recommended_map_to.presence if t.recommended_decision == "map" }.uniq
+      return {} if targets.empty?
+      Enliterator::Suggestion.where(context_id: current_context&.id, status: "mapped", mapped_to: targets)
+        .pluck(:mapped_to, :proposed_key).group_by(&:first).transform_values { |rows| rows.map(&:last).uniq.sort }
     end
 
     # Terms the model has re-proposed AFTER a verdict — the suppressed re-files

@@ -149,6 +149,27 @@ RSpec.describe "Enliterator suggestion review", type: :request do
       expect(Enliterator::Suggestion.find_by(proposed_key: "author").status).to eq("pending")
     end
 
+    it "reveals FULL per-record evidence in an expander — no truncation dead-end (v0.54)" do
+      long = "The chapter grounds its whole argument in thermodynamic dispersal structure. " * 6  # > 240 chars
+      Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "author",
+                                      rationale: long, example_value: "a full, specific example claim value", status: "pending")
+      proposed_with_rec("author", decision: "approve")
+      get "/enliterator/suggestions"
+      expect(response.body).to include("Evidence —")
+      expect(response.body).to include(long.strip)                              # full rationale, untruncated
+      expect(response.body).to include("a full, specific example claim value")  # the example too
+    end
+
+    it "reveals the map target's definition and what already folds onto it (v0.54)" do
+      Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "byline",
+                                      rationale: "r", status: "mapped", mapped_to: "authored_by")  # existing variant
+      proposed_with_rec("author", decision: "map", map_to: "authored_by", confidence: 0.9)
+      get "/enliterator/suggestions"
+      expect(response.body).to include("Map target").and include("authored_by")
+      expect(response.body).to include("byline")             # the existing variant is shown
+      expect(response.body).to include("The author(s).")     # authored_by's definition (from staffing)
+    end
+
     it "a 0-row verdict alerts instead of a green success notice (rule 3)" do
       post "/enliterator/suggestions/verdict", params: { proposed_key: "ghost-key", decision: "approve" }
       expect(response).to redirect_to("/enliterator/suggestions")

@@ -24,6 +24,15 @@
   .request .req-actions .verdict-map .field { flex: 1; min-width: 0; }
   .request .req-actions form { display: flex; margin: 0; }
   .request .req-actions form .btn { flex: 1; justify-content: center; }
+  /* v0.54: full-evidence + map-target inspectors — progressive disclosure so the default
+     card stays scannable but nothing is a dead-end truncation. */
+  .request .considerer-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); }
+  .request .req-more { margin-top: var(--s2); }
+  .request .req-more > summary { cursor: pointer; }
+  .request .req-evidence-full .ev-row { padding: var(--s2) 0; border-top: 1px solid var(--line); }
+  .request .req-evidence-full .ev-row:first-child { border-top: 0; }
+  .request .target-info { margin-top: var(--s2); padding-left: var(--s3); border-left: 2px solid var(--line); }
+  .request .target-vars { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
   /* v0.53: lead with the considerer's recommended action — reorder it to the top of the
      column (flex order) so the reviewer's eye lands on the one-click accept. Markup order
      is fixed (Approve · Map · Reject); only the recommended lane moves. */
@@ -107,25 +116,58 @@
       </div>
 
       <div class="req-evidence">
-        <div><%= truncate(t.sample_rationale.to_s, length: 220) %></div>
-        <% if t.sample_example.present? %>
-          <div class="samples" style="margin-top:.2rem"><em><%= truncate(t.sample_example.is_a?(String) ? t.sample_example : t.sample_example.to_json, length: 140) %></em></div>
+        <%# v0.54: the FULL considerer rationale (the decision basis) is shown untruncated;
+            the model's per-record evidence — every rationale + example — is one click away in
+            full (no dead-end "…"); and a map recommendation reveals what already lives under
+            the suggested target so the reviewer can judge the fit. %>
+        <div><%= truncate(t.sample_rationale.to_s, length: 240) %></div>
+
+        <% ev = @evidence[key] || [] %>
+        <% if ev.any? %>
+          <details class="req-more">
+            <summary class="samples">Evidence — <%= pluralize(ev.size, "record") %><%= " (of #{t.distinct_records})" if t.distinct_records.to_i > ev.size %></summary>
+            <div class="req-evidence-full">
+              <% ev.each do |e| %>
+                <div class="ev-row">
+                  <div><%= e[:rationale] %></div>
+                  <% if e[:example].present? %>
+                    <div class="samples"><em><%= e[:example].is_a?(String) ? e[:example] : e[:example].to_json %></em></div>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          </details>
         <% end %>
+
         <div class="considerer">
           <% if t.recommended_decision.present? %>
-            <span class="badge-live">
-              <%= t.recommended_decision %><%= " → #{t.recommended_map_to}" if t.recommended_map_to.present? %>
-              <% if t.recommended_confidence %>· <%= (t.recommended_confidence.to_f * 100).round %>%<% end %>
-            </span>
-            <% if low_conf %><span class="chip warn" title="below the considerer's auto-apply floor — pre-filled, but verify before accepting">⚠ low confidence</span><% end %>
-            <span class="samples considerer-rationale"><%= truncate(t.recommended_rationale.to_s, length: 160) %></span>
+            <div class="considerer-head">
+              <span class="badge-live"><%= t.recommended_decision %><%= " → #{t.recommended_map_to}" if t.recommended_map_to.present? %><% if t.recommended_confidence %> · <%= (t.recommended_confidence.to_f * 100).round %>%<% end %></span>
+              <% if low_conf %><span class="chip warn" title="below the considerer's auto-apply floor — pre-filled, but verify before accepting">⚠ low confidence</span><% end %>
+            </div>
+            <div class="samples considerer-rationale"><%= t.recommended_rationale %></div>
+
             <% if rec_pending %>
-              <%# v0.50: the recommended target is itself a pending proposal, not yet a preferred
-                  term — so it can't be a legal USE target and isn't in the dropdown. Tell the
-                  curator why, and what to do, instead of leaving a silently blank select. %>
               <div class="samples warn" style="margin-top:.2rem">
                 recommended target <code><%= rec_target %></code> is still pending — approve it first to map onto it.
               </div>
+            <% elsif rec_target %>
+              <%# map-target inspection: the definition of the suggested term + what's already folded onto it %>
+              <% variants = @target_variants[rec_target] || [] %>
+              <details class="req-more">
+                <summary class="samples">Map target <code><%= rec_target %></code> — <%= pluralize(variants.size, "variant") %> already fold here</summary>
+                <div class="target-info">
+                  <% if @vocab[rec_target].present? %>
+                    <div class="samples"><strong>definition:</strong> <%= @vocab[rec_target] %></div>
+                  <% end %>
+                  <% if variants.any? %>
+                    <div class="target-vars"><% variants.each do |v| %><span class="chip"><%= v %></span><% end %></div>
+                  <% else %>
+                    <div class="samples">nothing folds onto it yet — this would be the first.</div>
+                  <% end %>
+                  <div class="samples" style="margin-top:.3rem"><%= link_to "see it on Vocabulary →", vocabulary_path %></div>
+                </div>
+              </details>
             <% end %>
           <% else %>
             <span class="samples">considerer: <span class="muted">—</span></span>
