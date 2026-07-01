@@ -111,8 +111,14 @@ module Enliterator
       # host types only — tended Parts must not become root lanes).
       def tendable_models
         @tendable_models ||= begin
-          names = Enliterator.tendable_models.map(&:name) |
-                  Enliterator::Visit.host_tendable_types
+          # Mask synthesized types (composite-work wholes) from the union BEFORE
+          # constantizing — they are tended by deliberate invocation, never by the
+          # pacemaker. Name-subtraction is load-independent (config list set at
+          # boot), so a cold plan (rake … PLAN=1) still excludes them.
+          names = Enliterator.mask_synthesized(
+            Enliterator.tendable_models.map(&:name) |
+            Enliterator::Visit.host_tendable_types
+          )
           names.sort.filter_map do |name|
             name.constantize
           rescue NameError

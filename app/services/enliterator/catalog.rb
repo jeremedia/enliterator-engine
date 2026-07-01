@@ -360,8 +360,13 @@ module Enliterator
     # it — the v0.20 idiom would serve the lie for five minutes). v0.25: host
     # types only — tended Parts must not inflate the corpus.
     def known_tendables
-      names = Enliterator.tendable_models.map(&:name) |
-              Enliterator::Visit.host_tendable_types
+      # Mask synthesized types (composite-work wholes) — they are not corpus
+      # documents; this keeps the corpus COUNT honest. (The book stays drillable
+      # via tendable_type?, and its claims still power the subject browse.)
+      names = Enliterator.mask_synthesized(
+        Enliterator.tendable_models.map(&:name) |
+        Enliterator::Visit.host_tendable_types
+      )
       names.sort.filter_map { |n| n.safe_constantize }
     end
 

@@ -134,8 +134,10 @@ module Enliterator
     # truer authority — host types that have actually been tended, falling back
     # to the registry. (The established Settings/Planner idiom.)
     def tendables
-      Enliterator::Visit.host_tendable_types.presence ||
-        Enliterator.tendable_models.map(&:name)
+      Enliterator.mask_synthesized(
+        Enliterator::Visit.host_tendable_types.presence ||
+          Enliterator.tendable_models.map(&:name)
+      )
     end
 
     # The collection context tree. NULL context_id IS the root scope; a root

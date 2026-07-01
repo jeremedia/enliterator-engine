@@ -232,6 +232,19 @@ module Enliterator
     # schema/prompt are unchanged ⇒ byte-identical. A host opts in per collection.
     attr_accessor :record_lacunae
 
+    # ---- Composite work: synthesized tendables ---------------------------
+
+    # Host tendable TYPE names (e.g. %w[Manuscript]) that are SYNTHESIZED —
+    # tended only by deliberate invocation (a rake), and masked out of the
+    # pacemaker's scheduling + the type-census rollups, while remaining real
+    # tendables (tendable_type? stays true → drill-down still works). A
+    # LOAD-INDEPENDENT config name list (set at boot from the initializer),
+    # congruent with the DB-backed Visit.host_tendable_types — so the mask is
+    # reliable even in a cold process (a class-body hook would be autoload-
+    # dependent and reintroduce the v0.25 re-entry race). Default [] ⇒ every
+    # mask is a no-op ⇒ byte-identical.
+    attr_accessor :synthesized_tendables
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -291,6 +304,7 @@ module Enliterator
       @read_time_warrant = nil
       @name_authority_keys = []
       @record_lacunae = nil
+      @synthesized_tendables = []
       @heartbeat_budget_tokens = 200_000
       @heartbeat_change_share = 0.2
       @heartbeat_neighbor_threshold = 3
@@ -397,6 +411,22 @@ module Enliterator
     def tendable_type?(klass)
       return false if klass.nil?
       klass == Enliterator::Part || tendable_models.include?(klass)
+    end
+
+    # The host TYPE names declared SYNTHESIZED (see Configuration#synthesized_tendables).
+    # A load-independent config name list — nil-safe, string-normalized.
+    def synthesized_tendable_names
+      Array(configuration.synthesized_tendables).map(&:to_s)
+    end
+
+    # Subtract the synthesized type names from a list of tendable-type NAMES.
+    # Every scheduling/census consumer applies this to its OWN base (registry-only,
+    # union, or host_types||registry). A pure name-subtraction: no constantize, no
+    # side effect, order-preserving; when the config list is [] it returns `names`
+    # unchanged ⇒ byte-identical. Consumers holding Class objects filter by `m.name`
+    # instead (see the enliterator:tend rake).
+    def mask_synthesized(names)
+      Array(names) - synthesized_tendable_names
     end
 
     # True when the LiteLLM gateway has enough config to build tier adapters.

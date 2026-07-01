@@ -332,8 +332,12 @@ module Enliterator
     # Registry ∪ visit log — same authority rule as the planner/Settings
     # (v0.25: host types only — Parts are not surveyed).
     def tendable_models
-      names = Enliterator.tendable_models.map(&:name) |
-              Enliterator::Visit.host_tendable_types
+      # Mask synthesized types — a composite-work whole is not a condition-census
+      # row and is not surveyed (it has no host source file to become illegible).
+      names = Enliterator.mask_synthesized(
+        Enliterator.tendable_models.map(&:name) |
+        Enliterator::Visit.host_tendable_types
+      )
       names.sort.filter_map { |n| n.safe_constantize }
     end
 

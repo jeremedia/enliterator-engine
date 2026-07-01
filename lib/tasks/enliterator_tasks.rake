@@ -20,7 +20,13 @@ namespace :enliterator do
 
     total_enqueued = 0
 
-    Enliterator.tendable_models.each do |model|
+    # Skip synthesized types (composite-work wholes) — this legacy walk is a
+    # second scheduling path, and a synthesized whole is tended by its own rake,
+    # never along the root/chapter facets. Filter Class objects by name.
+    synthesized = Enliterator.synthesized_tendable_names
+    models = Enliterator.tendable_models.reject { |m| synthesized.include?(m.name) }
+
+    models.each do |model|
       type_name = model.name
 
       facets.each do |facet|
@@ -61,7 +67,7 @@ namespace :enliterator do
       end
     end
 
-    log.call("done — enqueued #{total_enqueued} tending visit(s) across #{Enliterator.tendable_models.size} model(s) and #{facets.size} facet(s)")
+    log.call("done — enqueued #{total_enqueued} tending visit(s) across #{models.size} model(s) and #{facets.size} facet(s)")
   end
 
   # The tending rollup / smoke alarm. Prints per-facet Visit health: status mix,

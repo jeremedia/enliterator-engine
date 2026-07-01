@@ -19,7 +19,7 @@ module Enliterator
       policy = Enliterator.staffing
       {
         facets:        policy ? policy.assignments.keys : [],
-        models:         Enliterator.tendable_models.map(&:name),
+        models:         Enliterator.mask_synthesized(Enliterator.tendable_models.map(&:name)),
         tended_records: Enliterator::Visit.where(status: "succeeded", applied: true)
                           .distinct.count(Arel.sql("tendable_type || ':' || tendable_id")),
         visits:         Enliterator::Visit.where(status: "succeeded").count,

@@ -58,7 +58,7 @@ module Enliterator
         health: Enliterator::Report.summary(host: host, since: since),
         # Root = the unfiltered union (rule 1); a context = its own proposals.
         gaps:   (context ? Enliterator::Suggestion.gaps(context: context) : Enliterator::Suggestion.gaps).first(5),
-        models: Enliterator.tendable_models.map(&:name)
+        models: Enliterator.mask_synthesized(Enliterator.tendable_models.map(&:name))
       }
     end
 
