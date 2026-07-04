@@ -1,4 +1,5 @@
 require "enliterator/version"
+require "enliterator/topology"
 require "enliterator/engine"
 
 # Enliterator — confer literacy on data.
@@ -245,6 +246,29 @@ module Enliterator
     # mask is a no-op ⇒ byte-identical.
     attr_accessor :synthesized_tendables
 
+    # ---- Topology: the collection's declared part-whole structure --------
+
+    # An Enliterator::Topology (lib/enliterator/topology.rb) declaring the host
+    # grouping that composes records into wholes (a book of chapters). From it the
+    # engine derives one Context per whole (Topology::Sync — the read-surface
+    # scopes) and the grouping-direct tend-time neighbor scope (below). Default
+    # nil ⇒ the corpus topology ⇒ byte-identical. Orthogonal to
+    # synthesized_tendables (neither implies the other).
+    attr_accessor :topology
+
+    # The collection's DEFAULT READING SCOPE — which rung of the part-whole ladder
+    # is the default cross-record reading neighborhood at tend time. This is the
+    # charter's operational knob ("The Shape of a Collection" §6: an archive of
+    # sovereign works reads whole-scoped; a subject library reads collection-wide);
+    # until charter onboarding owns it, this config accessor is its interim home.
+    #   nil    = collection-wide (today's behavior; byte-identical)
+    #   :whole = a member record's tend-time neighbor pool restricts to its own
+    #            whole's members, resolved GROUPING-DIRECT (the host FK — never
+    #            the derived membership, which could lag or be unseeded)
+    # Coherence rule (§6): :whole requires a topology that declares wholes — read
+    # through Enliterator.reading_scope, which raises ConfigurationError otherwise.
+    attr_accessor :default_reading_scope
+
     # ---- v0.30 Actionable error reporting --------------------------------
 
     # 3-state switch for surfacing ACTIONABLE error detail (exception
@@ -305,6 +329,8 @@ module Enliterator
       @name_authority_keys = []
       @record_lacunae = nil
       @synthesized_tendables = []
+      @topology = nil
+      @default_reading_scope = nil
       @heartbeat_budget_tokens = 200_000
       @heartbeat_change_share = 0.2
       @heartbeat_neighbor_threshold = 3
@@ -427,6 +453,28 @@ module Enliterator
     # instead (see the enliterator:tend rake).
     def mask_synthesized(names)
       Array(names) - synthesized_tendable_names
+    end
+
+    # The validated default reading scope (nil or :whole). The ONE read path for
+    # config.default_reading_scope — consumers must come through here so a
+    # misconfiguration fails LOUDLY at first use (rule 3), never silently reads as
+    # collection-wide: an unknown value raises, and :whole without a wholes-declaring
+    # topology violates the coherence rule ("the charter may only name a rung the
+    # topology declares" — The Shape of a Collection §6) and raises too.
+    def reading_scope
+      scope = configuration.default_reading_scope
+      return nil if scope.nil?
+
+      unless scope == :whole
+        raise ConfigurationError,
+              "default_reading_scope must be nil (collection-wide) or :whole, got #{scope.inspect}"
+      end
+      unless configuration.topology&.declares_wholes?
+        raise ConfigurationError,
+              "default_reading_scope = :whole requires a topology that declares wholes " \
+              "(set config.topology with at least one `whole` declaration)"
+      end
+      scope
     end
 
     # True when the LiteLLM gateway has enough config to build tier adapters.

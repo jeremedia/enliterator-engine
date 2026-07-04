@@ -119,4 +119,80 @@ RSpec.describe "Enliterator::Tending::Visitor context scoping (v0.13)" do
     tend_with!(stub, facet: "directive", context: eo_ctx)
     expect(stub.seen_contract.keys).to contain_exactly("eo_number", "supersedes")
   end
+
+  # v0.56 — whole-scoped root reading (topology + default_reading_scope :whole):
+  # a member's tend-time neighbors come from its OWN whole, resolved
+  # GROUPING-DIRECT (the host FK), never from the derived context's membership
+  # rows (which could lag or be unseeded). Flags unset ⇒ the root corpus-wide
+  # assertion above is the byte-identity proof.
+  describe "whole-scoped root reading (v0.56)" do
+    let(:book_a)   { Book.create!(slug: "book-a", title: "Book A") }
+    let(:book_b)   { Book.create!(slug: "book-b", title: "Book B") }
+    let(:sibling)  { Widget.create!(title: "same book",  body: "s", book_id: book_a.id) }
+    let(:stranger) { Widget.create!(title: "other book", body: "o", book_id: book_b.id) }
+
+    def declare_whole_scope!
+      Enliterator.configure do |c|
+        c.topology = Enliterator::Topology.new do
+          whole "Book", members: "Widget", foreign_key: :book_id,
+                context_key: :slug, context_name: :title
+        end
+        c.default_reading_scope = :whole
+      end
+    end
+
+    def embed_all!(*records)
+      records.each do |w|
+        w.enliterator_embeddings.create!(kind: "primary", embedding: embedder.embed(w.title),
+                                         dimensions: embedder.dimensions, model: "null")
+      end
+    end
+
+    it "a member's root-tend neighbors restrict to same-whole members (grouping-direct — NO membership rows needed)" do
+      widget.update!(book_id: book_a.id)
+      embed_all!(widget, sibling, stranger)
+      declare_whole_scope!
+      expect(Enliterator::ContextMembership.count).to eq(0)   # sync never ran — the tend path must not depend on it
+
+      stub = CtxStub.new
+      tend_with!(stub, facet: "summary")
+      expect(stub.seen_neighbors).to contain_exactly(sibling)
+    end
+
+    it "a member with a nil foreign key (no whole) honestly falls back corpus-wide" do
+      embed_all!(widget, sibling, stranger)   # widget.book_id stays nil
+      declare_whole_scope!
+
+      stub = CtxStub.new
+      tend_with!(stub, facet: "summary")
+      expect(stub.seen_neighbors).to include(sibling, stranger)
+    end
+
+    it "an explicit context: still wins over the whole scope (the lens branch runs first)" do
+      widget.update!(book_id: book_a.id)
+      embed_all!(widget, sibling, stranger)
+      declare_whole_scope!
+      stranger.place_in_context!(list_ctx)
+      widget.place_in_context!(list_ctx)
+
+      stub = CtxStub.new
+      tend_with!(stub, facet: "significance", context: list_ctx)
+      expect(stub.seen_neighbors).to contain_exactly(stranger)   # the lens, not the whole
+    end
+
+    it "a record whose type has no declaration is untouched by the scope" do
+      embed_all!(widget, sibling, stranger)
+      Enliterator.configure do |c|
+        c.topology = Enliterator::Topology.new do
+          whole "Book", members: "SomethingElse", foreign_key: :book_id,
+                context_key: :slug, context_name: :title
+        end
+        c.default_reading_scope = :whole
+      end
+
+      stub = CtxStub.new
+      tend_with!(stub, facet: "summary")
+      expect(stub.seen_neighbors).to include(sibling, stranger)   # corpus-wide
+    end
+  end
 end

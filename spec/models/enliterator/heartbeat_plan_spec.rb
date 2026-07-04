@@ -66,6 +66,17 @@ RSpec.describe "Enliterator::Heartbeat.plan (v0.15)" do
       expect(plan.frontier_remaining["crs-reports/policy_analysis"]).to eq(2)
     end
 
+    it "a member-bearing context with NO policy-declared facets yields ZERO lanes (v0.56 invariant: derived contexts are inert to the pacemaker)" do
+      derived = Enliterator::Context.create!(key: "book-a", name: "Book A",
+                                             derived_from_type: "Book", derived_from_id: "1")
+      widget!("m1", context: derived)
+      widget!("m2", context: derived)
+
+      plan = Enliterator::Heartbeat.plan
+      expect(plan.items.map(&:lane)).not_to include(a_string_starting_with("book-a/"))
+      expect(plan.frontier_remaining.keys).not_to include(a_string_starting_with("book-a/"))
+    end
+
     it "root lanes use explicit NULL scope — a context visit never satisfies root" do
       w = widget!("w", context: crs)
       visit!(w, facet: "summary", context: crs)   # tended on summary IN crs, never at root

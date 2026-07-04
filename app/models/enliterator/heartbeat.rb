@@ -167,6 +167,7 @@ module Enliterator
       run_warnings = []
 
       begin
+        sync_topology!(run_warnings)   # gates + pulses INTERNALLY — no topology ⇒ no phase ⇒ trace byte-identical
         pulse!("survey")      ; survey_phase!(run_warnings)
         pulse!("work")        ; work_items!(plan, counts, run_warnings)
         pulse!("considerer")  ; consider!(run_warnings) unless skip_consider
@@ -232,6 +233,27 @@ module Enliterator
     end
 
     private
+
+    # v0.56: derive/reconcile the per-whole Contexts from the declared topology
+    # before the shelf-read. The gate is a pure in-memory config check that runs
+    # BEFORE any pulse! — a topology-less host's phase trace (which the reaper
+    # reads) stays byte-identical. Fail-SOFT per whole (Sync fail_soft: true):
+    # one bad slug becomes a ledger warning, never a halted collection.
+    def sync_topology!(run_warnings)
+      topo = Enliterator.configuration.topology
+      return if topo.nil? || !topo.declares_wholes?
+
+      pulse!("topology")
+      result = Enliterator::Topology::Sync.run!(topology: topo, fail_soft: true)
+      result.warnings.each { |w| run_warnings << "topology: #{w}" }
+      log("topology: #{result.summary}")
+    rescue StoodDown
+      raise
+    rescue => e
+      # The sync must never kill the tending cycle — record and continue.
+      run_warnings << "topology sync failed: #{e.class}: #{e.message}"
+      log(run_warnings.last)
+    end
 
     # v0.17: the per-cycle shelf-read. Time-boxed (probes are column reads —
     # the bound is wall-clock, not tokens); never-surveyed first, then stalest.

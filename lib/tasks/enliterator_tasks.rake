@@ -566,3 +566,18 @@ namespace :enliterator do
     e[:not_introspectable].each { |x| puts "  • #{x}" }
   end
 end
+
+namespace :enliterator do
+  # v0.56: derive/reconcile the per-whole Contexts from the declared topology.
+  # Fail-HARD (an operator is present) — the heartbeat's embedded step is the
+  # fail-soft path. Idempotent: a second run reports zero changes.
+  desc "Derive per-whole Contexts from config.topology and reconcile memberships (the holdings)"
+  task sync_topology: :environment do
+    topo = Enliterator.configuration.topology
+    abort("No topology declared (set config.topology with a `whole` declaration)") if topo.nil? || !topo.declares_wholes?
+
+    result = Enliterator::Topology::Sync.run!(topology: topo, fail_soft: false)
+    result.lines.each { |l| puts "[sync_topology] #{l}" }
+    puts "[sync_topology] #{result.summary}"
+  end
+end

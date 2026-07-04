@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_29_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_03_120100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -196,6 +196,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_29_100000) do
     t.index ["type"], name: "index_api_calls_on_type"
     t.index ["user_id", "created_at"], name: "index_api_calls_on_user_id_and_created_at"
     t.index ["user_id"], name: "index_api_calls_on_user_id"
+  end
+
+  create_table "books", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "slug"
+    t.string "title"
+    t.datetime "updated_at", null: false
   end
 
   create_table "characters", force: :cascade do |t|
@@ -494,11 +501,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_29_100000) do
   create_table "enliterator_contexts", force: :cascade do |t|
     t.string "ancestry"
     t.datetime "created_at", null: false
+    t.string "derived_from_id"
+    t.string "derived_from_type"
     t.text "description"
     t.string "key", null: false
     t.string "name", null: false
     t.datetime "updated_at", null: false
     t.index ["ancestry"], name: "index_enliterator_contexts_on_ancestry"
+    t.index ["derived_from_type", "derived_from_id"], name: "idx_enliterator_contexts_derived_from", unique: true, where: "(derived_from_type IS NOT NULL)"
     t.index ["key"], name: "index_enliterator_contexts_on_key", unique: true
   end
 
@@ -1873,9 +1883,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_29_100000) do
 
   create_table "widgets", force: :cascade do |t|
     t.text "body"
+    t.bigint "book_id"
     t.datetime "created_at", null: false
     t.string "title"
     t.datetime "updated_at", null: false
+    t.index ["book_id"], name: "index_widgets_on_book_id"
   end
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"

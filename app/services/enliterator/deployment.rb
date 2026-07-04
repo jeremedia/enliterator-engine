@@ -141,10 +141,12 @@ module Enliterator
     end
 
     # The collection context tree. NULL context_id IS the root scope; a root
-    # Context row is just the tree anchor.
+    # Context row is just the tree anchor. `derived` distinguishes machine-owned
+    # topology views (v0.56) from hand-curated lenses.
     def contexts
       {
         count: Enliterator::Context.count,
+        derived: Enliterator::Context.where.not(derived_from_type: nil).count,
         roots: Enliterator::Context.roots.pluck(:key).compact
       }
     end

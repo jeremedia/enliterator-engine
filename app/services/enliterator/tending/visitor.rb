@@ -323,6 +323,29 @@ module Enliterator
                          .where("enliterator_context_memberships.member_type = enliterator_embeddings.embeddable_type")
                          .where("enliterator_context_memberships.member_id = enliterator_embeddings.embeddable_id")
           pool = pool.where(membership.arel.exists)
+        elsif Enliterator.configuration.default_reading_scope &&
+              Enliterator.reading_scope == :whole &&
+              (decl = Enliterator.configuration.topology&.declaration_for_member(tendable.class.name))
+          # v0.56: a member of a declared WHOLE reads against its own whole at root
+          # — a TSI chapter's neighbors are TSI chapters, never another book's. The
+          # scope is GROUPING-DIRECT (the host FK, the source of truth per the
+          # shape-of-a-collection spec §7), deliberately NOT the derived context's
+          # membership rows — those could lag or be unseeded, and a flag that
+          # claims whole-scoping must never silently deliver an empty or corpus
+          # pool. Table/column names come from the declared member class (engine-
+          # side literals, never user input); CAST matches the planner's precedent
+          # for text member_id against host PKs. A nil FK means no whole — the
+          # honest fallback is corpus-wide. Explicit `context:` (above) still wins.
+          whole_id = tendable.public_send(decl.foreign_key)
+          if whole_id
+            member_klass = decl.member_class
+            pool = pool.where(embeddable_type: decl.member_type)
+                       .where(
+                         "enliterator_embeddings.embeddable_id IN " \
+                         "(SELECT CAST(#{member_klass.primary_key} AS TEXT) FROM #{member_klass.table_name} " \
+                         "WHERE #{decl.foreign_key} = ?)", whole_id
+                       )
+          end
         end
 
         # Fetch one extra so we can drop self without falling short.
