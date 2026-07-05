@@ -9,6 +9,16 @@ module Enliterator
       # (rule 3: no silent failures).
       class ResponseFormatError < StandardError; end
 
+      # v0.57.1: the PROVIDER-SERIALIZATION quirk, named honestly. Root cause
+      # (confirmed by the spine host, ~7% of long subject_indexing tends): it is
+      # NOT the model — bedrock via LiteLLM intermittently double-encodes the
+      # tool-call claims array into a JSON string, and rarely that string is
+      # itself unparseable; a plain re-ask clears it. SUBCLASSES
+      # ResponseFormatError so every existing rescue/matcher still catches it,
+      # while the Gateway's auto-retry (and observability) can tell the quirk
+      # from a genuine model-format fault.
+      class ProviderSerializationError < ResponseFormatError; end
+
       # Base interface for LLM tending adapters.
       #
       # An adapter reads a single record's text plus its compounding context

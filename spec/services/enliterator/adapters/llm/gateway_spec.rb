@@ -328,13 +328,13 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
         '"confidence": 0.9, "op": "ADD"}]'
       end
 
-      it "raises ResponseFormatError instead of silently producing empty claims" do
+      it "raises the provider-serialization error (a ResponseFormatError subclass) instead of silently producing empty claims" do
         expect {
           adapter_with_claims_arg(malformed_claims).tend(
             text: "x", facet: "summary", state: {}, neighbors: []
           )
-        }.to raise_error(Enliterator::Adapters::LLM::ResponseFormatError,
-                         /claims string.*could not be parsed/i)
+        }.to raise_error(Enliterator::Adapters::LLM::ProviderSerializationError,
+                         /unparseable JSON string.*provider double-encoding/i)
       end
 
       it "includes a snippet of the offending payload in the error message" do
@@ -343,6 +343,109 @@ RSpec.describe Enliterator::Adapters::LLM::Gateway do
             text: "x", facet: "summary", state: {}, neighbors: []
           )
         }.to raise_error(Enliterator::Adapters::LLM::ResponseFormatError, /enliteracy/)
+      end
+    end
+
+    context "tolerant recovery (v0.57.1 — the safe repairs)" do
+      it "recovers a DOUBLE-encoded claims string (outer parse yields a JSON string)" do
+        inner  = JSON.generate([ { "key" => "summary", "value" => "ok", "op" => "ADD" } ])
+        double = JSON.generate(inner)   # a JSON string whose content is JSON
+        result = adapter_with_claims_arg(double).tend(text: "x", facet: "summary", state: {}, neighbors: [])
+        expect(result.parsed["claims"].first["key"]).to eq("summary")
+      end
+
+      it "recovers a valid array wrapped in stray prose" do
+        wrapped = "Here are the claims:\n" +
+                  JSON.generate([ { "key" => "summary", "value" => "ok", "op" => "ADD" } ]) + "\nDone."
+        result = adapter_with_claims_arg(wrapped).tend(text: "x", facet: "summary", state: {}, neighbors: [])
+        expect(result.parsed["claims"].first["key"]).to eq("summary")
+      end
+    end
+
+    context "auto-retry (v0.57.1 — the quirk is transient; re-asking is the real fix)" do
+      # A fake whose Nth create returns the Nth payload — models the field
+      # behavior (bad on the first ask, clean on the retry).
+      class SequencedCompletions
+        attr_reader :calls
+        def initialize(payloads, usage)
+          @payloads = payloads
+          @usage    = usage
+          @calls    = 0
+        end
+        def create(**)
+          json = @payloads[[ @calls, @payloads.size - 1 ].min]
+          @calls += 1
+          { "choices" => [ { "finish_reason" => "tool_calls", "message" => { "role" => "assistant",
+              "tool_calls" => [ { "type" => "function", "function" => {
+                "name" => Enliterator::Adapters::LLM::Base::TOOL_NAME, "arguments" => json } } ] } } ],
+            "usage" => @usage }
+        end
+      end
+
+      class SequencedClient
+        attr_reader :completions
+        def initialize(payloads, usage) = (@completions = SequencedCompletions.new(payloads, usage))
+        def chat = self
+      end
+
+      let(:bad)  { JSON.generate("claims" => '[{"key": "s", "value": "broken "quote"", "op": "ADD"}]', "confidence" => 0.9) }
+      let(:good) { JSON.generate("claims" => [ { "key" => "summary", "value" => "ok", "op" => "ADD" } ], "confidence" => 0.9) }
+
+      def adapter_for(client)
+        described_class.new(tier: "cheap", base_url: "https://llm.example.com/v1",
+                            api_key: "sk-test", client: client)
+      end
+
+      it "re-asks on the serialization quirk and succeeds — summing the token spend of ALL attempts" do
+        client = SequencedClient.new([ bad, good ], usage_payload)
+        result = adapter_for(client).tend(text: "x", facet: "subject_indexing", state: {}, neighbors: [])
+        expect(client.completions.calls).to eq(2)
+        expect(result.parsed["claims"].first["key"]).to eq("summary")
+        expect(result.tokens["total"]).to eq(usage_payload["total_tokens"] * 2)   # retries are never free
+      end
+
+      it "exhausts bounded retries on a persistent failure and raises the honest class" do
+        client = SequencedClient.new([ bad ], usage_payload)   # bad forever
+        expect {
+          adapter_for(client).tend(text: "x", facet: "subject_indexing", state: {}, neighbors: [])
+        }.to raise_error(Enliterator::Adapters::LLM::ProviderSerializationError)
+        expect(client.completions.calls).to eq(3)   # 1 + SERIALIZATION_RETRIES
+      end
+
+      it "names a REAL truncation when finish_reason is length" do
+        payload = { "choices" => [ { "finish_reason" => "length", "message" => { "role" => "assistant",
+          "tool_calls" => [ { "type" => "function", "function" => {
+            "name" => Enliterator::Adapters::LLM::Base::TOOL_NAME, "arguments" => bad } } ] } } ],
+          "usage" => usage_payload }
+        client = Class.new do
+          define_method(:chat) { self }
+          define_method(:completions) { self }
+          define_method(:create) { |**| payload }
+        end.new
+        expect {
+          adapter_for(client).tend(text: "x", facet: "summary", state: {}, neighbors: [])
+        }.to raise_error(Enliterator::Adapters::LLM::ProviderSerializationError, /REAL truncation.*gateway_max_tokens/)
+      end
+    end
+
+    context "gateway_max_tokens (v0.57.1 — off by default, byte-identical request)" do
+      it "sends max_tokens when configured" do
+        Enliterator.configure { |c| c.gateway_max_tokens = 8192 }
+        client = FakeOpenAIClient.new(arguments_json: JSON.generate("claims" => [], "confidence" => 0.5),
+                                      usage: usage_payload)
+        described_class.new(tier: "cheap", base_url: "https://llm.example.com/v1",
+                            api_key: "sk-test", client: client)
+                       .tend(text: "x", facet: "summary", state: {}, neighbors: [])
+        expect(client.completions.last_kwargs[:max_tokens]).to eq(8192)
+      end
+
+      it "omits max_tokens when unset (the request is byte-identical)" do
+        client = FakeOpenAIClient.new(arguments_json: JSON.generate("claims" => [], "confidence" => 0.5),
+                                      usage: usage_payload)
+        described_class.new(tier: "cheap", base_url: "https://llm.example.com/v1",
+                            api_key: "sk-test", client: client)
+                       .tend(text: "x", facet: "summary", state: {}, neighbors: [])
+        expect(client.completions.last_kwargs).not_to have_key(:max_tokens)
       end
     end
 

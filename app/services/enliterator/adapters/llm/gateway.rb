@@ -102,17 +102,49 @@ module Enliterator
             request_options[:extra_body] = { metadata: { tags: Array(tags) } }
           end
 
-          response =
-            if request_options.empty?
-              client.chat.completions.create(**params)
-            else
-              client.chat.completions.create(**params, request_options: request_options)
+          # v0.57.1: optional explicit output ceiling (nil default sends nothing —
+          # request byte-identical) so finish_reason=length means a REAL truncation.
+          if (cap = Enliterator.configuration.gateway_max_tokens)
+            params[:max_tokens] = cap.to_i
+          end
+
+          # v0.57.1: auto-retry the PROVIDER-SERIALIZATION quirk. Root-caused by
+          # the spine host (~7% of long subject_indexing tends): bedrock via
+          # LiteLLM intermittently double-encodes the tool-call claims array into
+          # a JSON string, rarely unparseable — the model's output is fine, and a
+          # plain re-ask clears it (2 of 3 on first retry, the rest on the second
+          # in the field). Without this, a transient quirk became a PERMANENT
+          # silent facet hole. The retry lives HERE (not the HTTP client — the
+          # HTTP call succeeds) and only for ProviderSerializationError: genuine
+          # model-format faults and every other error keep their old behavior.
+          # Token spend of ALL attempts is summed into the Result — retries are
+          # never free and never invisible.
+          spent = []
+          attempts = 0
+          begin
+            response =
+              if request_options.empty?
+                client.chat.completions.create(**params)
+              else
+                client.chat.completions.create(**params, request_options: request_options)
+              end
+            spent << extract_tokens(response)
+            parsed = extract_parsed(response)
+          rescue Enliterator::Adapters::LLM::ProviderSerializationError => e
+            attempts += 1
+            if attempts <= SERIALIZATION_RETRIES
+              Enliterator.logger&.warn(
+                "[enliterator] provider-serialization quirk on #{facet} (attempt #{attempts}/#{SERIALIZATION_RETRIES}) — re-asking: #{e.message[0, 120]}"
+              )
+              retry
             end
+            raise
+          end
 
           Result.new(
-            parsed: extract_parsed(response),
+            parsed: parsed,
             raw:    raw_hash(response),
-            tokens: extract_tokens(response)
+            tokens: sum_tokens(spent)
           )
         end
 
@@ -342,11 +374,18 @@ module Enliterator
           #   - raw_claims is a String that JSON.parse recovers to an Array (including "[]")
           #     → parse succeeded; empty result is a legitimate no-claims response
           if claims.empty? && raw_claims.is_a?(String) && !raw_claims.strip.empty? &&
-               !(JSON.parse(raw_claims) rescue nil).is_a?(Array)
+               recover_claims_array(raw_claims).nil?
             snippet = raw_claims[0, 200]
-            raise Enliterator::Adapters::LLM::ResponseFormatError,
-                  "Gateway received a non-empty claims string that could not be parsed " \
-                  "into usable claim hashes. Snippet: #{snippet.inspect}"
+            fr      = finish_reason_of(response)
+            # v0.57.1: named for what it IS — a provider-serialization quirk
+            # (double-encoded tool-call array), not a model-format fault. The
+            # subclass keeps every existing rescue working while #tend's
+            # auto-retry targets exactly this. finish_reason distinguishes a
+            # REAL truncation (length) from the quirk (tool_calls/stop).
+            raise Enliterator::Adapters::LLM::ProviderSerializationError,
+                  "claims arrived as an unparseable JSON string (provider double-encoding; " \
+                  "finish_reason=#{fr || 'unknown'}#{fr == 'length' ? ' — REAL truncation, consider config.gateway_max_tokens' : ''}). " \
+                  "Snippet: #{snippet.inspect}"
           end
 
           parsed = {
@@ -397,6 +436,55 @@ module Enliterator
               "note"      => h.key?("note") ? h["note"] : h[:note]
             }.compact
           end
+        end
+
+        # v0.57.1: bounded re-asks for the provider-serialization quirk. Field
+        # data: 2 of 3 clear on the first retry, the rest on the second.
+        SERIALIZATION_RETRIES = 2
+
+        # The finish_reason on the first choice ("tool_calls"/"stop"/"length"),
+        # across struct/hash shapes; nil when absent (fake clients in specs).
+        def finish_reason_of(response)
+          choice = first_choice(response)
+          return nil unless choice
+          fr =
+            if choice.respond_to?(:finish_reason)
+              choice.finish_reason
+            elsif choice.is_a?(Hash)
+              choice[:finish_reason] || choice["finish_reason"]
+            end
+          fr&.to_s
+        end
+
+        # Sum per-attempt token hashes into one (v0.57.1: serialization retries
+        # bill every attempt — spend is never invisible).
+        def sum_tokens(spent)
+          spent = spent.reject(&:empty?)
+          return spent.last || {} if spent.size <= 1
+          %w[input output total].each_with_object({}) do |k, h|
+            h[k] = spent.sum { |t| t[k].to_i }
+          end
+        end
+
+        # v0.57.1: recover a stringified claims array, tolerantly. Bedrock via
+        # LiteLLM intermittently double-encodes the tool-call array into a JSON
+        # string; usually a plain parse recovers it (the v0.48.1 layer), and two
+        # further SAFE repairs salvage the easy malformed shapes (the #tend
+        # auto-retry is the real fix for the rest — never guess at content):
+        #   (a) double-decoded — the outer parse yields a STRING that is itself
+        #       JSON (the quirk's cleanest form);
+        #   (b) wrapped — a valid array embedded in stray prose/whitespace:
+        #       parse the outermost [...] span.
+        # Returns the Array or nil. The ONE shared judge of recoverability —
+        # normalize_claims (recovery) and extract_parsed (the raise condition)
+        # must never disagree about what counts as recoverable.
+        def recover_claims_array(str)
+          parsed = (JSON.parse(str) rescue nil)
+          parsed = (JSON.parse(parsed) rescue nil) if parsed.is_a?(String)
+          if !parsed.is_a?(Array) && (m = str[/\[.*\]/m])
+            parsed = (JSON.parse(m) rescue nil)
+          end
+          parsed.is_a?(Array) ? parsed : nil
         end
 
         # The first tool call on the first choice's message, across struct/hash shapes.
@@ -511,8 +599,8 @@ module Enliterator
           # so it normalizes to {} and is rejected below. extract_parsed detects the
           # non-empty-string-with-empty-result case and raises ResponseFormatError.
           if claims.is_a?(String)
-            parsed = (JSON.parse(claims) rescue nil)
-            claims = parsed if parsed.is_a?(Array)
+            parsed = recover_claims_array(claims)
+            claims = parsed if parsed
           end
           Array(claims).map do |c|
             h = c.is_a?(Hash) ? c : {}
