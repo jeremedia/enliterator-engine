@@ -61,11 +61,15 @@ module Enliterator
 
         # Group by the facet of the claim's minting visit (claims don't carry
         # facet; their visits do). Host-seeded claims (no visit) group under
-        # "asserted".
+        # "asserted" — except the collection's told identity (v0.57), which
+        # groups under "charter" so the record's own entry names it honestly.
         def claims_by_facet(claims, verdicts)
           visit_facets = Enliterator::Visit.where(id: claims.filter_map(&:visit_id))
                                            .pluck(:id, :facet).to_h
-          claims.group_by { |c| visit_facets[c.visit_id] || "asserted" }
+          claims.group_by { |c|
+                  visit_facets[c.visit_id] ||
+                    (Enliterator::Charter.charter_key?(c.key) ? "charter" : "asserted")
+                }
                 .transform_values { |cs| cs.map { |c| claim_card(c, verdict: verdicts[c.id]) } }
         end
 

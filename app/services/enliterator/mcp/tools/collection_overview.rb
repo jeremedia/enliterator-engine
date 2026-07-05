@@ -25,6 +25,10 @@ module Enliterator
           condition = Enliterator::Condition.report
 
           {
+            # v0.57: the charter LEADS — the collection says what it IS before
+            # what it counts. Key ABSENT when the host declares no collection
+            # tendable (spec-pinned; the pre-charter payload is byte-identical).
+            **charter_block,
             context: ctx&.key || "root",
             stats:   overview[:stats],
             types:   overview[:types],
@@ -48,6 +52,22 @@ module Enliterator
         end
 
         private
+
+        # The told identity + its derived operational values, with a next: hint
+        # to the collection record's own entry. {} when unconfigured/unseeded.
+        def charter_block
+          c = Enliterator::Charter.read
+          return {} if c.nil?
+
+          {
+            charter: {
+              **c[:told],
+              untold:  c[:untold],
+              derived: c[:derived],
+              record_entry_hint: "record_entry type=#{c[:record][:type]} id=#{c[:record][:id]} — the collection's own entry"
+            }
+          }
+        end
 
         def context_tree
           Enliterator::Context.order(:id).map do |c|

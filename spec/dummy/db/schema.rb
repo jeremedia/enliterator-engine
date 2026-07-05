@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_03_120100) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_04_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -1097,6 +1097,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_03_120100) do
     t.index ["term"], name: "index_lexicon_and_ontologies_on_term", unique: true
     t.index ["term_type"], name: "index_lexicon_and_ontologies_on_term_type"
     t.index ["valid_time_start", "valid_time_end"], name: "idx_on_valid_time_start_valid_time_end_5b95b14d20"
+  end
+
+  create_table "libraries", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name"
+    t.datetime "updated_at", null: false
   end
 
   create_table "lifecycles", force: :cascade do |t|

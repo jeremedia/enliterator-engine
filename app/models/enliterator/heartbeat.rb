@@ -140,7 +140,7 @@ module Enliterator
 
     def self.config_snapshot
       c = Enliterator.configuration
-      {
+      snap = {
         "heartbeat_budget_tokens"      => c.heartbeat_budget_tokens,
         "heartbeat_change_share"       => c.heartbeat_change_share,
         "heartbeat_neighbor_threshold" => c.heartbeat_neighbor_threshold,
@@ -148,6 +148,11 @@ module Enliterator
         "tending_facets"               => Array(c.tending_facets).map(&:to_s),
         "apply_approved_keys"          => c.apply_approved_keys
       }
+      # Shape flags stamped ONLY when adopted — a non-adopter's ledger rows
+      # stay byte-identical (the snapshot is stored per cycle).
+      snap["collection_tendable"]   = c.collection_tendable.to_s if c.collection_tendable
+      snap["default_reading_scope"] = c.default_reading_scope.to_s if c.default_reading_scope
+      snap
     end
 
     def finished? = finished_at.present?
@@ -167,7 +172,8 @@ module Enliterator
       run_warnings = []
 
       begin
-        sync_topology!(run_warnings)   # gates + pulses INTERNALLY — no topology ⇒ no phase ⇒ trace byte-identical
+        sync_topology!(run_warnings)     # gates + pulses INTERNALLY — no topology ⇒ no phase ⇒ trace byte-identical
+        reconcile_charter!(run_warnings) # same discipline: no collection_tendable ⇒ no phase
         pulse!("survey")      ; survey_phase!(run_warnings)
         pulse!("work")        ; work_items!(plan, counts, run_warnings)
         pulse!("considerer")  ; consider!(run_warnings) unless skip_consider
@@ -252,6 +258,33 @@ module Enliterator
     rescue => e
       # The sync must never kill the tending cycle — record and continue.
       run_warnings << "topology sync failed: #{e.class}: #{e.message}"
+      log(run_warnings.last)
+    end
+
+    # v0.57: keep the charter's gaps honest each cycle — open a lacuna per
+    # untold identity field on the collection tendable, close told ones. The
+    # gate is a pure config check BEFORE pulse! (non-adopter phase trace stays
+    # byte-identical); a configured-but-unseeded collection record is the one
+    # state that must be LOUD here (the ledger is its channel — surfaces just
+    # go silent). Fail-soft: identity bookkeeping never halts tending. Sibling
+    # to sync_topology!, NOT inside it — charter-without-topology is legal.
+    def reconcile_charter!(run_warnings)
+      name = Enliterator.configuration.collection_tendable
+      return if name.blank?
+
+      pulse!("charter")
+      if Enliterator::Charter.record.nil?
+        run_warnings << "charter: collection_tendable configured but no #{name} row exists — " \
+                        "create it, then rake enliterator:charter"
+        log(run_warnings.last)
+        return
+      end
+      result = Enliterator::Charter.reconcile_gaps!
+      log("charter: gaps opened/refreshed=#{result[:opened]} closed=#{result[:closed]}")
+    rescue StoodDown
+      raise
+    rescue => e
+      run_warnings << "charter reconcile failed: #{e.class}: #{e.message}"
       log(run_warnings.last)
     end
 

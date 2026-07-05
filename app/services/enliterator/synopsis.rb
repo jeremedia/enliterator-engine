@@ -53,6 +53,10 @@ module Enliterator
       {
         generated_at: Time.current,
         context:      context&.key,
+        # v0.57: the told identity headline ("Spine — a workshop of sovereign
+        # manuscripts"), nil when no charter. Heartbeat-keyed cache + 5-min TTL
+        # means a fresh tell! reaches consumers within ≤5 minutes — accepted.
+        charter:      Enliterator::Charter.headline,
         facets: names.map { |s| facet_portrait(policy, s, context: context, sample_cap: sample_cap, value_chars: value_chars) },
         connections: connection_portrait(policy, names, context: context, sample_cap: sample_cap, value_chars: value_chars),
         health: Enliterator::Report.summary(host: host, since: since),
@@ -65,7 +69,11 @@ module Enliterator
     # Render a synopsis as compact, LLM-injectable plaintext (one line per item, NOT
     # a JSON dump). Samples are already truncated by build, so this is bounded.
     def to_prompt(synopsis)
-      lines = [ "COLLECTION SELF-PORTRAIT" ]
+      # v0.57: the header names the collection when its charter is told —
+      # "COLLECTION SELF-PORTRAIT — Spine: a workshop of sovereign manuscripts".
+      header = "COLLECTION SELF-PORTRAIT"
+      header += " — #{synopsis[:charter].sub(' — ', ': ')}" if synopsis[:charter].present?
+      lines = [ header ]
       lines << "Viewed through context: #{synopsis[:context]}" if synopsis[:context]
       models = Array(synopsis[:models])
       lines << "Tended models: #{models.join(', ')}" if models.any?

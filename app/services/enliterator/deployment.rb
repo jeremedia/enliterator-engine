@@ -76,6 +76,11 @@ module Enliterator
         record_lacunae:               c.record_lacunae,
         name_authority_keys:          Array(c.name_authority_keys).map(&:to_s),
         read_time_warrant:            c.read_time_warrant,
+        # the shape-of-a-collection flags (v0.55–v0.57)
+        synthesized_tendables:        Enliterator.synthesized_tendable_names,
+        collection_tendable:          c.collection_tendable&.to_s,
+        topology_wholes:              Array(c.topology&.wholes).map { |w| "#{w.whole_type}<#{w.member_type}" },
+        default_reading_scope:        c.default_reading_scope&.to_s,
         gateway_timeout:              c.gateway_timeout,
         gateway_max_retries:          c.gateway_max_retries,
         atlas_node_cap:               c.atlas_node_cap,

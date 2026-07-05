@@ -54,12 +54,15 @@ module Enliterator
       )
     end
 
-    # v0.37: compose the system content from three layers — register → persona →
-    # follow-up directive — each added only when its config is on. Shared by
-    # Loop#system_content and the /desks preview (DRY). With both flags off this
-    # returns the bare persona_text (byte-identical to pre-v0.36).
+    # v0.37: compose the system content from the layers — register → charter →
+    # persona → follow-up directive — each added only when its config is on.
+    # Shared by Loop#system_content and the /desks preview (DRY). With
+    # everything off this returns the bare persona_text (byte-identical to
+    # pre-v0.36). The charter (v0.57) rides INDEPENDENT of chat_register: the
+    # collection's identity is grounding fact, not voice — a host with no
+    # register but a told charter still speaks its name.
     def compose_system(persona_text)
-      [ register_text, persona_text,
+      [ register_text, charter_text, persona_text,
         (Enliterator::Chat::Followups::DIRECTIVE if Enliterator.configuration.chat_followups) ]
         .compact.join("\n\n")
     end
@@ -70,6 +73,22 @@ module Enliterator
       r = Enliterator.configuration.chat_register
       return nil unless r
       r == true ? Enliterator::Chat::Register::DEFAULT : r.to_s
+    end
+
+    # v0.57: the told identity as one grounding block. nil (no layer) when no
+    # charter is configured/told — the compact.join is byte-identical without it.
+    def charter_text
+      c = Enliterator::Charter.read
+      return nil if c.nil? || c[:told].empty?
+
+      t = c[:told]
+      parts = []
+      if t[:proper_noun].present?
+        parts << "This collection is #{t[:proper_noun]}#{t[:identity].present? ? " — #{t[:identity]}" : ''}."
+      end
+      parts << "Its purpose: #{t[:purpose]}."   if t[:purpose].present?
+      parts << "Its audience: #{t[:audience]}." if t[:audience].present?
+      parts.presence&.join(" ")
     end
   end
 end

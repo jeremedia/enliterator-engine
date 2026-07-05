@@ -191,10 +191,18 @@ module Enliterator
     # values by DISTINCT RECORD count (a record holding the same key/value at
     # root and in a context is one record, not two). Identifier keys are
     # excluded by NAME (Atlas::IDENTIFIER_KEY_RX — control numbers are access
-    # points, not subject headings; the cataloger's distinction).
+    # points, not subject headings; the cataloger's distinction). Charter keys
+    # (v0.57) are likewise excluded by NAME — the told identity is human-
+    # attributed prose that would seed count-1 junk headings in a young browse
+    # index. A SIBLING constant, deliberately NOT folded into IDENTIFIER_KEY_RX
+    # (that constant is shared with the Atlas's authority classification, and
+    # charter prose is neither an access point nor a control number).
+    # Browse-index-only: an explicit subject_search by a charter key resolves.
+    CHARTER_KEY_RX = /\Acharter_/
+
     def headings
       keys = scoped_understanding.distinct.pluck(:key)
-      keys.reject { |k| k.match?(Enliterator::Atlas::IDENTIFIER_KEY_RX) }
+      keys.reject { |k| k.match?(Enliterator::Atlas::IDENTIFIER_KEY_RX) || k.match?(CHARTER_KEY_RX) }
           .filter_map { |k| heading_for(k) }
           .sort_by { |h| -h[:records] }
           .first(HEADING_KEYS_CAP)

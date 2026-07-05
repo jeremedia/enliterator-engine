@@ -1,5 +1,11 @@
 <% s = @synopsis %>
-<h1>Status <span class="subtitle">— the collection's finding aid, maintained for itself</span></h1>
+<%# v0.57: the collection introduces itself — the told charter leads the finding aid.
+    Absent (byte-identical header) when no charter is configured/told. %>
+<% if s[:charter].present? %>
+  <h1><%= s[:charter] %> <span class="subtitle">— Status: the collection's finding aid, maintained for itself</span></h1>
+<% else %>
+  <h1>Status <span class="subtitle">— the collection's finding aid, maintained for itself</span></h1>
+<% end %>
 <p class="muted">
   A self-portrait: scope and content, the controlled vocabulary in use, the connection graph, and the
   health of the tending.

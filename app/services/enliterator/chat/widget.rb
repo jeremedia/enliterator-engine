@@ -189,13 +189,24 @@ module Enliterator
           [ stats[:vocabulary_keys], "vocabulary keys" ]
         ])
 
+        # v0.57: the card says what the collection IS before what it counts —
+        # rendered only when the payload carries a told charter (no key ⇒ no line).
+        charter = symize(r[:charter] || {})
+        header  = if charter[:proper_noun].to_s.strip.length.positive?
+          ident = charter[:identity].to_s.strip
+          %(<div class="enl-charter"><strong>#{h(charter[:proper_noun])}</strong>) +
+            (ident.empty? ? "" : %( — #{h(ident)})) + %(</div>)
+        else
+          ""
+        end
+
         chips = Array(r[:facets]).map { |f|
           f = symize(f)
           %(<span class="facet-chip">#{h(f[:facet])} · #{h(f[:tended_count])}</span>)
         }.join
         chips = %(<div class="stats-facets">#{chips}</div>) unless chips.empty?
 
-        %(<div class="enl-widget enl-widget--overview">#{strip}#{chips}) +
+        %(<div class="enl-widget enl-widget--overview">#{header}#{strip}#{chips}) +
           overview_contexts(r[:contexts]) +
           overview_accuracy(r[:accuracy]) + %(</div>)
       end

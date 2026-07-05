@@ -6,9 +6,12 @@ module Enliterator
   # visit supplies the value. This is the engine's enumeration of its own gaps.
   #
   # The epistemic triad: frontier (unknown-unknown) / lacuna (known-unknown) /
-  # claim (known-known). Lacunae are EARNED by looking — born at tend-time, never
-  # pre-stamped. Gated behind config.record_lacunae (default off) ⇒ empty table ⇒
-  # byte-identical.
+  # claim (known-known). Lacunae are EARNED by looking. Two lookers exist:
+  # tending (v0.46 — a required term unmet at tend-time; gated behind
+  # config.record_lacunae, default off ⇒ empty table ⇒ byte-identical) and the
+  # CHARTER reconcile (v0.57 — an untold identity field on the collection
+  # tendable, opened visit-less: the reserved nullability below in use; gated
+  # behind config.collection_tendable). Never pre-stamped by anything else.
   class Lacuna < ApplicationRecord
     # "Lacuna" pluralizes irregularly (the Latin plural is "lacunae", which the
     # migration uses); pin the table name rather than teach Rails the inflection.

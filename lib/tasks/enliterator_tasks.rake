@@ -581,3 +581,47 @@ namespace :enliterator do
     puts "[sync_topology] #{result.summary}"
   end
 end
+
+namespace :enliterator do
+  # v0.57: the charter — tell the collection who it is, or report its told
+  # state. No args = state report (told fields, untold gaps, derived scope/
+  # facets) + a gap reconcile whose writes are named in the output. Env args
+  # tell fields (fail-hard; an operator is present):
+  #
+  #   bin/rails enliterator:charter
+  #   bin/rails enliterator:charter PROPER_NOUN="Spine" IDENTITY="a workshop of
+  #     sovereign manuscripts" PURPOSE="writing and tending books" \
+  #     AUDIENCE="authors and their AI collaborators" BY="jeremy"
+  desc "Report or tell the collection's charter. [PROPER_NOUN= IDENTITY= PURPOSE= AUDIENCE= BY=]"
+  task charter: :environment do
+    abort("No collection_tendable configured (set config.collection_tendable to your one-row collection model)") unless Enliterator::Charter.configured?
+
+    if Enliterator::Charter.record.nil?
+      abort("[charter] config.collection_tendable = #{Enliterator.configuration.collection_tendable.inspect} " \
+            "is configured but no row exists — create it (e.g. #{Enliterator.configuration.collection_tendable}.first_or_create!), then re-run")
+    end
+
+    fields = {
+      proper_noun: ENV["PROPER_NOUN"].presence,
+      identity:    ENV["IDENTITY"].presence,
+      purpose:     ENV["PURPOSE"].presence,
+      audience:    ENV["AUDIENCE"].presence
+    }.compact
+
+    if fields.any?
+      results = Enliterator::Charter.tell!(by: ENV["BY"].presence || "curator", **fields)
+      results.each { |field, outcome| puts "[charter] #{field}: #{outcome}" }
+    end
+
+    gaps = Enliterator::Charter.reconcile_gaps!
+    puts "[charter] reconciled gaps: opened/refreshed=#{gaps[:opened]} closed=#{gaps[:closed]}"
+
+    c = Enliterator::Charter.read
+    puts "\n[charter] #{c[:record][:type]}/#{c[:record][:id]}"
+    Enliterator::Charter::FIELDS.each do |f|
+      v = c[:told][f.to_sym]
+      puts "  #{f.ljust(12)} #{v.presence || '— UNTOLD (open lacuna)'}"
+    end
+    puts "  derived: reading_scope=#{c[:derived][:reading_scope]} reading_facets=#{c[:derived][:reading_facets].join(',')}"
+  end
+end

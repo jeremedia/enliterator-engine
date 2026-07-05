@@ -160,6 +160,13 @@ module Enliterator
     # bounded call becomes a COUNTED failure instead of a hung cycle.
     attr_accessor :gateway_timeout, :gateway_max_retries
 
+    # v0.57.1: optional explicit max_tokens on the forced-tool tend call. nil
+    # (default) sends NO max_tokens — the request is byte-identical to before.
+    # Setting it makes a REAL truncation (finish_reason=length) distinguishable
+    # from the provider-serialization quirk, at a generous ceiling of the
+    # host's choosing.
+    attr_accessor :gateway_max_tokens
+
     # ---- v0.28 Agentic Reference Desk ------------------------------------
 
     # Gate for the agentic federation. nil/false ⇒ /enliterator/chat is the
@@ -246,6 +253,18 @@ module Enliterator
     # mask is a no-op ⇒ byte-identical.
     attr_accessor :synthesized_tendables
 
+    # ---- The charter: the collection's told identity (v0.57) -------------
+
+    # The TYPE NAME (string) of the host's ONE-ROW collection record — the
+    # tendable that carries the collection's CHARTER (proper noun, one-line
+    # identity, purpose, audience) as human-attributed claims. Default nil ⇒
+    # no charter surfaces anywhere ⇒ byte-identical. Setting it IMPLIES the
+    # synthesized mask (synthesized_tendable_names folds it in): a collection
+    # tendable is BY DEFINITION synthesized — unlike a topology whole, where
+    # whole-and-not-synthesized is a legal state and Sync only warns.
+    # Implication where the combination is illegal, warning where it's legal.
+    attr_accessor :collection_tendable
+
     # ---- Topology: the collection's declared part-whole structure --------
 
     # An Enliterator::Topology (lib/enliterator/topology.rb) declaring the host
@@ -329,6 +348,7 @@ module Enliterator
       @name_authority_keys = []
       @record_lacunae = nil
       @synthesized_tendables = []
+      @collection_tendable = nil
       @topology = nil
       @default_reading_scope = nil
       @heartbeat_budget_tokens = 200_000
@@ -343,6 +363,7 @@ module Enliterator
       @atlas_node_cap = 1_500
       @gateway_timeout = 180
       @gateway_max_retries = 1
+      @gateway_max_tokens = nil
     end
 
     def logger
@@ -440,9 +461,12 @@ module Enliterator
     end
 
     # The host TYPE names declared SYNTHESIZED (see Configuration#synthesized_tendables).
-    # A load-independent config name list — nil-safe, string-normalized.
+    # A load-independent config name list — nil-safe, string-normalized. The
+    # collection tendable (v0.57) is folded in: it is by definition synthesized
+    # (tended by deliberate invocation, never the pacemaker), so declaring it
+    # implies the mask — the host cannot forget it.
     def synthesized_tendable_names
-      Array(configuration.synthesized_tendables).map(&:to_s)
+      (Array(configuration.synthesized_tendables) | Array(configuration.collection_tendable)).map(&:to_s)
     end
 
     # Subtract the synthesized type names from a list of tendable-type NAMES.
