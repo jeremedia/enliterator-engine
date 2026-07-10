@@ -45,8 +45,17 @@ module Enliterator
         force:  params[:force].present?
       )
       row.execute_async!(plan)
-      flash[:notice] = "Heartbeat ##{row.id} started — #{plan.items.size} item(s), " \
-                       "budget #{number_with_delimiter(row.budget_tokens)} tokens."
+      notice = "Heartbeat ##{row.id} started — #{plan.items.size} item(s), " \
+               "budget #{number_with_delimiter(row.budget_tokens)} tokens."
+      # Make the down-clamp honest: when the ask exceeded the configured ceiling
+      # the cycle silently ran at the ceiling (sanitized_budget). Say so, rather
+      # than leave the raised number looking like it took effect.
+      asked = params[:budget].to_i
+      if asked > row.budget_tokens
+        notice += " (Requested #{number_with_delimiter(asked)} — clamped to the " \
+                  "configured ceiling of #{number_with_delimiter(row.budget_tokens)}.)"
+      end
+      flash[:notice] = notice
       redirect_to heartbeat_path
     rescue Enliterator::Heartbeat::Overlap => e
       flash[:alert] = e.message

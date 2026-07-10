@@ -88,8 +88,34 @@
              value="<%= @default_budget %>" style="width:9rem">
       <button type="submit" id="beat-btn" class="btn btn-primary">Beat now</button>
       <span class="muted samples">sync — runs server-side, enforced on actual tokens; watch it here</span>
+      <%# The budget is a DOWN-only knob: sanitized_budget clamps anything above
+          the configured ceiling back to it. Say so, and warn live when the typed
+          value would clamp, so the field never looks like a dead input. %>
+      <span class="muted samples" id="budget-note" style="flex-basis:100%">
+        the configured ceiling is <strong><%= number_with_delimiter(@default_budget) %></strong>
+        tokens — a larger value clamps down to it (raise
+        <span class="mono">config.heartbeat_budget_tokens</span> to lift it)
+      </span>
     </div>
   <% end %>
+  <script>
+  (function () {
+    var input = document.getElementById("budget"),
+        note  = document.getElementById("budget-note");
+    if (!input || !note) return;
+    var ceiling = <%= @default_budget.to_i %>, base = note.innerHTML;
+    input.addEventListener("input", function () {
+      var v = parseInt(input.value, 10);
+      if (v > ceiling) {
+        note.innerHTML = '<span class="warn">' + v.toLocaleString() +
+          ' exceeds the ceiling — this cycle will run at ' + ceiling.toLocaleString() +
+          ' tokens.</span>';
+      } else {
+        note.innerHTML = base;
+      }
+    });
+  })();
+  </script>
 <% end %>
 
 <h2>Recent cycles</h2>

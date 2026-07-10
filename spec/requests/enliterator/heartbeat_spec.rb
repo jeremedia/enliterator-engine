@@ -59,6 +59,14 @@ RSpec.describe "Enliterator heartbeat page", type: :request do
       get "/enliterator/heartbeat"
       expect(response.body).to include("No cycles yet")
     end
+
+    it "shows the configured ceiling on the trigger form — the down-clamp, made visible" do
+      ceiling = ActiveSupport::NumberHelper.number_to_delimited(
+        Enliterator.configuration.heartbeat_budget_tokens
+      )
+      get "/enliterator/heartbeat"
+      expect(response.body).to include("configured ceiling").and include(ceiling)
+    end
   end
 
   describe "POST /enliterator/heartbeat/beat" do
@@ -91,6 +99,27 @@ RSpec.describe "Enliterator heartbeat page", type: :request do
       post "/enliterator/heartbeat/beat", params: { budget: "", force: "1" }
       expect(Enliterator::Heartbeat.order(:id).last.budget_tokens)
         .to eq(Enliterator.configuration.heartbeat_budget_tokens)
+    end
+
+    it "names the clamp in the flash when the ask exceeds the ceiling — the clamp made honest" do
+      Widget.create!(title: "untended", body: "b")
+      allow_any_instance_of(Enliterator::Heartbeat).to receive(:execute_async!).and_return(Thread.new {})
+
+      post "/enliterator/heartbeat/beat", params: { budget: 999_999 }
+      follow_redirect!
+      expect(response.body)
+        .to include("clamped to the configured ceiling")
+        .and include(ActiveSupport::NumberHelper.number_to_delimited(999_999))
+    end
+
+    it "says nothing about clamping when the ask is within the ceiling (byte-identical flash)" do
+      Widget.create!(title: "untended", body: "b")
+      allow_any_instance_of(Enliterator::Heartbeat).to receive(:execute_async!).and_return(Thread.new {})
+
+      post "/enliterator/heartbeat/beat", params: { budget: 5_000 }
+      follow_redirect!
+      expect(response.body).to include("Heartbeat")
+      expect(response.body).not_to include("clamped")
     end
 
     it "a blocked beat flashes the open cycle and creates nothing; force proceeds" do

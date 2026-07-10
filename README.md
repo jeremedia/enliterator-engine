@@ -422,7 +422,11 @@ demoted `stale_after` sweep that gets only leftovers. Sync mode (the default)
 enforces the budget on **actual** tokens; every cycle is a `Heartbeat` row and
 every visit it causes carries `heartbeat_id` + `reason` — the schedule is
 auditable provenance, not a cron log. `PLAN=1` dry-runs the queue and prints the
-frontier horizon ("N records remaining ≈ M cycles at this budget").
+frontier horizon ("N records remaining ≈ M cycles at this budget"). The browser
+trigger (`/enliterator/heartbeat`) shares one guard: its budget box clamps **down**
+to `config.heartbeat_budget_tokens` (a stray zero can't authorize a mega-cycle) and
+now says so — the form names the ceiling, warns live when you type past it, and the
+post-beat notice reports any clamp (v0.57.2).
 
 A cycle also degrades gracefully through **transient bedrock unavailability**
 (v0.41.1). All enliteration runs on a Bedrock credit with no fallback, so an
