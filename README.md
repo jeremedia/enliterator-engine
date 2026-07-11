@@ -267,6 +267,15 @@ the host scheduler), pointing to the host's `doc/enliterator/deployment.md`. The
 describing its own shape, so a status check reads the system instead of guessing
 (`FORMAT=json` for the raw hash).
 
+`rake enliterator:first_impression` (v0.58) measures the whole point in one number: how much a
+record's enliteration adds to a machine reader's *first impression* over the bare surrogate a
+catalog gives it. It samples records in a context, generates a grounded question set per record,
+answers it under four reading conditions — the abstract alone, a catalog record, the abstract +
+the enliteration, and (opt-in) the raw full source — blind-grades, and reports the coverage and
+reliability *lift*, with a reading-accuracy canary that flags if a question leaked into the wrong
+condition. The finding-aid thesis, made falsifiable: *capability moves inference, not contact* — the
+enliteration helps most exactly where a stronger model can't reach the missing knowledge itself.
+
 Inspect the accumulated literacy:
 
 ```ruby

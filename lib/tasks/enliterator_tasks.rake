@@ -624,4 +624,51 @@ namespace :enliterator do
     end
     puts "  derived: reading_scope=#{c[:derived][:reading_scope]} reading_facets=#{c[:derived][:reading_facets].join(',')}"
   end
+
+  # v0.58 — the first-impression diagnostic. Measures how much a context's records'
+  # ENLITERATION adds to a machine reader's first impression over the bare surrogate
+  # a catalog gives it: coverage of source-absent facts, reliability caution,
+  # calibration. Read-only; the confound canary (reading accuracy flat across arms)
+  # guards against a golden-set answer leaking into the wrong arm.
+  #
+  #   CONTEXT=chds-theses SAMPLE=5 REPS=2 bin/rails enliterator:first_impression
+  #   JSON=/tmp/fi.json CONTEXT=… …    # also write the full report as JSON
+  desc "Measure the enliteration's lift over the bare surrogate. CONTEXT= SAMPLE= TIERS= REPS= SEED= JSON="
+  task first_impression: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:first_impression] #{msg}") : puts(msg) }
+    context = ENV["CONTEXT"].present? ? Enliterator::Context.find_by_key!(ENV["CONTEXT"]) : nil
+    tiers   = ENV["TIERS"].to_s.split(",").map(&:strip).reject(&:empty?)
+
+    report = Enliterator::FirstImpression.run(
+      context: context,
+      sample:  (ENV["SAMPLE"] || 5).to_i,
+      tiers:   tiers.presence,
+      reps:    (ENV["REPS"] || 1).to_i,
+      seed:    (ENV["SEED"] || 1).to_i,
+      log:     log
+    )
+
+    log.call("")
+    log.call("records=#{report['n_records']}  arms=#{report['arms'].join(',')}  tiers=#{report['tiers'].join(',')}")
+    header = format("%-9s %8s %8s %8s %8s %8s %8s", "arm", "reading", "coverage", "deep", "reliab", "brier", "fe_rich")
+    log.call(header)
+    report["arms"].each do |arm|
+      m = report["per_arm"][arm]
+      cell = ->(k) { (m.dig(k, 0) || 0).to_s }
+      log.call(format("%-9s %8s %8s %8s %8s %8s %8s", arm,
+                      cell.call("reading"), cell.call("coverage"), cell.call("deep"),
+                      cell.call("reliability"), cell.call("brier"), cell.call("fe_rich")))
+    end
+    h = report["headline"]
+    log.call("coverage lift (manual − abstract): #{h['coverage_lift']}   reliability lift: #{h['reliability_lift']}")
+    log.call("reading canary flat? #{h['reading_flat']}   (false ⇒ an answer leaked into the wrong arm)")
+
+    if ENV["JSON"].present?
+      File.write(ENV["JSON"], JSON.pretty_generate(report))
+      log.call("wrote #{ENV['JSON']}")
+    end
+  rescue Enliterator::FirstImpression::NullAdapterError => e
+    abort "[enliterator:first_impression] #{e.message} — configure the gateway"
+  end
 end

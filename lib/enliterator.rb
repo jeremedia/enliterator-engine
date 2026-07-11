@@ -240,6 +240,20 @@ module Enliterator
     # schema/prompt are unchanged ⇒ byte-identical. A host opts in per collection.
     attr_accessor :record_lacunae
 
+    # ---- First-impression diagnostic (v0.58) -----------------------------
+    #
+    # Knobs read ONLY by the `enliterator:first_impression` rake/service, which
+    # measures how much a record's enliteration adds to a machine reader's first
+    # impression over the bare surrogate. nil ⇒ defaults (the staffing ladder's
+    # strong tier for generation/judging; no fulltext arm). Nothing here touches a
+    # tending path — leaving them unset is byte-identical.
+    attr_accessor :first_impression_generate_tier
+    attr_accessor :first_impression_judge_tier
+    # A callable `->(record){ String }` supplying a FULLER source for the optional
+    # `fulltext` arm (e.g. HSDL passes truncated docling). nil ⇒ 3-arm diagnostic
+    # (many hosts' surrogate already IS the full text).
+    attr_accessor :first_impression_full_text
+
     # ---- Composite work: synthesized tendables ---------------------------
 
     # Host tendable TYPE names (e.g. %w[Manuscript]) that are SYNTHESIZED —
@@ -347,6 +361,9 @@ module Enliterator
       @read_time_warrant = nil
       @name_authority_keys = []
       @record_lacunae = nil
+      @first_impression_generate_tier = nil
+      @first_impression_judge_tier = nil
+      @first_impression_full_text = nil
       @synthesized_tendables = []
       @collection_tendable = nil
       @topology = nil
