@@ -56,10 +56,12 @@ module Enliterator
         Gem::Package::TarWriter.new(file) do |tar|
           json = JSON.pretty_generate(manifest)
           tar.add_file_simple(MANIFEST, 0o644, json.bytesize) { |io| io.write(json) }
-          tables.each do |t|
-            log "export: #{t} (#{manifest['tables'][t]['rows']} rows)"
-            payload = dump_table(conn, t)   # gzipped binary COPY, in memory
-            tar.add_file_simple("#{t}.bin.gz", 0o644, payload.bytesize) { |io| io.write(payload) }
+          without_statement_timeout(conn) do
+            tables.each do |t|
+              log "export: #{t} (#{manifest['tables'][t]['rows']} rows)"
+              payload = dump_table(conn, t)   # gzipped binary COPY, in memory
+              tar.add_file_simple("#{t}.bin.gz", 0o644, payload.bytesize) { |io| io.write(payload) }
+            end
           end
         end
       end
@@ -76,8 +78,14 @@ module Enliterator
       assert_compatible!(conn, manifest)
       assert_importable!(conn, force: force)
 
-      manifest["tables"].keys.sort_by { |t| [ TABLE_ORDER.index(t) || 99, t ] }.each do |t|
-        import_table(path, t, columns: manifest.dig("tables", t, "columns"), skip_guard: true)
+      # A host app may cap its Rails connections with a statement_timeout
+      # (HSDL: 60s on staging/prod). A multi-million-row binary COPY is a
+      # single statement and legitimately exceeds any web-tier cap, so the
+      # importer owns its timeout envelope for this session.
+      without_statement_timeout(conn) do
+        manifest["tables"].keys.sort_by { |t| [ TABLE_ORDER.index(t) || 99, t ] }.each do |t|
+          import_table(path, t, columns: manifest.dig("tables", t, "columns"), skip_guard: true)
+        end
       end
       log "import: complete — #{summary_line(manifest)}"
       unless manifest["tables"].key?("enliterator_measures")
@@ -109,21 +117,35 @@ module Enliterator
       raise ArgumentError, "#{table}: not in the archive manifest" unless columns
 
       rows = 0
-      each_entry(path) do |entry|
-        next unless entry.full_name == "#{table}.bin.gz"
-        gz = Zlib::GzipReader.new(StringIO.new(entry.read))
-        rc = conn.raw_connection
-        cols = columns.map { |c| conn.quote_column_name(c) }.join(", ")
-        rc.copy_data("COPY #{conn.quote_table_name(table)} (#{cols}) FROM STDIN (FORMAT binary)") do
-          while (chunk = gz.read(65_536))
-            rc.put_copy_data(chunk)
+      without_statement_timeout(conn) do
+        each_entry(path) do |entry|
+          next unless entry.full_name == "#{table}.bin.gz"
+          gz = Zlib::GzipReader.new(StringIO.new(entry.read))
+          rc = conn.raw_connection
+          cols = columns.map { |c| conn.quote_column_name(c) }.join(", ")
+          rc.copy_data("COPY #{conn.quote_table_name(table)} (#{cols}) FROM STDIN (FORMAT binary)") do
+            while (chunk = gz.read(65_536))
+              rc.put_copy_data(chunk)
+            end
           end
+          rows = conn.select_value("SELECT COUNT(*) FROM #{table}").to_i
         end
-        rows = conn.select_value("SELECT COUNT(*) FROM #{table}").to_i
       end
       reset_sequence(conn, table)
       log "import: #{table} → #{rows} rows"
       rows
+    end
+
+    # Lift the session's statement_timeout for the duration of a bulk COPY,
+    # restoring the prior value after (nested calls are no-op re-entries: the
+    # inner lift sees "0" and restores "0"). Session-scoped, not LOCAL — the
+    # COPY stream is not inside a wrapping transaction.
+    def without_statement_timeout(conn)
+      prior = conn.select_value("SHOW statement_timeout")
+      conn.execute("SET statement_timeout = 0")
+      yield
+    ensure
+      conn.execute("SET statement_timeout = #{conn.quote(prior)}") if prior
     end
 
     def read_manifest(path)
