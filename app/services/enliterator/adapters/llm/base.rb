@@ -107,7 +107,7 @@ module Enliterator
         # suggestions emphasis).
         #
         # @return [Enliterator::Adapters::LLM::Base::Result]
-        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil, candidates: nil)
+        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil, candidates: nil, source_changed: false)
           raise NotImplementedError, "#{self.class} must implement #tend"
         end
 
@@ -185,8 +185,8 @@ module Enliterator
         #
         # @param contract [Hash, nil] `{key => description}` or nil.
         # @return [String]
-        def system_for(contract, required: nil, candidates: nil)
-          base = build_system
+        def system_for(contract, required: nil, candidates: nil, source_changed: false)
+          base = build_system(source_changed: source_changed)
           keys = allowed_terms_from(contract)
           return base if keys.nil? || keys.empty?
 
@@ -373,17 +373,40 @@ module Enliterator
         end
 
         # The SYSTEM instruction shared across providers.
-        def build_system
-          <<~SYSTEM.strip
+        #
+        # v0.59: on a SOURCE-CHANGE re-tend (source_changed: true) the compounding
+        # clause is SWAPPED (not appended) for a re-derive instruction — the source
+        # text moved since the prior claims, so a prior claim is a hypothesis to
+        # VERIFY against current text, not to inherit. The intro and the op/return
+        # sections are shared; composing them with "\n\n" keeps the source_changed:false
+        # result BYTE-IDENTICAL to the pre-v0.59 single heredoc (rule 1).
+        def build_system(source_changed: false)
+          intro = <<~INTRO.strip
             You are tending a single data record to confer literacy on it. Your task
             is to read the record's text, its accumulated prior CLAIMS, its RECENT
             VISITS, and its corpus NEIGHBORS, then reconcile what is known into a set
             of provenanced claims.
+          INTRO
 
-            Understanding must COMPOUND. Prior claims and visits condition this one:
-            confirm what still holds, update what has changed, and only add what is
-            genuinely new. Do not discard prior understanding without reason.
+          clause =
+            if source_changed
+              <<~REDERIVE.strip
+                This record's SOURCE TEXT HAS CHANGED since the prior claims were made.
+                Do not assume the prior claims still hold. Re-read the CURRENT record
+                text and re-derive each claim from it: treat every prior claim as a
+                hypothesis to VERIFY against the current text, not as understanding to
+                inherit. UPDATE any claim the current text no longer supports; NOOP a
+                claim ONLY after you have re-confirmed it against the current text.
+              REDERIVE
+            else
+              <<~COMPOUND.strip
+                Understanding must COMPOUND. Prior claims and visits condition this one:
+                confirm what still holds, update what has changed, and only add what is
+                genuinely new. Do not discard prior understanding without reason.
+              COMPOUND
+            end
 
+          ops = <<~OPS.strip
             For every claim you assert, choose exactly one reconciliation op:
               - ADD    : a new claim for a key with no current live claim.
               - UPDATE : revise the value of an existing live claim for a key.
@@ -394,7 +417,9 @@ module Enliterator
             of claims (each with key, value, confidence, op) and an overall
             confidence in [0, 1]. Use stable, reusable keys (e.g. "summary",
             "authored_by"). Be conservative with confidence.
-          SYSTEM
+          OPS
+
+          [ intro, clause, ops ].join("\n\n")
         end
 
         # The USER payload: the record text plus a JSON dump of its compounding

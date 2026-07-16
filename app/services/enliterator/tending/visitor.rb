@@ -404,7 +404,8 @@ module Enliterator
             tags:      tags,
             contract:  contract,
             required:  required,
-            candidates: candidates
+            candidates: candidates,
+            source_changed: source_changed?
           )
           parsed = response.parsed || {}
 
@@ -638,12 +639,16 @@ module Enliterator
       # to v0.2 even on adapters that DO accept `contract:`. The Gateway accepts both;
       # Null/Bedrock accept `contract:` (and ignore it); per-tier stubs that accept
       # only `tags:` (escalation spec) still work — they're never handed a contract.
-      def tend_with_optional_kwargs(adapter, text:, facet:, state:, neighbors:, tags:, contract:, required: nil, candidates: nil)
+      def tend_with_optional_kwargs(adapter, text:, facet:, state:, neighbors:, tags:, contract:, required: nil, candidates: nil, source_changed: false)
         kwargs = { text: text, facet: facet, state: state, neighbors: neighbors }
         kwargs[:tags]       = tags       if adapter_accepts_kwarg?(adapter, :tags)
         kwargs[:contract]   = contract   if !contract.nil?   && adapter_accepts_kwarg?(adapter, :contract)
         kwargs[:required]   = required   if !required.nil?   && adapter_accepts_kwarg?(adapter, :required)
         kwargs[:candidates] = candidates if !candidates.nil? && adapter_accepts_kwarg?(adapter, :candidates)
+        # v0.59: pass source_changed ONLY when TRUE (a re-derive visit), so a normal
+        # visit or a flag-off host omits the kwarg entirely ⇒ the adapter's default
+        # `source_changed: false` ⇒ byte-identical prompt.
+        kwargs[:source_changed] = true   if source_changed  && adapter_accepts_kwarg?(adapter, :source_changed)
         adapter.tend(**kwargs)
       end
 
@@ -652,6 +657,17 @@ module Enliterator
         method.parameters.any? { |type, pname| pname == name && %i[key keyreq].include?(type) }
       rescue NameError
         false
+      end
+
+      # v0.59: true when this tend is a SOURCE-CHANGE re-tend AND the host opted in —
+      # the heartbeat stamped Visit.reason "source_change" (the host's `updated_at` vs
+      # the lane anchor) and `config.rederive_on_source_change` is on. When true the
+      # tend prompt re-derives instead of inheriting. Flag off OR any other reason ⇒
+      # false ⇒ the source_changed kwarg is omitted (byte-identical). Staffing path
+      # only — the injected-llm back-compat path never sets it.
+      def source_changed?
+        return false unless Enliterator.configuration.rederive_on_source_change
+        @reason.to_s == "source_change"
       end
 
       # LiteLLM spend tags for one gateway request. The join key to LiteLLM's

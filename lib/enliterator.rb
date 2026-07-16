@@ -113,10 +113,15 @@ module Enliterator
     attr_accessor :heartbeat_neighbor_threshold
 
     # Optional host override for the source-change test: a callable
-    # `(record, last_started_at) -> bool`. nil ⇒ the default comparison
-    # `record.updated_at > last_started_at` — approximate (touch chains, host
-    # backfills also move updated_at); hosts with a real content timestamp or
-    # digest should point this at it.
+    # `(record, last_started_at) -> bool`, or (v0.59) a facet-aware
+    # `(record, facet, last_started_at) -> bool` — arity decides which the planner
+    # calls, so a legacy 2-arg callable keeps working. Pass the facet form to signal
+    # change PER FACET (an edit touching only the body need not re-tend the metadata
+    # facet). nil ⇒ the default comparison `record.updated_at > last_started_at` —
+    # approximate (touch chains, host backfills also move updated_at); hosts with a
+    # real content timestamp or digest should point this at it. This matters more
+    # under `rederive_on_source_change`: a spurious signal now costs a full
+    # re-derivation, not a cheap NOOP — key the test on genuine content change.
     attr_accessor :heartbeat_source_changed
 
     # ---- v0.17 Condition (the collection shelf-reads itself) ---------------
@@ -240,6 +245,23 @@ module Enliterator
     # schema/prompt are unchanged ⇒ byte-identical. A host opts in per collection.
     attr_accessor :record_lacunae
 
+    # ---- v0.59 Re-derive on source change --------------------------------
+
+    # When true, a heartbeat re-tend triggered by a SOURCE CHANGE (Visit.reason
+    # "source_change") threads `source_changed: true` into the tend prompt, SWAPPING
+    # the "Understanding must COMPOUND / don't discard prior understanding" clause for
+    # a RE-DERIVE instruction: a prior claim is a hypothesis to VERIFY against the
+    # CURRENT text, not to inherit. Fixes the "fresh-but-wrong" case (a source-change
+    # visit reproducing a prior inference the edited text no longer supports). nil/false
+    # ⇒ the kwarg is never threaded and every prompt is byte-identical. Only the
+    # staffing/heartbeat path re-derives (the injected-llm back-compat path is untouched).
+    #
+    # COST NOTE for adopters: re-derivation costs MORE than NOOP-inheritance, so a
+    # SPURIOUS source-change signal is now more expensive — key the signal on genuine
+    # content change (e.g. a body-digest / last_body_change_at), not any `updated_at`
+    # bump, before enabling. See `heartbeat_source_changed` for the per-lane override.
+    attr_accessor :rederive_on_source_change
+
     # ---- First-impression diagnostic (v0.58) -----------------------------
     #
     # Knobs read ONLY by the `enliterator:first_impression` rake/service, which
@@ -361,6 +383,7 @@ module Enliterator
       @read_time_warrant = nil
       @name_authority_keys = []
       @record_lacunae = nil
+      @rederive_on_source_change = nil
       @first_impression_generate_tier = nil
       @first_impression_judge_tier = nil
       @first_impression_full_text = nil

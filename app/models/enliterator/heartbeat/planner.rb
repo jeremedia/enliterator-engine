@@ -216,11 +216,22 @@ module Enliterator
           model.where(model.primary_key => last_by_id.keys).find_each do |record|
             break if out.size >= max
             last = last_by_id[record.public_send(model.primary_key).to_s]
-            out << [ model.name, record.public_send(model.primary_key).to_s ] if @config.heartbeat_source_changed.call(record, last)
+            out << [ model.name, record.public_send(model.primary_key).to_s ] if source_changed_for?(record, lane.facet, last)
           end
           break if out.size >= max
         end
         out.first(max)
+      end
+
+      # v0.59: invoke the host's source-change override, passing the LANE FACET when
+      # the callable accepts it — so a host can signal change PER FACET (an edit that
+      # only affects `summary` need not re-tend `subject_indexing` too). This matters
+      # more now that re-derive makes a spurious signal cost a full re-derivation
+      # rather than a cheap NOOP. Backward-compatible: a legacy arity-2 callable is
+      # still called (record, last); anything else gets (record, facet, last).
+      def source_changed_for?(record, facet, last)
+        cb = @config.heartbeat_source_changed
+        cb.arity == 2 ? cb.call(record, last) : cb.call(record, facet, last)
       end
 
       # 2. NEIGHBORHOOD — context-mates were tended since this record's last

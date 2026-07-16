@@ -156,6 +156,24 @@ RSpec.describe "Enliterator::Heartbeat.plan (v0.15)" do
       ids = items_for(Enliterator::Heartbeat.plan, reason: "source_change").map(&:tendable_id)
       expect(ids).to contain_exactly(a.id.to_s)
     end
+
+    it "passes the lane FACET to a 3-arg override (v0.59 per-facet granularity)" do
+      Enliterator.configuration.heartbeat_source_changed =
+        ->(record, facet, _last) { facet == "policy_analysis" && record.title == "CHANGED" }
+      a = widget!("CHANGED", context: crs)
+      visit!(a, facet: "policy_analysis", context: crs, at: 2.days.ago)
+
+      ids = items_for(Enliterator::Heartbeat.plan, reason: "source_change").map(&:tendable_id)
+      expect(ids).to contain_exactly(a.id.to_s)
+    end
+
+    it "a 3-arg override keyed on a facet the lane does NOT carry schedules nothing" do
+      Enliterator.configuration.heartbeat_source_changed = ->(_r, facet, _l) { facet == "no_such_facet" }
+      a = widget!("CHANGED", context: crs)
+      visit!(a, facet: "policy_analysis", context: crs, at: 2.days.ago)
+
+      expect(items_for(Enliterator::Heartbeat.plan, reason: "source_change")).to be_empty
+    end
   end
 
   describe "vocabulary trigger" do

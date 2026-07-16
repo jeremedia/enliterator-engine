@@ -595,7 +595,13 @@
     </div>
 
     <p class="about-colophon">
-      Living document &middot; reflects Enliterator as of <strong>July 2026</strong> (v0.58 &mdash;
+      Living document &middot; reflects Enliterator as of <strong>July 2026</strong> (v0.59 &mdash;
+      a record whose source has changed stops inheriting its old reading: when an edit to the source
+      triggers a re-tend, the reader is told the text has moved and re-derives each claim from the
+      current words rather than confirming the prior one &mdash; the fix for a claim that went on saying
+      &ldquo;improbable&rdquo; after its chapter had been rewritten to &ldquo;contingent,&rdquo; fresh
+      but wrong &mdash; and the change signal can now be scoped per facet, so an edit that touches one
+      dimension need not re-read them all; v0.58 &mdash;
       the first-impression diagnostic: <span class="mono">rake enliterator:first_impression</span>
       measures, in one number, how much a record&rsquo;s enliteration adds to a machine reader&rsquo;s
       first impression over the bare surrogate a catalog gives it &mdash; sampling records, generating

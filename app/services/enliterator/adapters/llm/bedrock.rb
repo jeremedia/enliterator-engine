@@ -80,10 +80,10 @@ module Enliterator
         # gains a controlled-vocabulary block. When absent (the default) the call
         # is byte-identical to v0.2: input_schema.json == RESPONSE_SCHEMA and the
         # original system text.
-        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil, candidates: nil)
+        def tend(text:, facet:, state:, neighbors:, contract: nil, required: nil, candidates: nil, source_changed: false)
           response = client.converse(
             model_id: @model_id,
-            system:   [ { text: system_for(contract, required: required, candidates: candidates) } ],
+            system:   [ { text: system_for(contract, required: required, candidates: candidates, source_changed: source_changed) } ],
             messages: [
               {
                 role: "user",
