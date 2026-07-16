@@ -391,12 +391,12 @@ module Enliterator
           clause =
             if source_changed
               <<~REDERIVE.strip
-                This record's SOURCE TEXT HAS CHANGED since the prior claims were made.
-                Do not assume the prior claims still hold. Re-read the CURRENT record
-                text and re-derive each claim from it: treat every prior claim as a
-                hypothesis to VERIFY against the current text, not as understanding to
-                inherit. UPDATE any claim the current text no longer supports; NOOP a
-                claim ONLY after you have re-confirmed it against the current text.
+                Do not assume the prior claims still hold — they may be STALE (the source
+                has since moved) or simply WRONG. Re-read the CURRENT record text and
+                re-derive each claim from it: treat every prior claim as a hypothesis to
+                VERIFY against the current text, not as understanding to inherit. UPDATE
+                any claim the current text does not support; NOOP a claim ONLY after you
+                have re-confirmed it against the current text.
               REDERIVE
             else
               <<~COMPOUND.strip

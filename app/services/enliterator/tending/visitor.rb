@@ -405,7 +405,7 @@ module Enliterator
             contract:  contract,
             required:  required,
             candidates: candidates,
-            source_changed: source_changed?
+            source_changed: re_derive?
           )
           parsed = response.parsed || {}
 
@@ -659,15 +659,19 @@ module Enliterator
         false
       end
 
-      # v0.59: true when this tend is a SOURCE-CHANGE re-tend AND the host opted in —
-      # the heartbeat stamped Visit.reason "source_change" (the host's `updated_at` vs
-      # the lane anchor) and `config.rederive_on_source_change` is on. When true the
-      # tend prompt re-derives instead of inheriting. Flag off OR any other reason ⇒
-      # false ⇒ the source_changed kwarg is omitted (byte-identical). Staffing path
+      # True when this tend should RE-DERIVE (distrust prior claims, re-read current
+      # text) rather than inherit. Two triggers feed the same `source_changed:` prompt:
+      #   * v0.61 "revalidate" — a DELIBERATE drain of already-sedimented claims
+      #     (Revalidation / the rake). Always re-derives: the invocation IS the opt-in,
+      #     so it needs no config flag (nothing emits this reason in normal operation ⇒
+      #     byte-identical).
+      #   * v0.59 "source_change" — the heartbeat's automatic edit signal. Re-derives
+      #     only when `config.rederive_on_source_change` is on.
+      # Any other reason ⇒ false ⇒ the kwarg is omitted (byte-identical). Staffing path
       # only — the injected-llm back-compat path never sets it.
-      def source_changed?
-        return false unless Enliterator.configuration.rederive_on_source_change
-        @reason.to_s == "source_change"
+      def re_derive?
+        return true if @reason.to_s == "revalidate"
+        Enliterator.configuration.rederive_on_source_change && @reason.to_s == "source_change"
       end
 
       # LiteLLM spend tags for one gateway request. The join key to LiteLLM's

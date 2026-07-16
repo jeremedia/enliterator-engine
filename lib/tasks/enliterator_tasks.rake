@@ -70,6 +70,39 @@ namespace :enliterator do
     log.call("done — enqueued #{total_enqueued} tending visit(s) across #{models.size} model(s) and #{facets.size} facet(s)")
   end
 
+  # v0.61: DRAIN sedimented claims. v0.59 re-derive fires only on future source_change
+  # visits, so claims already wrong on a stable source stay wrong. This enqueues a
+  # DELIBERATE re-derive re-tend (Visit.reason "revalidate" — always re-derives) over
+  # the un-revalidated records of a facet/context, and reports the drain gauge. The
+  # revalidate Visit row is the mark; re-run with DRY=1 to watch `remaining` fall.
+  #
+  #   FACET=summary bin/rails enliterator:revalidate                 # root scope
+  #   FACET=significance CONTEXT=the-purpose-token bin/rails enliterator:revalidate
+  #   FACET=summary CONTEXT=my-book LIMIT=25 bin/rails enliterator:revalidate
+  #   FACET=summary CONTEXT=my-book DRY=1 bin/rails enliterator:revalidate   # census only
+  desc "Drain sedimented claims via a deliberate re-derive re-tend (v0.61). FACET= [CONTEXT=] [LIMIT=] [DRY=1]"
+  task revalidate: :environment do
+    facet   = ENV["FACET"].presence or abort "FACET= is required (one lane per run)"
+    ctx_key = ENV["CONTEXT"].presence
+    limit   = ENV["LIMIT"].presence&.to_i
+    dry     = ENV["DRY"].present?
+    logger  = Enliterator.logger
+    log = ->(m) { logger ? logger.info("[enliterator:revalidate] #{m}") : puts("[enliterator:revalidate] #{m}") }
+
+    context = ctx_key ? Enliterator::Context.find_by(key: ctx_key) : nil
+    abort "context #{ctx_key.inspect} not found" if ctx_key && context.nil?
+
+    prog = Enliterator::Revalidation.progress(facet: facet, context: context)
+    log.call("facet=#{facet} context=#{ctx_key || 'root'} — #{prog[:revalidated]}/#{prog[:total]} revalidated, #{prog[:remaining]} remaining")
+
+    if dry
+      log.call("DRY — no visits enqueued.")
+    else
+      enq = Enliterator::Revalidation.run(facet: facet, context: context, limit: limit)
+      log.call("enqueued #{enq} revalidate visit(s)#{limit ? " (limit #{limit})" : ''}. The host queue must be running; the drain lands as each visit succeeds — re-run with DRY=1 to watch `remaining` fall.")
+    end
+  end
+
   # The tending rollup / smoke alarm. Prints per-facet Visit health: status mix,
   # adapter/model mix (a `null` model means a misconfigured run wrote phantom
   # "succeeded" visits — flagged loudly), escalation + empty-final rates, confidence

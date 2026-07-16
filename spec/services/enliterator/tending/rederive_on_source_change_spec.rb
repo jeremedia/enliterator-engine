@@ -21,7 +21,7 @@ RSpec.describe "Enliterator re-derive on source change (v0.59)" do
 
       expect(off).to eq(default)
       expect(off).to include("Understanding must COMPOUND")
-      expect(off).not_to match(/SOURCE TEXT HAS CHANGED/)
+      expect(off).not_to match(/re-derive each claim/i)
       # the op contract + schema instruction survive
       expect(off).to include("- NOOP")
       expect(off).to include("Return ONLY structured output")
@@ -30,9 +30,9 @@ RSpec.describe "Enliterator re-derive on source change (v0.59)" do
     it "source_changed:true SWAPS in the re-derive clause and drops COMPOUND, keeping the op contract" do
       on = base.system_for(nil, source_changed: true)
 
-      expect(on).to match(/SOURCE TEXT HAS CHANGED/)
       expect(on).to match(/re-derive each claim/i)
       expect(on).to match(/VERIFY against the current text/i)
+      expect(on).to match(/may be STALE.*or simply WRONG/im)   # honest for source-change AND revalidation
       expect(on).not_to include("Understanding must COMPOUND")
       # the reconcile ops + structured-output instruction are unchanged
       expect(on).to include("- ADD")
@@ -41,12 +41,12 @@ RSpec.describe "Enliterator re-derive on source change (v0.59)" do
     end
 
     it "re-derives even for a NO-contract facet (the swap precedes the contract early-return)" do
-      expect(base.system_for(nil, source_changed: true)).to match(/SOURCE TEXT HAS CHANGED/)
+      expect(base.system_for(nil, source_changed: true)).to match(/re-derive each claim/i)
     end
 
     it "re-derives AND keeps the controlled-vocabulary block for a contracted facet" do
       out = base.system_for({ summary: "One-line summary." }, source_changed: true)
-      expect(out).to match(/SOURCE TEXT HAS CHANGED/)
+      expect(out).to match(/re-derive each claim/i)
       expect(out).to include("CONTROLLED VOCABULARY")
     end
   end
@@ -124,6 +124,12 @@ RSpec.describe "Enliterator re-derive on source change (v0.59)" do
       Enliterator.configuration.rederive_on_source_change = true
       tend!(reason: nil)
       expect(stub.captured).to eq([ RederiveStubLLM::UNSET ])
+    end
+
+    it "reason 'revalidate' re-derives even with the flag OFF (v0.61 — the deliberate drain is its own opt-in)" do
+      # rederive_on_source_change stays nil/off
+      tend!(reason: "revalidate")
+      expect(stub.captured).to eq([ true ])
     end
 
     it "functional: under the flag, a source-change visit re-derives — the stale live claim is superseded" do

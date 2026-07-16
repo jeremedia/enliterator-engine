@@ -595,7 +595,12 @@
     </div>
 
     <p class="about-colophon">
-      Living document &middot; reflects Enliterator as of <strong>July 2026</strong> (v0.60 &mdash;
+      Living document &middot; reflects Enliterator as of <strong>July 2026</strong> (v0.61 &mdash;
+      the fix reaches backward: v0.59 corrects a claim the next time its source is edited, but a claim
+      already wrong on a chapter that is never touched again would stay wrong &mdash; so a deliberate
+      <em>revalidation</em> pass re-reads a collection&rsquo;s claims against their current text and
+      supersedes the ones that no longer hold, draining the sediment already in the store, with a gauge
+      that reports how much remains; v0.60 &mdash;
       a claim stops calling itself <em>verified</em> when it only means the model was confident: a
       machine-asserted claim is now minted &ldquo;asserted,&rdquo; reserving &ldquo;verified&rdquo; for a
       claim a human stands behind, and every claim carries its honest <em>warrant</em> &mdash; whether an
