@@ -151,6 +151,24 @@ module Enliterator
         where.not(corrected_claim_id: nil).count
       end
 
+      # v0.60: THE canonical audit-verdict precedence, id-keyed and batched. For the
+      # given claim ids returns `{claim_id => [source, verdict]}` (absent when a claim
+      # has no instrument audit): latest row wins UNLESS a human verdict already stands
+      # and this row is examiner. Instrument-scoped (agent flags carry no weight, v0.26).
+      # The single source of truth for "what does the audit say about this claim" —
+      # Claim#warrant and Atlas#audit_verdicts read it. (The private, claim-object-keyed
+      # `effective_verdicts` remains the accuracy path — it needs the claim + visit it
+      # preloads; both encode the SAME precedence.)
+      def effective_verdict_pairs(claim_ids)
+        ids = Array(claim_ids).compact
+        return {} if ids.empty?
+
+        instrument.where(claim_id: ids).order(:created_at).each_with_object({}) do |a, h|
+          next if h[a.claim_id]&.first == "human" && a.source == "examiner"
+          h[a.claim_id] = [ a.source, a.verdict ]
+        end
+      end
+
       private
 
       # {claim => effective_verdict} — latest human, else latest examiner.

@@ -841,8 +841,16 @@ module Enliterator
       # may_verify is false and claims are always draft (no cheap pass poisons the well).
       def claim_status(may_verify:, confidence:, raw:)
         return "draft" unless may_verify
-        return "verified" if model_asserts_verified?(raw, confidence)
+        return model_mint_status if model_asserts_verified?(raw, confidence)
         "draft"
+      end
+
+      # v0.60: a MODEL self-confident claim is minted `asserted` (honest reconcile
+      # status) when config.audit_warrant is on, reserving `verified` for a human
+      # standing behind the claim (assert_claim! seed / correct_claim!). Flag off ⇒
+      # `verified`, byte-identical. The `live` scope includes both.
+      def model_mint_status
+        Enliterator.configuration.audit_warrant ? "asserted" : "verified"
       end
 
       def model_asserts_verified?(raw, confidence)

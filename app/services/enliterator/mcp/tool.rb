@@ -86,6 +86,9 @@ module Enliterator
           locked:        claim.locked || nil,
           attributed_to: claim.attributed_to,
           context:       claim.context&.key || "root",
+          # v0.60: the honest epistemic state for an agent reader. Gated + .compact ⇒
+          # absent (byte-identical card) when config.audit_warrant is off.
+          warrant:       (claim.warrant if Enliterator.configuration.audit_warrant),
           audit_verdict: verdict
         }.compact
       end

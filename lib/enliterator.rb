@@ -262,6 +262,21 @@ module Enliterator
     # bump, before enabling. See `heartbeat_source_changed` for the per-lane override.
     attr_accessor :rederive_on_source_change
 
+    # ---- v0.60 Warrant (split reconcile-status from audit-status) ---------
+
+    # When true, a model self-confident claim is minted `asserted` (a reconcile
+    # status meaning "a capable tier asserted this") instead of `verified` — which
+    # is reserved for a HUMAN standing behind the claim (curator seed / correction).
+    # And every claim exposes a derived `warrant` — its honest epistemic state:
+    # asserted / examiner_supported / contradicted / human_verified / draft — combining
+    # reconcile-status with the latest audit verdict (Audit.effective_verdict_pairs) and
+    # human authorship. `to_state` and the agent/record surfaces surface it. nil/false ⇒
+    # the model still mints `verified`, `warrant` is never surfaced, `to_state` is
+    # unchanged ⇒ byte-identical. Fixes "verified overstates warrant" (verified was a
+    # confidence gate, never an audit). Staleness stays a SEPARATE axis (host display /
+    # v0.59 re-derive) — warrant does not duplicate it.
+    attr_accessor :audit_warrant
+
     # ---- First-impression diagnostic (v0.58) -----------------------------
     #
     # Knobs read ONLY by the `enliterator:first_impression` rake/service, which
@@ -384,6 +399,7 @@ module Enliterator
       @name_authority_keys = []
       @record_lacunae = nil
       @rederive_on_source_change = nil
+      @audit_warrant = nil
       @first_impression_generate_tier = nil
       @first_impression_judge_tier = nil
       @first_impression_full_text = nil

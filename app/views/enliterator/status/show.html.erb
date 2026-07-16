@@ -39,7 +39,7 @@
             <% end %>
           </td>
           <td><%= c.confidence %></td>
-          <td><span class="chip"><%= c.status %></span></td>
+          <td><span class="chip"><%= c.status %></span><% if Enliterator.configuration.audit_warrant %> <span class="chip"><%= c.warrant %></span><% end %></td>
           <td><%= "🔒" if c.locked %></td>
         </tr>
       <% end %>
