@@ -676,7 +676,7 @@ above).
 
 ```bash
 bundle install
-bundle exec rspec     # 1083 examples, 0 failures (Null/stub adapters; no network)
+bundle exec rspec     # 1085 examples, 0 failures (Null/stub adapters; no network)
 ```
 
 The test host app lives in `spec/dummy` (a `Widget` model that includes

@@ -371,7 +371,7 @@ module Enliterator
         refuse_null!(adapter, tier)
         started = Time.current
 
-        visit = tendable.enliterator_visits.create!(
+        attrs = {
           facet:           facet,
           context:          context,
           heartbeat:        @heartbeat,
@@ -384,7 +384,13 @@ module Enliterator
           escalated_from:   escalated_from,
           prompt_version:   PROMPT_VERSION,
           started_at:       started
-        )
+        }
+        # v0.61.1: record whether this visit re-derived vs inherited. Guarded on the
+        # column's presence — the engine ships as a bundler local override, so a host
+        # may be running this code BEFORE it runs the migration; the write must tolerate
+        # the column's absence (until migrated the gauge simply reads null = not-re-derived).
+        attrs[:re_derived] = re_derive? if visit_has_re_derived_column?
+        visit = tendable.enliterator_visits.create!(**attrs)
 
         begin
           state = tendable.literacy_state(facet: facet, context: context)
@@ -672,6 +678,14 @@ module Enliterator
       def re_derive?
         return true if @reason.to_s == "revalidate"
         Enliterator.configuration.rederive_on_source_change && @reason.to_s == "source_change"
+      end
+
+      # v0.61.1: is the (host's) visits table migrated for `re_derived`? Guards the
+      # write so a host running this override before its migration keeps tending
+      # (column_names is schema-cached, so this is cheap).
+      def visit_has_re_derived_column?
+        return @visit_has_re_derived if defined?(@visit_has_re_derived)
+        @visit_has_re_derived = Enliterator::Visit.column_names.include?("re_derived")
       end
 
       # LiteLLM spend tags for one gateway request. The join key to LiteLLM's

@@ -7,20 +7,22 @@ module Enliterator
   # re-derive re-tend — Visit.reason "revalidate", which ALWAYS re-derives (the
   # invocation is the opt-in) — over the un-revalidated set, and measures the drain.
   #
-  # No new column: the revalidate Visit row IS the mark. A record is "revalidated"
-  # for a (facet, context) once it has a succeeded, applied revalidate visit there;
-  # progress is a visit query. Intended for bounded targets (a composite work / a
-  # named context), run deliberately as a rake — not part of the pacemaker.
+  # No new table: the gauge keys on the Visit's `re_derived` flag (v0.61.1). A record
+  # is "revalidated" for a (facet, context) once it has a succeeded applied visit that
+  # actually RE-DERIVED there — whether by a deliberate revalidate drain OR an organic
+  # source_change re-derive, so a chapter freshened by a real edit is credited, not
+  # re-drained. Intended for bounded targets (a composite work / a named context), run
+  # deliberately as a rake — not part of the pacemaker.
   module Revalidation
     module_function
 
     REASON = "revalidate".freeze
 
-    # [[type, id], ...] still needing revalidation for (facet, context): records with a
-    # succeeded applied NON-revalidate visit but NO succeeded revalidate visit yet.
+    # [[type, id], ...] still needing revalidation for (facet, context): records that have
+    # been tended but have NO re-derived visit yet (tended − re-derived).
     def targets(facet:, context: nil)
       ctx_id = context&.id
-      candidate_tuples(facet: facet, context_id: ctx_id) - done_tuples(facet: facet, context_id: ctx_id)
+      tended_tuples(facet: facet, context_id: ctx_id) - done_tuples(facet: facet, context_id: ctx_id)
     end
 
     # { total:, revalidated:, remaining: } for (facet, context) — the drain gauge.
@@ -60,19 +62,11 @@ module Enliterator
       base_scope(facet: facet, context_id: context_id).distinct.pluck(:tendable_type, :tendable_id)
     end
 
-    # Candidates: tended by something OTHER than a revalidate visit — reason NULL
-    # (legacy/manual, i.e. sedimented) or any non-revalidate reason. (Postgres
-    # IS DISTINCT FROM so a NULL reason counts as a candidate.)
-    def candidate_tuples(facet:, context_id:)
-      base_scope(facet: facet, context_id: context_id)
-        .where("reason IS DISTINCT FROM ?", REASON)
-        .distinct.pluck(:tendable_type, :tendable_id)
-    end
-
-    # Already drained: has a succeeded applied revalidate visit for this lane.
+    # Already re-derived: has a succeeded applied visit that actually re-derived
+    # (re_derived = true) — a deliberate revalidate OR an organic source_change re-derive.
     def done_tuples(facet:, context_id:)
       base_scope(facet: facet, context_id: context_id)
-        .where(reason: REASON).distinct.pluck(:tendable_type, :tendable_id)
+        .where(re_derived: true).distinct.pluck(:tendable_type, :tendable_id)
     end
 
     def resolve(type, id)

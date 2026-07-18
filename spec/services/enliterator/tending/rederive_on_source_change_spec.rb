@@ -132,6 +132,23 @@ RSpec.describe "Enliterator re-derive on source change (v0.59)" do
       expect(stub.captured).to eq([ true ])
     end
 
+    it "stamps re_derived on the applied Visit (v0.61.1) — true when it re-derived, false otherwise" do
+      Enliterator.configuration.rederive_on_source_change = true
+
+      tend!(reason: "source_change")
+      expect(widget.enliterator_visits.applied.order(:created_at).last.re_derived).to eq(true)
+
+      tend!(reason: "frontier")
+      expect(widget.enliterator_visits.applied.order(:created_at).last.re_derived).to eq(false)
+    end
+
+    it "tends without error when the re_derived column is ABSENT (v0.61.1 pre-migration guard — the shared-override host)" do
+      allow(Enliterator::Visit).to receive(:column_names)
+        .and_return(Enliterator::Visit.column_names - [ "re_derived" ])
+      expect { tend!(reason: "source_change") }.not_to raise_error
+      expect(widget.enliterator_visits.applied.last).to be_present
+    end
+
     it "functional: under the flag, a source-change visit re-derives — the stale live claim is superseded" do
       Enliterator.configuration.rederive_on_source_change = true
       # the inherited 'fresh-but-wrong' predecessor: a prior live claim
