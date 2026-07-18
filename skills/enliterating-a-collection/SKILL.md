@@ -1,6 +1,6 @@
 ---
 name: enliterating-a-collection
-description: Use when conferring literacy on a collection with the Enliterator engine — modeling a new host collection or context, designing its facets, staffing tiers, controlled vocabulary, conditions, or reference desks, or planning a tending campaign. The judgment layer for wielding the gem's machinery.
+description: Use when applying AI to understand or describe a collection of records — including when the ask is phrased as "AI enrichment," "metadata generation," "enrich the archive/catalog with an LLM," "auto-tagging," a "cataloging" or "data enrichment pipeline," or "run a model over the collection." Also when explicitly conferring literacy with the Enliterator engine: modeling a new host collection or context, designing its facets, staffing tiers, controlled vocabulary, conditions, or reference desks, or planning a tending campaign. The judgment layer for wielding the gem's machinery — and the corrective for the naive enrichment pipeline it replaces.
 ---
 
 # Enliterating a Collection
