@@ -181,6 +181,41 @@ RSpec.describe "Enliterator suggestion review", type: :request do
     end
   end
 
+  describe "v0.62 — the focus view (one decision per screen)" do
+    it "renders a focus template and a hidden open affordance per pending key" do
+      get "/enliterator/suggestions"
+      expect(response.body).to include("<template data-focus-item")
+        .and include(%(data-focus-key="keywords")).and include(%(data-focus-key="author"))
+        .and include(%(data-focus-open="keywords"))
+        .and include('<dialog class="focus-dialog"')
+      # the open affordances render hidden until the driver adds .focus-ready (no-JS = plain list)
+      expect(response.body).to include("[data-focus-open] { display: none; }")
+    end
+
+    it "focus templates state each verdict's consequence (LIS voice)" do
+      get "/enliterator/suggestions"
+      expect(response.body).to include("USE reference")                 # map
+        .and include("suppressed and counted")                          # reject
+        .and include("a new preferred term the model may assert")       # approve
+    end
+
+    it "a success verdict threads focus_next; the no-param path stays byte-identical" do
+      post "/enliterator/suggestions/verdict",
+           params: { proposed_key: "keywords", decision: "approve", focus_next: "author" }
+      expect(response).to redirect_to("/enliterator/suggestions?focus=author")
+
+      post "/enliterator/suggestions/verdict", params: { proposed_key: "author", decision: "approve" }
+      expect(response).to redirect_to("/enliterator/suggestions")       # no param → identical
+    end
+
+    it "an alert verdict threads focus_self so the same item reopens with the alert" do
+      post "/enliterator/suggestions/verdict",
+           params: { proposed_key: "author", decision: "map", focus_self: "author", focus_next: "keywords" }
+      expect(response).to redirect_to("/enliterator/suggestions?focus=author")
+      expect(flash[:alert]).to be_present
+    end
+  end
+
   describe "convergence surfaces (v0.9)" do
     it "renders the 'Re-proposed after a verdict' panel for keys the model keeps re-asking" do
       Enliterator::Suggestion.create!(tendable: w, facet: "summary", proposed_key: "thematic_focus", rationale: "r", status: "mapped", mapped_to: "summary")

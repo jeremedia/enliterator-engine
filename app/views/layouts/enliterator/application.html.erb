@@ -206,6 +206,43 @@
     .verdict { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
     .verdict form { display: inline-flex; margin: 0; gap: var(--s1); align-items: center; }
 
+    /* ── Focus view (v0.62) — the one-decision-per-screen dialog shared by the two
+       adjudication queues (Requests, Review). Native <dialog> is the primitive
+       (Esc, focus trap, ::backdrop come free). Inert on every other page: the
+       driver script no-ops unless a dialog.focus-dialog exists, and the open
+       affordances stay display:none until the driver adds .focus-ready to body —
+       no-JS users keep the fully functional plain list. ─────────────────────── */
+    dialog.focus-dialog { width: min(1120px, 94vw); height: 92vh; padding: 0;
+      border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-pop);
+      background: var(--panel); color: var(--ink); }
+    dialog.focus-dialog::backdrop { background: rgba(28, 28, 26, .45); }
+    .focus-shell { display: flex; flex-direction: column; height: 100%; }
+    .focus-head { display: flex; gap: var(--s3); align-items: baseline;
+      padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
+    .focus-head .focus-key { margin: 0; font-size: var(--fs-lg); outline: none; }
+    .focus-pos { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .focus-nav { margin-left: auto; display: flex; gap: var(--s1); }
+    .focus-content, .focus-item { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .focus-item-head { padding: var(--s3) var(--s4) 0; display: flex; flex-wrap: wrap;
+      gap: var(--s2); align-items: baseline; }
+    .focus-panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr;
+      margin-top: var(--s3); border-top: 1px solid var(--line); }
+    .focus-pane { overflow-y: auto; padding: var(--s3) var(--s4); min-width: 0; }
+    .focus-pane + .focus-pane { border-left: 1px solid var(--line); }
+    .focus-pane-label { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2); }
+    .focus-verdict { border-top: 1px solid var(--line); padding: var(--s3) var(--s4);
+      background: var(--panel); }
+    .focus-consequence { margin: 0 0 var(--s2); font-size: var(--fs-sm); color: var(--muted);
+      min-height: 1.2em; }
+    .focus-source-text { white-space: pre-wrap; margin: 0; font-size: var(--fs-sm);
+      font-family: inherit; line-height: 1.5; }
+    .focus-source-text mark { background: var(--accent-soft); color: var(--accent-dark); }
+    .focus-flash { padding: var(--s2) var(--s4); margin: 0; border-radius: 0; }
+    [data-focus-open] { display: none; }
+    .focus-ready [data-focus-open] { display: inline-flex; }
+    @media (max-width: 760px) { .focus-panes { grid-template-columns: 1fr; } }
+
     /* chat */
     .thread { display: flex; flex-direction: column; gap: .6rem; margin: 1rem 0; }
     .bubble { padding: .6rem .85rem; border-radius: 10px; max-width: 80%; }
@@ -484,5 +521,150 @@
     <% end %>
     <%= yield %>
   </main>
+  <%# v0.62: the Focus-view driver — the layout's first (and only) script. Shared by the
+      two adjudication queues (Requests, Review): each renders <template data-focus-item>
+      per queue item plus one <dialog class="focus-dialog"> shell; this drives open /
+      clone / navigate / keyboard / consequence lines / verdict param threading. ALL
+      inline (hard rule 2: no asset pipeline / CDN / gems). Inert everywhere else — the
+      init guard returns before touching anything when no focus dialog exists. %>
+  <script>
+  (function () {
+    // Pure helpers, exposed for the JS golden test (Atlas _test convention) BEFORE the
+    // page guard so they are testable against a bare fake DOM.
+    function targetIndex(keys, key) { return key == null ? -1 : keys.indexOf(String(key)); }
+    function clampStep(i, delta, n) { return Math.min(n - 1, Math.max(0, i + delta)); }
+    function keyAction(key, tag) {
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return null;
+      if (key === "ArrowLeft") return -1;
+      if (key === "ArrowRight") return 1;
+      return null;
+    }
+    function positionLabel(i, n) { return (i + 1) + " of " + n; }
+    function mapConsequence(tpl, value) {
+      var v = (value || "").trim();
+      return tpl.replace("%{target}", v || "…");
+    }
+    window.EnliteratorFocus = { _test: { targetIndex: targetIndex, clampStep: clampStep,
+      keyAction: keyAction, positionLabel: positionLabel, mapConsequence: mapConsequence } };
+
+    var dlg = document.querySelector("dialog.focus-dialog");
+    if (!dlg || typeof dlg.showModal !== "function") return;   // every non-queue page: inert
+
+    var templates = Array.prototype.slice.call(document.querySelectorAll("template[data-focus-item]"));
+    if (!templates.length) return;
+    var keys    = templates.map(function (t) { return t.getAttribute("data-focus-key"); });
+    var content = dlg.querySelector(".focus-content");
+    var keyEl   = dlg.querySelector(".focus-key");
+    var posEl   = dlg.querySelector(".focus-pos");
+    var flashEl = dlg.querySelector(".focus-flash");
+    var prevBtn = dlg.querySelector("[data-focus-prev]");
+    var nextBtn = dlg.querySelector("[data-focus-next]");
+    var idx = -1, opener = null, defaultConsequence = "";
+
+    document.body.classList.add("focus-ready");
+
+    function consequenceFor(form) {
+      var tpl = form.getAttribute("data-consequence") || "";
+      var inp = form.querySelector('input[name="mapped_to"]');
+      return inp ? mapConsequence(tpl, inp.value) : tpl;
+    }
+
+    function setConsequence(text) {
+      var el = content.querySelector(".focus-consequence");
+      if (el) el.textContent = text;
+    }
+
+    function openAt(i) {
+      idx = clampStep(i, 0, keys.length);
+      flashEl.hidden = true;   // a flash names the PRIOR verdict; navigation retires it
+      content.innerHTML = "";
+      content.appendChild(templates[idx].content.cloneNode(true));
+      keyEl.textContent = templates[idx].getAttribute("data-focus-label") || keys[idx];
+      posEl.textContent = positionLabel(idx, keys.length);
+      prevBtn.disabled = idx === 0;
+      nextBtn.disabled = idx === keys.length - 1;
+      var cEl = content.querySelector(".focus-consequence");
+      defaultConsequence = cEl ? cEl.textContent : "";
+      if (!dlg.open) dlg.showModal();
+      dlg.dispatchEvent(new CustomEvent("enl:focus-shown",
+        { detail: { key: keys[idx], index: idx, root: content } }));
+      keyEl.focus();
+    }
+
+    function step(delta) { if (keys.length) openAt(clampStep(idx, delta, keys.length)); }
+
+    prevBtn.addEventListener("click", function () { step(-1); });
+    nextBtn.addEventListener("click", function () { step(1); });
+    dlg.querySelector("[data-focus-close]").addEventListener("click", function () { dlg.close(); });
+    dlg.addEventListener("close", function () {
+      flashEl.hidden = true;
+      if (opener && document.contains(opener)) opener.focus();
+    });
+
+    dlg.addEventListener("keydown", function (e) {
+      var delta = keyAction(e.key, e.target.tagName);
+      if (delta !== null) { e.preventDefault(); step(delta); }
+    });
+
+    // The consequence line follows the verdict lane under consideration (hover or focus),
+    // restoring the recommended action's line on leave. The Map lane substitutes its
+    // input's live value into the %{target} slot.
+    function laneOf(e) {
+      var el = e.target.closest ? e.target.closest("form[data-consequence]") : null;
+      return el && content.contains(el) ? el : null;
+    }
+    content.addEventListener("mouseover", function (e) { var f = laneOf(e); if (f) setConsequence(consequenceFor(f)); });
+    content.addEventListener("mouseout", function (e) { if (laneOf(e)) setConsequence(defaultConsequence); });
+    content.addEventListener("focusin", function (e) { var f = laneOf(e); if (f) setConsequence(consequenceFor(f)); });
+    content.addEventListener("focusout", function (e) { if (laneOf(e)) setConsequence(defaultConsequence); });
+    content.addEventListener("input", function (e) { var f = laneOf(e); if (f) setConsequence(consequenceFor(f)); });
+
+    // Verdict param threading (capture phase, so it runs before submission): a verdict
+    // rendered from the dialog carries focus_self (this item — an alert redirect reopens
+    // it) and focus_next (the following item, falling back to the previous — the last
+    // verdict keeps the reviewer in flow until the queue empties).
+    dlg.addEventListener("submit", function (e) {
+      var form = e.target;
+      if (!form || idx < 0) return;
+      var next = keys[idx + 1] || keys[idx - 1] || "";
+      function hidden(name, value) {
+        var inp = document.createElement("input");
+        inp.type = "hidden"; inp.name = name; inp.value = value;
+        form.appendChild(inp);
+      }
+      hidden("focus_self", keys[idx]);
+      if (next) hidden("focus_next", next);
+    }, true);
+
+    // Open affordances: any [data-focus-open] anywhere on the page. Empty value = item 0.
+    document.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-focus-open]") : null;
+      if (!btn) return;
+      e.preventDefault();
+      opener = btn;
+      var want = btn.getAttribute("data-focus-open");
+      var i = want ? targetIndex(keys, want) : 0;
+      if (i >= 0) openAt(i);
+    });
+
+    // ?focus= auto-open (the verdict redirect's landing): reopen at the named item and
+    // surface the page flash inside the dialog (it would otherwise sit behind the
+    // backdrop). Unknown key (queue emptied / item resolved) → the plain list is the
+    // honest state.
+    var wanted = new URLSearchParams(location.search).get("focus");
+    if (wanted !== null) {
+      var at = targetIndex(keys, wanted);
+      if (at >= 0) {
+        openAt(at);
+        var flash = document.querySelector("main .flash");
+        if (flash) {
+          flashEl.className = "focus-flash " + flash.className;
+          flashEl.textContent = flash.textContent;
+          flashEl.hidden = false;
+        }
+      }
+    }
+  })();
+  </script>
 </body>
 </html>

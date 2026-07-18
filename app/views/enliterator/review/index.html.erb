@@ -3,8 +3,11 @@
     grows to fill, so the free-text field has room). %>
 <style>
   .review-actions { margin-top: var(--s3); align-items: flex-start; }
-  .review-actions .review-correct { flex: 1; min-width: 18rem; }
-  .review-actions .review-correct .field { flex: 1; min-width: 0; }
+  .review-actions .review-correct, .focus-verdict .review-correct { flex: 1; min-width: 18rem; }
+  .review-actions .review-correct .field, .focus-verdict .review-correct .field { flex: 1; min-width: 0; }
+  /* v0.62: focus-view claim/examiner blocks (pane A) */
+  .focus-item .claim-block { margin-bottom: var(--s4); }
+  .focus-item .claim-block .focus-pane-label { margin-bottom: var(--s1); }
 </style>
 
 <h1>Review <span class="subtitle">— quality review: the human anchor for the claim audit</span></h1>
@@ -33,7 +36,13 @@
   <% end %>
 </div>
 
-<h2>Awaiting review</h2>
+<h2>Awaiting review
+  <% if @queue.any? %>
+    <%# v0.62: the focus view — one claim per screen, with the FULL source beside it.
+        Hidden until the driver proves JS is live; no-JS reviewers keep the plain list. %>
+    <button type="button" class="btn btn-sm" data-focus-open>Review one at a time ⤢</button>
+  <% end %>
+</h2>
 <% if @queue.empty? %>
   <div class="card"><span class="muted">
     Nothing awaiting review<%= Enliterator::Audit.none? ? " — no claims have been examined yet (run the audit: N=25 bin/rails enliterator:audit, or set heartbeat_audit_sample)" : " — every examined claim has a human verdict" %>.
@@ -41,18 +50,58 @@
 <% end %>
 <% @queue.each do |row| %>
   <% audit = row[:audit]; claim = row[:claim] %>
+  <%# v0.62: each verdict lane's consequence, stated at the point of action in the focus
+      view (data-consequence per form; harmless on the list, where no consequence line
+      renders). A re-tended item's lanes carry the successor caveat. %>
+  <% rt_suffix       = row[:live] ? "" : " Your judgment is of the examined claim; its successor carries the current value." %>
+  <% conseq_confirm  = %(Records your agreeing human verdict — "#{audit.verdict}" becomes this claim's ground truth and feeds the examiner-agreement rate.#{rt_suffix}) %>
+  <% conseq_overrule = %(Records your chosen verdict in place of the #{audit.source}'s — wherever both exist, the human verdict outranks it in every accuracy count.#{rt_suffix}) %>
+  <% conseq_correct  = %(Supersedes the claim with your value, locked as a curator anchor — future tends will not clobber it.) %>
+  <%# The verdict lanes, rendered ONCE (capture) and used by both the list card and the
+      focus template — the live/re-tended branch stays a single source of truth. %>
+  <% lanes = capture do %>
+    <%= form_with url: review_verdict_path, method: :post, html: { data: { consequence: conseq_confirm } } do %>
+      <input type="hidden" name="audit_id" value="<%= audit.id %>">
+      <input type="hidden" name="decision" value="confirm">
+      <button type="submit" class="btn btn-affirmative">Confirm <%= audit.verdict %></button>
+    <% end %>
+    <%= form_with url: review_verdict_path, method: :post, html: { data: { consequence: conseq_overrule } } do %>
+      <input type="hidden" name="audit_id" value="<%= audit.id %>">
+      <input type="hidden" name="decision" value="overrule">
+      <select name="verdict" class="field" aria-label="overrule with this verdict">
+        <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
+          <option value="<%= v %>"><%= v %></option>
+        <% end %>
+      </select>
+      <button type="submit" class="btn">Overrule</button>
+    <% end %>
+    <% if row[:live] %>
+      <%= form_with url: review_verdict_path, method: :post, html: { class: "review-correct", data: { consequence: conseq_correct } } do %>
+        <input type="hidden" name="audit_id" value="<%= audit.id %>">
+        <input type="hidden" name="decision" value="correct">
+        <input type="text" name="value" placeholder="the corrected value" class="field"
+               value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>">
+        <button type="submit" class="btn btn-primary">Correct</button>
+      <% end %>
+    <% end %>
+  <% end %>
   <div class="card">
     <div>
       <strong><%= claim.key %></strong>
       <span class="chip"><%= audit.claim.visit&.facet %></span>
       <span class="muted">@<%= claim.context&.key || "root" %></span>
-      <span class="mono muted samples"><%= claim.tendable_type %>/<%= claim.tendable_id %></span>
+      <%# v0.62: the record's human label, linked to its entry — the uuid is demoted to a
+          title attr (still reachable, never the face). %>
+      <%= link_to row[:label], status_record_path(claim.tendable_type, claim.tendable_id) %>
+      <span class="mono muted samples" title="<%= claim.tendable_type %>/<%= claim.tendable_id %>"><%= claim.tendable_type.demodulize %></span>
       <span class="chip <%= 'tier' if audit.verdict == 'supported' %><%= ' warn' if audit.defective? %>">
         <%= audit.source %>: <%= audit.verdict %></span>
       <% if audit.source_truncated %><span class="muted samples">(source truncated at examination)</span><% end %>
       <% if row[:source_changed] %>
         <span class="warn samples">source changed since examination — re-read before ruling</span>
       <% end %>
+      <button type="button" class="btn btn-sm" data-focus-open="<%= audit.id %>"
+              aria-label="review this claim in the focus view">Focus ⤢</button>
     </div>
     <table style="margin-top:.5rem">
       <tr><th style="width:12%">claim</th>
@@ -66,55 +115,187 @@
           <td class="muted samples"><%= row[:snippet] %>…</td></tr>
     </table>
 
-    <% if row[:live] %>
-      <div class="verdict review-actions">
-        <%= form_with url: review_verdict_path, method: :post do %>
-          <input type="hidden" name="audit_id" value="<%= audit.id %>">
-          <input type="hidden" name="decision" value="confirm">
-          <button type="submit" class="btn btn-affirmative">Confirm <%= audit.verdict %></button>
-        <% end %>
-        <%= form_with url: review_verdict_path, method: :post do %>
-          <input type="hidden" name="audit_id" value="<%= audit.id %>">
-          <input type="hidden" name="decision" value="overrule">
-          <select name="verdict" class="field">
-            <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
-              <option value="<%= v %>"><%= v %></option>
-            <% end %>
-          </select>
-          <button type="submit" class="btn">Overrule</button>
-        <% end %>
-        <%= form_with url: review_verdict_path, method: :post, html: { class: "review-correct" } do %>
-          <input type="hidden" name="audit_id" value="<%= audit.id %>">
-          <input type="hidden" name="decision" value="correct">
-          <input type="text" name="value" placeholder="the corrected value" class="field"
-                 value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>">
-          <button type="submit" class="btn btn-primary">Correct</button>
-        <% end %>
-      </div>
-    <% else %>
+    <% unless row[:live] %>
       <div class="muted samples" style="margin-top:.5rem">
         This claim was re-tended after examination — its successor carries the current value.
         Confirm/overrule still records your judgment of the examined claim; correction applies to the successor.
       </div>
-      <div class="verdict review-actions">
-        <%= form_with url: review_verdict_path, method: :post do %>
-          <input type="hidden" name="audit_id" value="<%= audit.id %>">
-          <input type="hidden" name="decision" value="confirm">
-          <button type="submit" class="btn btn-affirmative">Confirm <%= audit.verdict %></button>
-        <% end %>
-        <%= form_with url: review_verdict_path, method: :post do %>
-          <input type="hidden" name="audit_id" value="<%= audit.id %>">
-          <input type="hidden" name="decision" value="overrule">
-          <select name="verdict" class="field">
-            <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
-              <option value="<%= v %>"><%= v %></option>
-            <% end %>
-          </select>
-          <button type="submit" class="btn">Overrule</button>
-        <% end %>
-      </div>
     <% end %>
+    <div class="verdict review-actions"><%= lanes %></div>
+
+    <%# v0.62: the focus-view template — the claim and its examiner beside the FULL source
+        (lazy-loaded via review/source; the list carries only a snippet). The driver clones
+        this into the shared dialog. %>
+    <template data-focus-item data-focus-key="<%= audit.id %>"
+              data-focus-label="<%= row[:label] %> — <%= claim.key %>">
+      <div class="focus-item">
+        <div class="focus-item-head">
+          <%= link_to row[:label], status_record_path(claim.tendable_type, claim.tendable_id) %>
+          <span class="mono muted samples" title="<%= claim.tendable_type %>/<%= claim.tendable_id %>"><%= claim.tendable_type.demodulize %></span>
+          <strong><%= claim.key %></strong>
+          <span class="chip"><%= audit.claim.visit&.facet %></span>
+          <span class="muted">@<%= claim.context&.key || "root" %></span>
+          <span class="chip <%= 'tier' if audit.verdict == 'supported' %><%= ' warn' if audit.defective? %>">
+            <%= audit.source %>: <%= audit.verdict %></span>
+          <% if audit.source_truncated %><span class="muted samples">(source truncated at examination)</span><% end %>
+          <% if row[:source_changed] %>
+            <span class="warn samples">source changed since examination — re-read before ruling</span>
+          <% end %>
+        </div>
+        <div class="focus-panes">
+          <section class="focus-pane" aria-label="The claim and its examiner">
+            <div class="claim-block">
+              <div class="focus-pane-label">The claim</div>
+              <div><%= claim.value.is_a?(String) ? claim.value : claim.value.to_json %></div>
+            </div>
+            <div class="claim-block">
+              <div class="focus-pane-label"><%= audit.source %> — <%= audit.verdict %></div>
+              <div><%= audit.rationale %></div>
+              <% if audit.corrected_value.present? && audit.corrected_value != {} %>
+                <div class="muted samples" style="margin-top:var(--s2)">proposes: <%= audit.corrected_value.is_a?(String) ? audit.corrected_value : audit.corrected_value.to_json %></div>
+              <% end %>
+            </div>
+            <% unless row[:live] %>
+              <div class="muted samples">
+                This claim was re-tended after examination — its successor carries the current value.
+                Confirm/overrule still records your judgment of the examined claim; correction applies to the successor.
+              </div>
+            <% end %>
+          </section>
+          <section class="focus-pane" aria-label="The source">
+            <div class="focus-pane-label">The source</div>
+            <div class="focus-source" data-source-url="<%= review_source_path(audit.id) %>"
+                 <% if claim.value.is_a?(String) && (6..200).cover?(claim.value.length) %>data-claim-value="<%= claim.value %>"<% end %>>
+              <p class="muted samples">loading the full source…</p>
+            </div>
+          </section>
+        </div>
+        <div class="focus-verdict">
+          <p class="focus-consequence"><%= conseq_confirm %></p>
+          <div class="verdict"><%= lanes %></div>
+        </div>
+      </div>
+    </template>
   </div>
+<% end %>
+
+<% if @queue.any? %>
+  <%# v0.62: the shared focus-dialog shell — the driver (layout script) fills
+      .focus-content from the templates above. %>
+  <dialog class="focus-dialog" aria-label="Focused review of an examined claim">
+    <div class="focus-shell">
+      <header class="focus-head">
+        <h2 class="focus-key" tabindex="-1"></h2>
+        <span class="focus-pos" aria-live="polite"></span>
+        <div class="focus-nav">
+          <button type="button" class="btn btn-sm" data-focus-prev aria-label="previous claim">←</button>
+          <button type="button" class="btn btn-sm" data-focus-next aria-label="next claim">→</button>
+          <button type="button" class="btn btn-sm" data-focus-close aria-label="close (Esc)">✕ Esc</button>
+        </div>
+      </header>
+      <div class="focus-flash" hidden></div>
+      <div class="focus-content"></div>
+    </div>
+  </dialog>
+
+  <%# v0.62: the source pane — fetches the FULL text the claim was examined against when
+      an item is focused (the driver announces via enl:focus-shown), caches per audit, and
+      highlights exact occurrences of the claim value so the reviewer can find the ground.
+      Rendering is textContent/createTextNode only (never innerHTML with fetched text).
+      ALL inline (hard rule 2). %>
+  <script>
+  (function () {
+    // Pure helpers, exposed for the JS golden test before any DOM wiring.
+    // splitOccurrences: case-insensitive exact-match segmentation of text by needle.
+    // Needles outside 6..200 chars are skipped (too noisy / not a quotable value).
+    function splitOccurrences(text, needle) {
+      if (!needle || needle.length < 6 || needle.length > 200) return [ { match: false, text: text } ];
+      var out = [], hay = text.toLowerCase(), n = needle.toLowerCase(), i = 0;
+      while (true) {
+        var at = hay.indexOf(n, i);
+        if (at < 0) { out.push({ match: false, text: text.slice(i) }); break; }
+        if (at > i) out.push({ match: false, text: text.slice(i, at) });
+        out.push({ match: true, text: text.slice(at, at + needle.length) });
+        i = at + needle.length;
+      }
+      return out;
+    }
+    function matchCount(segments) {
+      return segments.filter(function (s) { return s.match; }).length;
+    }
+    function sourceMeta(payload, count) {
+      var bits = [];
+      if (payload.truncated) bits.push("showing the first " + payload.text.length.toLocaleString() +
+        " of " + payload.length.toLocaleString() + " characters");
+      if (count > 0) bits.push("claim value found " + count + "× — highlighted; browser find (⌘F) searches the rest");
+      else bits.push("claim value not found verbatim — browser find (⌘F) searches the source");
+      return bits.join(" · ");
+    }
+    window.EnliteratorReviewSource = { _test: { splitOccurrences: splitOccurrences,
+      matchCount: matchCount, sourceMeta: sourceMeta } };
+
+    var dlg = document.querySelector("dialog.focus-dialog");
+    if (!dlg) return;
+    var cache = {};   // audit_id → payload (prev/next never refetches)
+
+    function render(pane, payload) {
+      pane.innerHTML = "";
+      if (payload.error) {
+        var warn = document.createElement("div");
+        warn.className = "warn samples";
+        warn.textContent = payload.error + " ";
+        var retry = document.createElement("a");
+        retry.href = "#"; retry.textContent = "retry";
+        retry.addEventListener("click", function (e) {
+          e.preventDefault();
+          delete cache[pane.getAttribute("data-source-url")];
+          load(pane);
+        });
+        warn.appendChild(retry);
+        pane.appendChild(warn);
+        return;
+      }
+      var segments = splitOccurrences(payload.text, pane.getAttribute("data-claim-value") || "");
+      var meta = document.createElement("div");
+      meta.className = "muted samples";
+      meta.style.marginBottom = "var(--s2)";
+      meta.textContent = sourceMeta(payload, matchCount(segments));
+      pane.appendChild(meta);
+      var pre = document.createElement("pre");
+      pre.className = "focus-source-text";
+      segments.forEach(function (s) {
+        if (s.match) {
+          var m = document.createElement("mark");
+          m.textContent = s.text;
+          pre.appendChild(m);
+        } else {
+          pre.appendChild(document.createTextNode(s.text));
+        }
+      });
+      pane.appendChild(pre);
+      // Scroll the first hit into view — the reviewer lands on the ground, not page 1.
+      var first = pre.querySelector("mark");
+      if (first && first.scrollIntoView) first.scrollIntoView({ block: "center" });
+    }
+
+    function load(pane) {
+      var url = pane.getAttribute("data-source-url");
+      if (cache[url]) return render(pane, cache[url]);
+      fetch(url, { headers: { "Accept": "application/json" } })
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (payload) { cache[url] = payload; render(pane, payload); })
+        .catch(function (err) { render(pane, { error: "source fetch failed — " + err.message + "." }); });
+    }
+
+    dlg.addEventListener("enl:focus-shown", function (e) {
+      var pane = e.detail.root.querySelector(".focus-source");
+      if (pane) load(pane);
+    });
+  })();
+  </script>
 <% end %>
 
 <h2>Accuracy <span class="subtitle">— the process rate, per facet × tier</span></h2>

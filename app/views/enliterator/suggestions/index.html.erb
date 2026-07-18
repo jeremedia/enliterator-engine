@@ -25,18 +25,27 @@
   .request .req-actions form { display: flex; margin: 0; }
   .request .req-actions form .btn { flex: 1; justify-content: center; }
   /* v0.54: full-evidence + map-target inspectors — progressive disclosure so the default
-     card stays scannable but nothing is a dead-end truncation. */
-  .request .considerer-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); }
+     card stays scannable but nothing is a dead-end truncation.
+     v0.62: the same evidence/target furniture also renders inside the focus dialog
+     (.focus-item), where it lives in an always-open scrolling pane. */
+  .request .considerer-head, .focus-item .considerer-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); }
   .request .req-more { margin-top: var(--s2); }
   .request .req-more > summary { cursor: pointer; }
-  .request .req-evidence-full .ev-row { padding: var(--s2) 0; border-top: 1px solid var(--line); }
-  .request .req-evidence-full .ev-row:first-child { border-top: 0; }
-  .request .ev-source { font-size: var(--fs-sm); font-weight: 600; color: var(--accent); margin-bottom: var(--s1); }
-  .request .ev-pos { display: inline-block; min-width: 1.6em; padding: 0 .35em; margin-right: .15em;
+  .request .req-evidence-full .ev-row, .focus-item .req-evidence-full .ev-row { padding: var(--s2) 0; border-top: 1px solid var(--line); }
+  .request .req-evidence-full .ev-row:first-child, .focus-item .req-evidence-full .ev-row:first-child { border-top: 0; }
+  .request .ev-source, .focus-item .ev-source { font-size: var(--fs-sm); font-weight: 600; color: var(--accent); margin-bottom: var(--s1); }
+  .request .ev-pos, .focus-item .ev-pos { display: inline-block; min-width: 1.6em; padding: 0 .35em; margin-right: .15em;
     background: var(--chip); color: var(--muted); border-radius: var(--r-sm); text-align: center;
     font-variant-numeric: tabular-nums; font-weight: 700; }
-  .request .target-info { margin-top: var(--s2); padding-left: var(--s3); border-left: 2px solid var(--line); }
-  .request .target-vars { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
+  .request .target-info, .focus-item .target-info { margin-top: var(--s2); padding-left: var(--s3); border-left: 2px solid var(--line); }
+  .request .target-vars, .focus-item .target-vars { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
+  /* v0.62: the focus dialog's verdict bar — horizontal lanes (the layout's .verdict row),
+     with the recommended lane still greened/ordered first and the Map field given room. */
+  .focus-verdict .verdict.rec-map .act-map { order: -1; }
+  .focus-verdict .verdict.rec-reject .act-reject { order: -1; }
+  .focus-verdict .field { min-width: 12rem; }
+  .focus-item .req-pressure { margin-left: auto; display: flex; align-items: baseline; gap: var(--s2); }
+  .focus-item .req-pressure .big { font-size: 1.25rem; line-height: 1; }
   /* v0.53: lead with the considerer's recommended action — reorder it to the top of the
      column (flex order) so the reviewer's eye lands on the one-click accept. Markup order
      is fixed (Approve · Map · Reject); only the recommended lane moves. */
@@ -83,7 +92,11 @@
 <% end %>
 
 <% if @terms.any? %>
-  <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure</h2>
+  <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure
+    <%# v0.62: the focus view — one proposal per screen. Hidden until the driver proves
+        JS is live (.focus-ready); no-JS reviewers keep the full plain list. %>
+    <button type="button" class="btn btn-sm" data-focus-open>Consider one at a time ⤢</button>
+  </h2>
   <%# v0.53: one shared type-ahead source for every card's Map target (the preferred-term
       vocabulary). Rendered once; each Map input references it via list="canonical-terms". %>
   <datalist id="canonical-terms">
@@ -105,18 +118,32 @@
     <% rec_pending = rec_target && !@canonical.include?(rec_target) %>
     <% prefill     = (rec_target if rec_target && @canonical.include?(rec_target)) %>
     <% low_conf    = t.recommended_confidence.present? && t.recommended_confidence.to_f < @min_conf %>
+    <%# v0.62: the consequence each verdict lane would render — stated at the point of
+        action in the focus view (data-consequence per form; the Map lane's %{target}
+        slot is substituted live from its input by the driver). %>
+    <% facets_label   = t.by_facet.keys.join(", ") %>
+    <% conseq_approve = %(Adds "#{key}" to the #{facets_label} vocabulary — a new preferred term the model may assert on every future tend. Warrant: #{t.distinct_records} record#{"s" if t.distinct_records.to_i != 1}.) %>
+    <% conseq_map     = %(Files "#{key}" as a variant (UF) of "%{target}" — a USE reference; its claims fold onto the preferred term, and future proposals of "#{key}" fold there silently.) %>
+    <% conseq_reject  = %(Discards "#{key}" — judged not a gap in the vocabulary. Re-proposals are suppressed and counted under "Re-proposed after a verdict".) %>
+    <% conseq_default = case rec
+                        when "map"    then conseq_map.sub("%{target}", prefill.presence || "…")
+                        when "reject" then conseq_reject
+                        else conseq_approve
+                        end %>
     <div class="card request">
       <div class="req-head">
         <code class="req-key"><%= key %></code>
         <% if t.resurged_count.to_i.positive? %>
           <span class="chip warn" title="re-proposed after a verdict">⚠ resurged <%= t.resurged_count %></span>
         <% end %>
-        <span class="samples"><%= t.by_facet.keys.join(", ") %></span>
+        <span class="samples"><%= facets_label %></span>
         <span class="req-pressure">
           <span class="samples">pressure</span>
           <span class="big"><%= t.pressure %></span>
           <span class="samples"><%= t.distinct_records %> rec</span>
         </span>
+        <button type="button" class="btn btn-sm" data-focus-open="<%= key %>"
+                aria-label="consider <%= key %> in the focus view">Focus ⤢</button>
       </div>
 
       <div class="req-evidence">
@@ -199,8 +226,127 @@
         <%= button_to "Reject", suggestions_verdict_path,
               params: { proposed_key: key, decision: "reject" }, class: "btn btn-destructive act-reject" %>
       </div>
+
+      <%# v0.62: the focus-view template — the same decision, given a full screen. The
+          driver clones this into the shared dialog. Interleaved INSIDE the card so the
+          page's first-occurrence ordering (pressure rank) is preserved. Pane A holds the
+          candidate + ALL evidence (no <details> — the pane scrolls); pane B holds the
+          considerer's brief and the map target's neighborhood, side by side with what it
+          would judge. Verdict lanes sit in an always-visible bar with their consequences. %>
+      <template data-focus-item data-focus-key="<%= key %>" data-focus-label="<%= key %>">
+        <div class="focus-item">
+          <div class="focus-item-head">
+            <% if t.resurged_count.to_i.positive? %>
+              <span class="chip warn" title="re-proposed after a verdict">⚠ resurged <%= t.resurged_count %></span>
+            <% end %>
+            <span class="samples"><%= facets_label %></span>
+            <span class="req-pressure">
+              <span class="samples">pressure</span>
+              <span class="big"><%= t.pressure %></span>
+              <span class="samples"><%= t.distinct_records %> rec</span>
+            </span>
+          </div>
+          <div class="focus-panes">
+            <section class="focus-pane" aria-label="The candidate and its evidence">
+              <div class="focus-pane-label">Candidate</div>
+              <div><%= t.sample_rationale %></div>
+              <% if ev.any? %>
+                <div class="focus-pane-label" style="margin-top:var(--s4)">
+                  Evidence — <%= pluralize(ev.size, "record") %><%= " (of #{t.distinct_records})" if t.distinct_records.to_i > ev.size %>
+                </div>
+                <div class="req-evidence-full">
+                  <% ev.each do |e| %>
+                    <div class="ev-row">
+                      <div class="ev-source"><% if e[:position] %><span class="ev-pos"><%= e[:position] %></span> <% end %><%= e[:source] ? link_to(e[:source], status_record_path(e[:type], e[:id])) : "—" %></div>
+                      <div><%= e[:rationale] %></div>
+                      <% if e[:example].present? %>
+                        <div class="samples"><em><%= e[:example].is_a?(String) ? e[:example] : e[:example].to_json %></em></div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+            </section>
+            <section class="focus-pane" aria-label="Map target and vocabulary neighborhood">
+              <div class="focus-pane-label">Map target &amp; neighborhood</div>
+              <% if t.recommended_decision.present? %>
+                <div class="considerer-head">
+                  <span class="badge-live"><%= t.recommended_decision %><%= " → #{t.recommended_map_to}" if t.recommended_map_to.present? %><% if t.recommended_confidence %> · <%= (t.recommended_confidence.to_f * 100).round %>%<% end %></span>
+                  <% if low_conf %><span class="chip warn" title="below the considerer's auto-apply floor — verify before accepting">⚠ low confidence</span><% end %>
+                </div>
+                <div class="samples considerer-rationale"><%= t.recommended_rationale %></div>
+                <% if rec_pending %>
+                  <div class="samples warn" style="margin-top:var(--s2)">
+                    recommended target <code><%= rec_target %></code> is still pending — approve it first to map onto it.
+                  </div>
+                <% elsif rec_target %>
+                  <% variants = @target_variants[rec_target] || [] %>
+                  <div class="target-info">
+                    <div class="samples"><strong><code><%= rec_target %></code>:</strong>
+                      <%= @vocab[rec_target].presence || "approved vocabulary term." %></div>
+                    <% if variants.any? %>
+                      <div class="samples" style="margin-top:var(--s2)"><%= pluralize(variants.size, "variant") %> already fold here:</div>
+                      <div class="target-vars"><% variants.each do |v| %><span class="chip"><%= v %></span><% end %></div>
+                    <% else %>
+                      <div class="samples" style="margin-top:var(--s2)">nothing folds onto it yet — this would be the first.</div>
+                    <% end %>
+                    <div class="samples" style="margin-top:var(--s2)"><%= link_to "see it on Vocabulary →", vocabulary_path %></div>
+                  </div>
+                <% else %>
+                  <div class="samples" style="margin-top:var(--s2)">
+                    no map target recommended — Approve creates a new preferred term, or type one into the Map lane.
+                  </div>
+                <% end %>
+              <% else %>
+                <span class="samples">considerer: <span class="muted">—</span> no recommendation yet (run Consider).</span>
+              <% end %>
+            </section>
+          </div>
+          <div class="focus-verdict">
+            <p class="focus-consequence"><%= conseq_default %></p>
+            <div class="verdict rec-<%= rec.presence || 'none' %>">
+              <%= button_to "Approve", suggestions_verdict_path,
+                    params: { proposed_key: key, decision: "approve" },
+                    form: { data: { consequence: conseq_approve }, class: "act-approve" },
+                    class: "btn #{'btn-affirmative' if rec == 'approve' || rec.blank?}" %>
+              <%= form_with url: suggestions_verdict_path, method: :post,
+                    html: { class: "act-map", data: { consequence: conseq_map } } do |f| %>
+                <%= f.hidden_field :proposed_key, value: key %>
+                <%= f.hidden_field :decision, value: "map" %>
+                <input class="field" type="text" name="mapped_to" list="canonical-terms"
+                       value="<%= prefill %>" placeholder="map onto…" autocomplete="off"
+                       aria-label="map <%= key %> onto a preferred term">
+                <%= f.submit "Map", class: "btn #{'btn-affirmative' if rec == 'map'}" %>
+              <% end %>
+              <%= button_to "Reject", suggestions_verdict_path,
+                    params: { proposed_key: key, decision: "reject" },
+                    form: { data: { consequence: conseq_reject }, class: "act-reject" },
+                    class: "btn btn-destructive" %>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
   <% end %>
+
+  <%# v0.62: the shared focus-dialog shell — one per page; the driver fills .focus-content
+      from the templates above. Native <dialog>: Esc closes, focus is trapped, backdrop
+      dims the list. Never rendered open — no-JS users never see it. %>
+  <dialog class="focus-dialog" aria-label="Focused consideration of a proposed term">
+    <div class="focus-shell">
+      <header class="focus-head">
+        <h2 class="focus-key mono" tabindex="-1"></h2>
+        <span class="focus-pos" aria-live="polite"></span>
+        <div class="focus-nav">
+          <button type="button" class="btn btn-sm" data-focus-prev aria-label="previous proposal">←</button>
+          <button type="button" class="btn btn-sm" data-focus-next aria-label="next proposal">→</button>
+          <button type="button" class="btn btn-sm" data-focus-close aria-label="close (Esc)">✕ Esc</button>
+        </div>
+      </header>
+      <div class="focus-flash" hidden></div>
+      <div class="focus-content"></div>
+    </div>
+  </dialog>
 <% else %>
   <p class="muted">No pending requests — the vocabulary is fully tended.</p>
 <% end %>

@@ -60,6 +60,10 @@ Enliterator::Engine.routes.draw do
   # confirm/overrule/correct the examiner's verdicts on sampled claims.
   get  "review",         to: "review#index",   as: :review
   post "review/verdict", to: "review#verdict", as: :review_verdict
+  # v0.62: the focus view's source pane — the FULL text the claim was examined against
+  # (the queue itself carries only a 280-char snippet; sources can be megabytes, so they
+  # load lazily, one focused item at a time).
+  get "review/source/:audit_id", to: "review#source", as: :review_source, constraints: { audit_id: %r{[^/]+} }
 
   # The authority file (v0.51): the standing controlled vocabulary as a thesaurus —
   # preferred terms with their UF variants, ranked by sprawl, with dumping-ground and

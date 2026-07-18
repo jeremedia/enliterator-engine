@@ -13,6 +13,8 @@ module Enliterator
   # doubted.
   class ReviewController < ApplicationController
     QUEUE_SIZE = 24
+    # v0.62: the focus view's source pane cap — bounded payload; the pane labels the cut.
+    SOURCE_CAP = 200_000
 
     def index
       @queue      = build_queue
@@ -29,32 +31,57 @@ module Enliterator
       audit = Enliterator::Audit.where(source: %w[examiner agent]).find(params[:audit_id])
       claim = audit.claim
       note  = params[:note].presence
+      # v0.62: focus-view threading — a verdict from the focus dialog carries
+      # focus_self/focus_next; an alert reopens the SAME item, a success advances to the
+      # NEXT. Rails drops nil query params, so the no-param path is byte-identical.
+      stay     = review_path(focus: params[:focus_self].presence)
+      advanced = review_path(focus: params[:focus_next].presence)
 
       case params[:decision]
       when "confirm"
         record_human!(claim, audit.verdict, note)
-        redirect_to review_path, notice: "Confirmed the #{audit.source}: #{audit.verdict} — \"#{claim.key}\"."
+        redirect_to advanced, notice: "Confirmed the #{audit.source}: #{audit.verdict} — \"#{claim.key}\"."
       when "overrule"
         v = params[:verdict].to_s
-        return redirect_to(review_path, alert: "Pick a verdict to overrule with.") unless Enliterator::Audit::VERDICTS.include?(v)
+        return redirect_to(stay, alert: "Pick a verdict to overrule with.") unless Enliterator::Audit::VERDICTS.include?(v)
         record_human!(claim, v, note)
-        redirect_to review_path, notice: "Overruled the #{audit.source}: #{v} — \"#{claim.key}\"."
+        redirect_to advanced, notice: "Overruled the #{audit.source}: #{v} — \"#{claim.key}\"."
       when "correct"
         value = params[:value].to_s
-        return redirect_to(review_path, alert: "A correction needs the corrected value.") if value.blank?
+        return redirect_to(stay, alert: "A correction needs the corrected value.") if value.blank?
         begin
           fresh = claim.tendable.correct_claim!(claim, value: value, note: note)
           v = Enliterator::Audit::VERDICTS.include?(params[:verdict].to_s) ? params[:verdict].to_s : "contradicted"
           record_human!(claim, v, note, corrected_claim: fresh)
-          redirect_to review_path,
+          redirect_to advanced,
             notice: "Corrected \"#{claim.key}\" — the new claim is locked (curator anchor); future tends will not clobber it."
         rescue Enliterator::Claim::AlreadySuperseded
-          redirect_to review_path,
+          redirect_to stay,
             alert: "\"#{claim.key}\" was re-tended after examination — review its successor instead."
         end
       else
-        redirect_to review_path, alert: "Unknown decision: #{params[:decision].inspect}."
+        redirect_to stay, alert: "Unknown decision: #{params[:decision].inspect}."
       end
+    end
+
+    # v0.62: the focus view's source pane — the FULL text the claim was examined against,
+    # lazily fetched per focused item (sources can be megabytes; the index carries only a
+    # snippet). An unreadable source is LABELED, not silently blanked (rule 3).
+    def source
+      audit = Enliterator::Audit.where(source: %w[examiner agent]).find(params[:audit_id])
+      claim = audit.claim
+      text  = claim.tendable&.enliterator_text(facet: claim.visit&.facet).to_s
+      render json: {
+        label:     Enliterator::Label.one(claim.tendable, type: claim.tendable_type, id: claim.tendable_id),
+        key:       claim.key,
+        text:      text[0, SOURCE_CAP],
+        truncated: text.length > SOURCE_CAP,
+        length:    text.length
+      }
+    rescue ActiveRecord::RecordNotFound
+      head :not_found
+    rescue StandardError => e
+      render json: { error: "source unreadable — #{e.class}: #{e.message}" }, status: :ok
     end
 
     private
@@ -98,6 +125,8 @@ module Enliterator
           audit:          audit,
           claim:          claim,
           live:           live,
+          # v0.62: the record's human label (tendable is eager-loaded above — no N+1).
+          label:          Enliterator::Label.one(claim.tendable, type: claim.tendable_type, id: claim.tendable_id),
           source_changed: audit.source_digest.present? && current.present? &&
                           Digest::MD5.hexdigest(current) != audit.source_digest,
           snippet:        current[0, 280]

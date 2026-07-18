@@ -70,8 +70,12 @@ module Enliterator
     def verdict
       key  = params[:proposed_key].to_s
       note = params[:note].presence
+      # v0.62: focus-view threading — a verdict rendered from the focus dialog carries
+      # focus_self/focus_next; an alert reopens the SAME item, a success advances to the
+      # NEXT. Rails drops nil query params, so the no-param path is byte-identical.
+      stay = suggestions_path(focus: params[:focus_self].presence)
       if key.blank?
-        return redirect_to(suggestions_path, alert: "No proposed_key given.")
+        return redirect_to(stay, alert: "No proposed_key given.")
       end
 
       n =
@@ -80,16 +84,16 @@ module Enliterator
         when "reject"  then Enliterator::Suggestion.reject_key!(key, note: note, context: current_context)
         when "map"
           target = params[:mapped_to].to_s
-          return redirect_to(suggestions_path, alert: "Pick a key to map \"#{key}\" onto.") if target.blank?
+          return redirect_to(stay, alert: "Pick a key to map \"#{key}\" onto.") if target.blank?
           # v0.53: the map target is now a free-text type-ahead (datalist), so validate it
           # against the effective vocabulary — a typo'd target would write a USE-reference
           # pointing nowhere (rule 3). @canonical isn't set on this action; recompute.
           unless canonical_keys.include?(target)
-            return redirect_to(suggestions_path, alert: "\"#{target}\" is not a preferred term — pick one from the list.")
+            return redirect_to(stay, alert: "\"#{target}\" is not a preferred term — pick one from the list.")
           end
           Enliterator::Suggestion.map_key!(key, to: target, note: note, context: current_context)
         else
-          return redirect_to(suggestions_path, alert: "Unknown decision: #{params[:decision].inspect}.")
+          return redirect_to(stay, alert: "Unknown decision: #{params[:decision].inspect}.")
         end
 
       verb = params[:decision] == "map" ? "mapped \"#{key}\" → \"#{params[:mapped_to]}\"" : "#{params[:decision]}d \"#{key}\""
@@ -97,9 +101,9 @@ module Enliterator
       # double-submit) — surface it as an ALERT, not a green success notice (rule 3: no
       # silent failure). `update_all` returns the affected-row count.
       if n.zero?
-        redirect_to suggestions_path, alert: "No pending \"#{key}\" in this context — nothing to #{params[:decision]} (already resolved, or wrong context?)."
+        redirect_to stay, alert: "No pending \"#{key}\" in this context — nothing to #{params[:decision]} (already resolved, or wrong context?)."
       else
-        redirect_to suggestions_path, notice: "#{verb} (#{n} record#{'s' if n != 1})."
+        redirect_to suggestions_path(focus: params[:focus_next].presence), notice: "#{verb} (#{n} record#{'s' if n != 1})."
       end
     end
 
@@ -133,31 +137,12 @@ module Enliterator
       rows = Enliterator::Suggestion.where(context_id: current_context&.id, proposed_key: keys)
                .order(:id).pluck(:proposed_key, :rationale, :example_value, :tendable_type, :tendable_id)
                .uniq { |k, r, e, tt, ti| [ k, tt, ti, r, e ] }   # collapse re-tend dupes, keep per-record
-      labels = record_labels(rows.map { |r| [ r[3], r[4] ] }.uniq)
+      labels = Enliterator::Label.for(rows.map { |r| [ r[3], r[4] ] }.uniq)
       rows.group_by(&:first).transform_values do |rs|
         rs.map { |_, r, e, tt, ti|
           lbl = labels[[ tt, ti ]]
           { rationale: r, example: e, source: lbl[:title], position: lbl[:position], type: tt, id: ti }
         }.sort_by { |h| [ h[:position] || Float::INFINITY, h[:source].to_s ] }.first(12)  # book order (v0.54.2)
-      end
-    end
-
-    # Human labels for [type, id] pairs, batched per type — {[type, id] => {title:, position:}}.
-    # Title = the Catalog convention (title → name → "Type #id"), so no UUID faces the reviewer.
-    # Position = the host's `position` if it has one (an ordered composite work — a manuscript's
-    # chapters); nil for a bag-of-documents corpus, so this stays byte-identical for a flat host.
-    def record_labels(pairs)
-      pairs.group_by(&:first).each_with_object({}) do |(type, ps), out|
-        klass = type.to_s.safe_constantize
-        ids   = ps.map(&:last)
-        recs  = (klass && Enliterator.tendable_type?(klass)) ? klass.where(id: ids).index_by { |r| r.id.to_s } : {}
-        ids.each do |id|
-          rec = recs[id.to_s]
-          out[[ type, id ]] = {
-            title:    rec&.try(:title).presence || rec&.try(:name).presence || "#{type.to_s.demodulize} ##{id}",
-            position: rec&.try(:position)
-          }
-        end
       end
     end
 
