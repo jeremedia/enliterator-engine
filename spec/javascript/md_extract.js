@@ -1,9 +1,10 @@
 "use strict";
 // Extract the three client-side markdown helpers (esc / inline / mdToHtml) from
-// the conversation view's inline <script>, so the golden test exercises the REAL
-// shipped code rather than a drifting copy. The functions are pure vanilla JS
-// with no ERB inside their bodies (the ERB `<% if %>` gates live elsewhere in
-// the IIFE), so we can lift each one by name and brace-balancing.
+// the SHARED partial (v0.63: hoisted out of the conversation view so the Review
+// focus view's source pane renders the same markdown — one shipped copy), so the
+// golden test exercises the REAL shipped code rather than a drifting copy. The
+// partial is pure vanilla JS with no ERB, so we can lift each function by name
+// and brace-balancing.
 //
 // This module exports the extracted functions; md_golden.test.js drives them.
 
@@ -12,7 +13,7 @@ const path = require("path");
 
 const VIEW = path.join(
   __dirname, "..", "..",
-  "app", "views", "enliterator", "conversation", "index.html.erb"
+  "app", "views", "enliterator", "shared", "_md_client.html.erb"
 );
 
 // Pull the named function declaration out of `src` by finding `function NAME(`
@@ -40,15 +41,11 @@ function liftFunction(src, name) {
   throw new Error("unbalanced braces lifting `" + name + "`");
 }
 
-const viewSrc = fs.readFileSync(VIEW, "utf8");
-
-// Isolate the <script> body to avoid matching anything in the ERB/HTML above it.
-const scriptOpen = viewSrc.indexOf("<script>");
-const scriptClose = viewSrc.lastIndexOf("</script>");
-if (scriptOpen === -1 || scriptClose === -1) {
-  throw new Error("could not locate the <script> block in the view");
+// The partial IS the script body — pure JS, no <script> wrapper, no ERB.
+const scriptSrc = fs.readFileSync(VIEW, "utf8");
+if (scriptSrc.includes("<%")) {
+  throw new Error("the md_client partial must stay pure JS (found an ERB tag)");
 }
-const scriptSrc = viewSrc.slice(scriptOpen + "<script>".length, scriptClose);
 
 const escSrc = liftFunction(scriptSrc, "esc");
 const inlineSrc = liftFunction(scriptSrc, "inline");

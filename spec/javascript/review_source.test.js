@@ -1,14 +1,23 @@
 "use strict";
 // v0.62: the Review focus view's source pane — proves the pure segmentation/meta helpers
 // behind window.EnliteratorReviewSource._test: lossless case-insensitive occurrence
-// splitting (the escaping-safety property — rendering appends these segments as TEXT
-// nodes, so lossless segmentation ⇒ no fetched byte is ever parsed as HTML), the
-// 6..200-char needle guard, and the truncation/match meta line.
+// splitting, the 6..200-char needle guard, and the truncation/match meta line.
+// (v0.63: the render path is markdown via the shared md client — mdToHtml escapes
+// FIRST, guarded by md_golden.test.js — and highlighting walks rendered TEXT NODES;
+// lossless segmentation remains the property that keeps marking injection-free.)
 const fs = require("fs");
 const path = require("path");
 const VIEW = path.join(__dirname, "..", "..", "app", "views", "enliterator", "review", "index.html.erb");
+const MD = path.join(__dirname, "..", "..", "app", "views", "enliterator", "shared", "_md_client.html.erb");
 const src = fs.readFileSync(VIEW, "utf8");
-const scriptSrc = src.slice(src.indexOf("<script>") + 8, src.lastIndexOf("</script>"));
+// The raw ERB script contains the `<%= render "…/md_client" %>` tag — substitute the
+// partial's actual JS (what the server renders there), mirroring the shipped script.
+const scriptSrc = src.slice(src.indexOf("<script>") + 8, src.lastIndexOf("</script>"))
+  .replace(/<%=\s*render[^%]*%>/, fs.readFileSync(MD, "utf8"));
+if (scriptSrc.includes("<%")) {
+  console.error("  ✗ unexpected ERB left in the extracted script");
+  process.exit(1);
+}
 
 let pass = 0, fail = 0;
 function ok(c, m) { if (c) pass++; else { fail++; console.error("  ✗ " + m); } }

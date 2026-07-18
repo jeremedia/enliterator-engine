@@ -171,11 +171,13 @@ mount Enliterator::Engine => "/enliterator"
   (`considerer_batch_size`, so a large queue never overruns the LLM timeout), auto-applies the safe
   verdicts (synonym maps, confident rejects), and leaves approvals for you. The web run is **async**
   (v0.49): the button returns immediately and a live monitor polls until it converges — no blocked request.
-  Both this queue and `/review` offer a **focus view** (v0.62): one decision per screen in a
-  full-screen dialog — evidence and the map target's neighborhood (or the claim and its FULL
-  source) side by side, verdict lanes always visible with their consequences stated, ←/→ through
-  the queue, and a verdict advancing to the next item. The list stays for triage; the dialog is
-  where adjudication happens. No-JS reviewers keep the plain list unchanged.
+  Both this queue and `/review` offer a **focus view** (v0.62, refined v0.63): one decision per
+  screen in a full-screen dialog — evidence and the map target's neighborhood (or the claim and
+  its FULL source, rendered as markdown with the claim's words highlighted) side by side, the
+  verdict bar as named lanes with each lane's consequence previewed ("if you do this —"), the
+  recommended lane visibly recommended, ←/→ through the queue, and a verdict advancing to the
+  next item. The list stays for triage; the dialog is where adjudication happens. No-JS
+  reviewers keep the plain list unchanged.
   In **v0.9** the loop *converges* (see below): an approved key goes **live** in the effective
   contract immediately (the diff lets you codify it permanently), and a re-proposal of an
   already-resolved key is **suppressed** — counted under "Re-proposed after a verdict" rather than

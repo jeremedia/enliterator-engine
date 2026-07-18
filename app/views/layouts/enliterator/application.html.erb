@@ -233,11 +233,36 @@
       text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2); }
     .focus-verdict { border-top: 1px solid var(--line); padding: var(--s3) var(--s4);
       background: var(--panel); }
-    .focus-consequence { margin: 0 0 var(--s2); font-size: var(--fs-sm); color: var(--muted);
-      min-height: 1.2em; }
-    .focus-source-text { white-space: pre-wrap; margin: 0; font-size: var(--fs-sm);
-      font-family: inherit; line-height: 1.5; }
-    .focus-source-text mark { background: var(--accent-soft); color: var(--accent-dark); }
+    /* The consequence of the lane currently under consideration — reads as a
+       preview above the choices; the eyebrow names it as such, and each lane
+       lights up on hover/focus so the swap is clearly caused by that lane. */
+    .focus-consequence { margin: 0 0 var(--s3); font-size: var(--fs-sm); color: var(--muted);
+      min-height: 1.2em; padding-left: var(--s3); border-left: 2px solid var(--line); }
+    .focus-consequence::before { content: "If you do this — "; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; font-size: var(--fs-xs);
+      letter-spacing: .05em; }
+    /* Verdict lanes (shared by Requests + Review): every verdict is a named,
+       bordered group holding its OWN fused control(s) — three distinct choices,
+       not one undifferentiated row of controls. Collapsed back to a plain
+       compact row on the list cards, where each page sets .focus-lane to
+       display:contents (so the list stays byte-for-byte its prior shape). */
+    .focus-lane { display: flex; flex-direction: column; gap: var(--s2);
+      padding: var(--s2) var(--s3); border: 1px solid var(--line);
+      border-radius: var(--r-sm); background: var(--bg); }
+    .focus-lane-label { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .05em;
+      text-transform: uppercase; color: var(--muted); }
+    .focus-lane .lane-rec { color: var(--accent); }
+    /* the recommended lane is visually primary — accent frame + soft ground */
+    .focus-lane.is-recommended { border-color: var(--accent); background: var(--accent-soft); }
+    /* the verdict bar's lane row */
+    .focus-verdict .verdict { gap: var(--s3); align-items: stretch; }
+    .focus-verdict .focus-lane { min-width: 0; justify-content: space-between; }
+    .focus-verdict .focus-lane:hover, .focus-verdict .focus-lane:focus-within {
+      border-color: var(--accent); }
+    .focus-verdict .focus-lane form { margin: 0; display: flex; gap: var(--s2);
+      align-items: center; flex-wrap: wrap; }
+    .focus-verdict .focus-lane .btn { white-space: nowrap; }
+    .focus-source mark { background: var(--accent-soft); color: var(--accent-dark); }
     .focus-flash { padding: var(--s2) var(--s4); margin: 0; border-radius: 0; }
     [data-focus-open] { display: none; }
     .focus-ready [data-focus-open] { display: inline-flex; }

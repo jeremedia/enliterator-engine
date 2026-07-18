@@ -39,11 +39,16 @@
     font-variant-numeric: tabular-nums; font-weight: 700; }
   .request .target-info, .focus-item .target-info { margin-top: var(--s2); padding-left: var(--s3); border-left: 2px solid var(--line); }
   .request .target-vars, .focus-item .target-vars { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
-  /* v0.62: the focus dialog's verdict bar — horizontal lanes (the layout's .verdict row),
-     with the recommended lane still greened/ordered first and the Map field given room. */
+  /* v0.62: the focus dialog's verdict bar — three labeled lanes (the layout's
+     .focus-lane groups). Recommended-leads: the considerer's pick is ordered
+     first (and greened via .is-recommended); otherwise the natural order is
+     Approve · Map, with the destructive Reject held apart at the far edge.
+     v0.63: act-* now hangs on the lane wrapper, so `order` moves the whole lane. */
+  .focus-verdict .verdict .act-reject { order: 1; margin-left: auto; }
   .focus-verdict .verdict.rec-map .act-map { order: -1; }
-  .focus-verdict .verdict.rec-reject .act-reject { order: -1; }
-  .focus-verdict .field { min-width: 12rem; }
+  .focus-verdict .verdict.rec-reject .act-reject { order: -1; margin-left: 0; }
+  .focus-verdict .act-map { flex: 1 1 16rem; }
+  .focus-verdict .act-map .field { flex: 1; min-width: 8rem; }
   .focus-item .req-pressure { margin-left: auto; display: flex; align-items: baseline; gap: var(--s2); }
   .focus-item .req-pressure .big { font-size: 1.25rem; line-height: 1; }
   /* v0.53: lead with the considerer's recommended action — reorder it to the top of the
@@ -302,26 +307,39 @@
               <% end %>
             </section>
           </div>
+          <%# v0.63: three named lanes — each verdict is a bordered group with a
+              label, its own fused control(s), and (above the row) the consequence
+              of the lane under consideration. The considerer's recommended lane is
+              greened (.is-recommended) and ordered first; Reject is held apart. %>
           <div class="focus-verdict">
             <p class="focus-consequence"><%= conseq_default %></p>
             <div class="verdict rec-<%= rec.presence || 'none' %>">
-              <%= button_to "Approve", suggestions_verdict_path,
-                    params: { proposed_key: key, decision: "approve" },
-                    form: { data: { consequence: conseq_approve }, class: "act-approve" },
-                    class: "btn #{'btn-affirmative' if rec == 'approve' || rec.blank?}" %>
-              <%= form_with url: suggestions_verdict_path, method: :post,
-                    html: { class: "act-map", data: { consequence: conseq_map } } do |f| %>
-                <%= f.hidden_field :proposed_key, value: key %>
-                <%= f.hidden_field :decision, value: "map" %>
-                <input class="field" type="text" name="mapped_to" list="canonical-terms"
-                       value="<%= prefill %>" placeholder="map onto…" autocomplete="off"
-                       aria-label="map <%= key %> onto a preferred term">
-                <%= f.submit "Map", class: "btn #{'btn-affirmative' if rec == 'map'}" %>
-              <% end %>
-              <%= button_to "Reject", suggestions_verdict_path,
-                    params: { proposed_key: key, decision: "reject" },
-                    form: { data: { consequence: conseq_reject }, class: "act-reject" },
-                    class: "btn btn-destructive" %>
+              <div class="focus-lane act-approve<%= ' is-recommended' if rec == 'approve' || rec.blank? %>">
+                <span class="focus-lane-label">Approve as a new term<% if rec == 'approve' || rec.blank? %> <span class="lane-rec">· recommended</span><% end %></span>
+                <%= button_to "Approve", suggestions_verdict_path,
+                      params: { proposed_key: key, decision: "approve" },
+                      form: { data: { consequence: conseq_approve } },
+                      class: "btn #{'btn-affirmative' if rec == 'approve' || rec.blank?}" %>
+              </div>
+              <div class="focus-lane act-map<%= ' is-recommended' if rec == 'map' %>">
+                <span class="focus-lane-label">Map onto an existing term<% if rec == 'map' %> <span class="lane-rec">· recommended</span><% end %></span>
+                <%= form_with url: suggestions_verdict_path, method: :post,
+                      html: { data: { consequence: conseq_map } } do |f| %>
+                  <%= f.hidden_field :proposed_key, value: key %>
+                  <%= f.hidden_field :decision, value: "map" %>
+                  <input class="field" type="text" name="mapped_to" list="canonical-terms"
+                         value="<%= prefill %>" placeholder="map onto…" autocomplete="off"
+                         aria-label="map <%= key %> onto a preferred term">
+                  <%= f.submit "Map", class: "btn #{'btn-affirmative' if rec == 'map'}" %>
+                <% end %>
+              </div>
+              <div class="focus-lane act-reject<%= ' is-recommended' if rec == 'reject' %>">
+                <span class="focus-lane-label">Reject<% if rec == 'reject' %> <span class="lane-rec">· recommended</span><% end %></span>
+                <%= button_to "Reject", suggestions_verdict_path,
+                      params: { proposed_key: key, decision: "reject" },
+                      form: { data: { consequence: conseq_reject } },
+                      class: "btn btn-destructive" %>
+              </div>
             </div>
           </div>
         </div>

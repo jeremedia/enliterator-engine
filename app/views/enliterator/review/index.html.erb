@@ -3,11 +3,36 @@
     grows to fill, so the free-text field has room). %>
 <style>
   .review-actions { margin-top: var(--s3); align-items: flex-start; }
-  .review-actions .review-correct, .focus-verdict .review-correct { flex: 1; min-width: 18rem; }
-  .review-actions .review-correct .field, .focus-verdict .review-correct .field { flex: 1; min-width: 0; }
+  /* v0.63: the LIST card keeps its prior compact row — the shared lane wrappers
+     collapse (display:contents) so the three forms sit as flex children exactly
+     as before, and the lane labels (meaningful only in the focus dialog) hide. */
+  .review-actions .focus-lane { display: contents; }
+  .review-actions .focus-lane-label { display: none; }
+  .review-actions .review-correct { flex: 1; min-width: 18rem; }
+  .review-actions .review-correct .field { flex: 1; min-width: 0; }
+  /* v0.63: in the focus dialog the Correct lane is the widest — let it grow so the
+     free-text value field has room; the input fuses to its Correct button. */
+  .focus-verdict .review-correct-lane { flex: 1 1 22rem; }
+  .focus-verdict .review-correct { flex: 1; }
+  .focus-verdict .review-correct .field { flex: 1; min-width: 8rem; }
   /* v0.62: focus-view claim/examiner blocks (pane A) */
   .focus-item .claim-block { margin-bottom: var(--s4); }
   .focus-item .claim-block .focus-pane-label { margin-bottom: var(--s1); }
+  /* v0.63: the source renders as markdown — modest typographic scale inside the pane
+     (a chapter's own h1 must not shout over the dialog's chrome). */
+  .focus-source-md { font-size: var(--fs-sm); line-height: 1.55; }
+  .focus-source-md > :first-child { margin-top: 0; }
+  .focus-source-md p { margin: .5rem 0; }
+  .focus-source-md h1, .focus-source-md h2, .focus-source-md h3,
+  .focus-source-md h4, .focus-source-md h5, .focus-source-md h6 {
+    font-size: 1rem; margin: 1rem 0 .3rem; line-height: 1.3; }
+  .focus-source-md ul, .focus-source-md ol { margin: .4rem 0 .4rem 1.25rem; padding: 0; }
+  .focus-source-md li { margin: .2rem 0; }
+  .focus-source-md blockquote { margin: .5rem 0; padding-left: var(--s3);
+    border-left: 3px solid var(--line); color: var(--muted); }
+  .focus-source-md hr { border: 0; border-top: 1px solid var(--line); margin: .8rem 0; }
+  .focus-source-md code { font-size: .95em; }
+  .focus-source-md table { margin: .5rem 0; }
 </style>
 
 <h1>Review <span class="subtitle">— quality review: the human anchor for the claim audit</span></h1>
@@ -58,31 +83,43 @@
   <% conseq_overrule = %(Records your chosen verdict in place of the #{audit.source}'s — wherever both exist, the human verdict outranks it in every accuracy count.#{rt_suffix}) %>
   <% conseq_correct  = %(Supersedes the claim with your value, locked as a curator anchor — future tends will not clobber it.) %>
   <%# The verdict lanes, rendered ONCE (capture) and used by both the list card and the
-      focus template — the live/re-tended branch stays a single source of truth. %>
+      focus template — the live/re-tended branch stays a single source of truth.
+      v0.63: each verdict is wrapped in a named .focus-lane group so the three choices
+      read as three distinct lanes (input fused to the button it feeds). On the list
+      card the wrappers collapse (display:contents) so the compact row is unchanged. %>
   <% lanes = capture do %>
-    <%= form_with url: review_verdict_path, method: :post, html: { data: { consequence: conseq_confirm } } do %>
-      <input type="hidden" name="audit_id" value="<%= audit.id %>">
-      <input type="hidden" name="decision" value="confirm">
-      <button type="submit" class="btn btn-affirmative">Confirm <%= audit.verdict %></button>
-    <% end %>
-    <%= form_with url: review_verdict_path, method: :post, html: { data: { consequence: conseq_overrule } } do %>
-      <input type="hidden" name="audit_id" value="<%= audit.id %>">
-      <input type="hidden" name="decision" value="overrule">
-      <select name="verdict" class="field" aria-label="overrule with this verdict">
-        <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
-          <option value="<%= v %>"><%= v %></option>
-        <% end %>
-      </select>
-      <button type="submit" class="btn">Overrule</button>
-    <% end %>
-    <% if row[:live] %>
-      <%= form_with url: review_verdict_path, method: :post, html: { class: "review-correct", data: { consequence: conseq_correct } } do %>
+    <div class="focus-lane">
+      <span class="focus-lane-label">Confirm the examiner</span>
+      <%= form_with url: review_verdict_path, method: :post, html: { data: { consequence: conseq_confirm } } do %>
         <input type="hidden" name="audit_id" value="<%= audit.id %>">
-        <input type="hidden" name="decision" value="correct">
-        <input type="text" name="value" placeholder="the corrected value" class="field"
-               value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>">
-        <button type="submit" class="btn btn-primary">Correct</button>
+        <input type="hidden" name="decision" value="confirm">
+        <button type="submit" class="btn btn-affirmative">Confirm <%= audit.verdict %></button>
       <% end %>
+    </div>
+    <div class="focus-lane">
+      <span class="focus-lane-label">Overrule with another verdict</span>
+      <%= form_with url: review_verdict_path, method: :post, html: { data: { consequence: conseq_overrule } } do %>
+        <input type="hidden" name="audit_id" value="<%= audit.id %>">
+        <input type="hidden" name="decision" value="overrule">
+        <select name="verdict" class="field" aria-label="overrule with this verdict">
+          <% (Enliterator::Audit::VERDICTS - [ audit.verdict ]).each do |v| %>
+            <option value="<%= v %>"><%= v %></option>
+          <% end %>
+        </select>
+        <button type="submit" class="btn">Overrule</button>
+      <% end %>
+    </div>
+    <% if row[:live] %>
+      <div class="focus-lane review-correct-lane">
+        <span class="focus-lane-label">Correct the value</span>
+        <%= form_with url: review_verdict_path, method: :post, html: { class: "review-correct", data: { consequence: conseq_correct } } do %>
+          <input type="hidden" name="audit_id" value="<%= audit.id %>">
+          <input type="hidden" name="decision" value="correct">
+          <input type="text" name="value" placeholder="the corrected value" class="field"
+                 value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>">
+          <button type="submit" class="btn btn-primary">Correct</button>
+        <% end %>
+      </div>
     <% end %>
   <% end %>
   <div class="card">
@@ -201,10 +238,13 @@
   <%# v0.62: the source pane — fetches the FULL text the claim was examined against when
       an item is focused (the driver announces via enl:focus-shown), caches per audit, and
       highlights exact occurrences of the claim value so the reviewer can find the ground.
-      Rendering is textContent/createTextNode only (never innerHTML with fetched text).
-      ALL inline (hard rule 2). %>
+      v0.63: the source renders as MARKDOWN via the shared md client (esc-first — fetched
+      text is HTML-escaped before any formatting, the same golden-guarded pipeline the Chat
+      answer uses); highlighting then walks the rendered TEXT NODES only, so no fetched
+      byte is ever parsed as HTML. ALL inline (hard rule 2). %>
   <script>
   (function () {
+<%= render "enliterator/shared/md_client" %>
     // Pure helpers, exposed for the JS golden test before any DOM wiring.
     // splitOccurrences: case-insensitive exact-match segmentation of text by needle.
     // Needles outside 6..200 chars are skipped (too noisy / not a quotable value).
@@ -238,6 +278,34 @@
     if (!dlg) return;
     var cache = {};   // audit_id → payload (prev/next never refetches)
 
+    // Wrap every claim-value occurrence in the RENDERED markdown with <mark> — walking
+    // text nodes only (a match spanning an inline element boundary honestly stays
+    // unmarked; the meta line says so). Returns the number of marks placed.
+    function markOccurrences(root, needle) {
+      if (!needle || needle.length < 6 || needle.length > 200) return 0;
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      var nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      var count = 0;
+      nodes.forEach(function (node) {
+        var segs = splitOccurrences(node.nodeValue, needle);
+        if (!segs.some(function (s) { return s.match; })) return;
+        var frag = document.createDocumentFragment();
+        segs.forEach(function (s) {
+          if (s.match) {
+            count++;
+            var m = document.createElement("mark");
+            m.textContent = s.text;
+            frag.appendChild(m);
+          } else {
+            frag.appendChild(document.createTextNode(s.text));
+          }
+        });
+        node.parentNode.replaceChild(frag, node);
+      });
+      return count;
+    }
+
     function render(pane, payload) {
       pane.innerHTML = "";
       if (payload.error) {
@@ -255,26 +323,20 @@
         pane.appendChild(warn);
         return;
       }
-      var segments = splitOccurrences(payload.text, pane.getAttribute("data-claim-value") || "");
+      // Markdown-render the source (mdToHtml escapes FIRST — fetched text can never
+      // become live markup), then mark occurrences in the rendered text nodes.
+      var box = document.createElement("div");
+      box.className = "md focus-source-md";
+      box.innerHTML = mdToHtml(payload.text);
+      var count = markOccurrences(box, pane.getAttribute("data-claim-value") || "");
       var meta = document.createElement("div");
       meta.className = "muted samples";
       meta.style.marginBottom = "var(--s2)";
-      meta.textContent = sourceMeta(payload, matchCount(segments));
+      meta.textContent = sourceMeta(payload, count);
       pane.appendChild(meta);
-      var pre = document.createElement("pre");
-      pre.className = "focus-source-text";
-      segments.forEach(function (s) {
-        if (s.match) {
-          var m = document.createElement("mark");
-          m.textContent = s.text;
-          pre.appendChild(m);
-        } else {
-          pre.appendChild(document.createTextNode(s.text));
-        }
-      });
-      pane.appendChild(pre);
+      pane.appendChild(box);
       // Scroll the first hit into view — the reviewer lands on the ground, not page 1.
-      var first = pre.querySelector("mark");
+      var first = box.querySelector("mark");
       if (first && first.scrollIntoView) first.scrollIntoView({ block: "center" });
     }
 
