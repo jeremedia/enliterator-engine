@@ -22,7 +22,10 @@ module Enliterator
           record = claim.tendable
 
           {
-            claim: claim_card(claim),
+            # v0.64: this is THE single-claim drill-down — return the FULL value
+            # (value_chars: nil), not a 400-char card. An agent following provenance
+            # to read a long contribution argument now gets the whole thing.
+            claim: claim_card(claim, value_chars: nil),
             record: record && { type: claim.tendable_type, id: claim.tendable_id,
                                 label: label_for(record), entry: entry_path(claim.tendable_type, claim.tendable_id) },
             visit: visit && {

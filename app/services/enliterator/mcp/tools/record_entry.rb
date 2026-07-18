@@ -20,12 +20,17 @@ module Enliterator
         schema({
           "type"    => str("Record type (e.g. DocMetum, Enliterator::Part)"),
           "id"      => str("Record id"),
-          "context" => str("Optional context key — claims read cumulatively up its path")
+          "context" => str("Optional context key — claims read cumulatively up its path"),
+          "value_chars" => int("Optional: max chars per claim value before truncation (default 400). " \
+                               "Pass a large number (or 0 for unlimited) to read full claim values.")
         }, required: [ :type, :id ])
 
-        def call(type:, id:, context: nil)
+        def call(type:, id:, context: nil, value_chars: nil)
           ctx    = resolve_context(context)
           record = find_record!(type, id)
+          # v0.64: 0 (or negative) ⇒ unlimited (nil cap); a positive value overrides the
+          # 400-char default; omitted ⇒ VALUE_MAX (byte-identical to pre-v0.64).
+          cap = value_chars.nil? ? Tool::VALUE_MAX : (value_chars.to_i.positive? ? value_chars.to_i : nil)
 
           claims = record.enliterator_claims.live.includes(:context).order(:key)
           claims = claims.where(context_id: ctx.scope_ids) if ctx
@@ -39,7 +44,7 @@ module Enliterator
             label:    label_for(record),
             entry:    entry_path(type, id),
             contexts: record.enliterator_contexts.order(:name).pluck(:key),
-            claims:   claims_by_facet(claims.first(CLAIMS_CAP), verdicts),
+            claims:   claims_by_facet(claims.first(CLAIMS_CAP), verdicts, cap),
             claims_truncated: claims.size > CLAIMS_CAP || nil,
             tending: {
               visits:    visits.count,
@@ -63,14 +68,14 @@ module Enliterator
         # facet; their visits do). Host-seeded claims (no visit) group under
         # "asserted" — except the collection's told identity (v0.57), which
         # groups under "charter" so the record's own entry names it honestly.
-        def claims_by_facet(claims, verdicts)
+        def claims_by_facet(claims, verdicts, value_chars = Tool::VALUE_MAX)
           visit_facets = Enliterator::Visit.where(id: claims.filter_map(&:visit_id))
                                            .pluck(:id, :facet).to_h
           claims.group_by { |c|
                   visit_facets[c.visit_id] ||
                     (Enliterator::Charter.charter_key?(c.key) ? "charter" : "asserted")
                 }
-                .transform_values { |cs| cs.map { |c| claim_card(c, verdict: verdicts[c.id]) } }
+                .transform_values { |cs| cs.map { |c| claim_card(c, verdict: verdicts[c.id], value_chars: value_chars) } }
         end
 
         # Latest verdict per claim for DISPLAY: human > examiner > agent (an

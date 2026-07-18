@@ -63,23 +63,30 @@ module Enliterator
           "#{rec.class.name} ##{rec.id}"
       end
 
+      # v0.64: `cap: nil` returns the FULL value (no truncation) — the single-claim
+      # drill-downs (provenance, quote) pass nil so an agent reads the whole claim,
+      # not a 400-char card. A positive cap truncates with an ellipsis as before.
       def render_value(value, cap: VALUE_MAX)
         s = value.is_a?(String) ? value : value.to_json
-        s.length > cap ? "#{s[0, cap]}…" : s
+        cap && s.length > cap ? "#{s[0, cap]}…" : s
       end
 
       def truncated?(value, cap: VALUE_MAX)
+        return false if cap.nil?
         s = value.is_a?(String) ? value : value.to_json
         s.length > cap
       end
 
       # One claim, with its provenance on its sleeve.
-      def claim_card(claim, verdict: nil)
+      # v0.64: `value_chars` caps the claim value (nil ⇒ FULL). Defaults to VALUE_MAX
+      # so a card in a many-claim list (record_entry) stays bounded and byte-identical;
+      # single-claim tools pass nil to surface the untruncated value.
+      def claim_card(claim, verdict: nil, value_chars: VALUE_MAX)
         {
           id:            claim.id,
           key:           claim.key,
-          value:         render_value(claim.value),
-          truncated:     truncated?(claim.value) || nil,
+          value:         render_value(claim.value, cap: value_chars),
+          truncated:     truncated?(claim.value, cap: value_chars) || nil,
           confidence:    claim.confidence,
           tier:          claim.tier,
           status:        claim.status,

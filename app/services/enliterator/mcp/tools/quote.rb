@@ -40,7 +40,7 @@ module Enliterator
           stamped = Enliterator::Audit.where(claim_id: claim.id).order(:created_at)
                                       .pick(:source_digest)
           {
-            claim: { id: claim.id, key: claim.key, value: render_value(claim.value) },
+            claim: { id: claim.id, key: claim.key, value: render_value(claim.value, cap: nil) },
             located: located,
             passage: excerpt,
             at_chars: start,

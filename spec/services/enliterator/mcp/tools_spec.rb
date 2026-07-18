@@ -196,6 +196,45 @@ RSpec.describe "Enliterator MCP tools", type: :request do
     end
   end
 
+  describe "value truncation (v0.64 — untruncated claim values)" do
+    # a contribution argument longer than the 400-char record_entry card cap
+    let(:long) { "The book's contribution is " + ("a genuinely novel synthesis, " * 40) }
+    let(:w)    { enliterate!("Long", contribution: long) }
+    let(:claim) { w.enliterator_claims.find_by(key: "contribution") }
+
+    it "record_entry still caps at 400 by default (byte-identical), flagging truncated" do
+      out = call_tool("record_entry", type: "Widget", id: w.id.to_s)
+      card = out[:claims].values.flatten.find { |c| c[:key] == "contribution" }
+      expect(card[:value].length).to eq(401)          # 400 + the ellipsis char
+      expect(card[:value]).to end_with("…")
+      expect(card[:truncated]).to be(true)
+    end
+
+    it "record_entry value_chars: 0 returns the FULL value, unflagged" do
+      out = call_tool("record_entry", type: "Widget", id: w.id.to_s, value_chars: 0)
+      card = out[:claims].values.flatten.find { |c| c[:key] == "contribution" }
+      expect(card[:value]).to eq(long)
+      expect(card[:truncated]).to be_nil
+    end
+
+    it "record_entry value_chars: N caps at N" do
+      out = call_tool("record_entry", type: "Widget", id: w.id.to_s, value_chars: 50)
+      card = out[:claims].values.flatten.find { |c| c[:key] == "contribution" }
+      expect(card[:value].length).to eq(51)
+    end
+
+    it "provenance returns the FULL claim value by default (the drill-down never truncates)" do
+      out = call_tool("provenance", claim_id: claim.id)
+      expect(out[:claim][:value]).to eq(long)
+      expect(out[:claim][:truncated]).to be_nil
+    end
+
+    it "quote returns the full claim value alongside the source passage" do
+      out = call_tool("quote", claim_id: claim.id)
+      expect(out[:claim][:value]).to eq(long)
+    end
+  end
+
   describe "recent_activity" do
     it "answers the morning question: windowed digest with failures and a clamped window" do
       w = enliterate!("A", topic: "x")
