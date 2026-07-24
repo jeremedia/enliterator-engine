@@ -71,6 +71,18 @@ module Enliterator
         )
       end
 
+      # v-next: expose the warning accumulator so the directed-pulse resolver can
+      # surface the same "no token history" notes a beat plan does (est_for pushes
+      # them onto @warnings). No existing reader — @warnings was internal-only.
+      attr_reader :warnings
+
+      # v-next: public per-facet token estimate, for the directed-pulse resolver
+      # (Plan::Item.est_tokens). Thin wrapper over the private, cached est_for so
+      # pulses and beats price a facet identically.
+      def estimate(facet)
+        est_for(facet.to_s)
+      end
+
       private
 
       # ---- lanes -------------------------------------------------------------
