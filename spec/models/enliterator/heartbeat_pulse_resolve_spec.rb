@@ -115,4 +115,28 @@ RSpec.describe "Enliterator::Heartbeat::Pulse.resolve (v-next)" do
     expect { Enliterator::Heartbeat::Pulse.resolve(targets: [ "no-such-chapter" ]) }
       .to raise_error(ArgumentError, /no record for target/)
   end
+
+  # v0.65.1: facets-at-root topology (spine) — facets declared at ROOT, contexts
+  # carry membership only. A context pulse must tend members on the ROOT facets AT
+  # root scope (mirroring Planner#root_lanes), so it refreshes the SAME claims the
+  # pacemaker keeps current — while still targeting the context for synthesis.
+  it "tends context members on root facets at root scope, targeting the context for synthesis" do
+    Enliterator.configure do |c|
+      c.tending_facets = []
+      c.staffing = Enliterator::Staffing::Policy.new do
+        facet :significance, tier: "cheap", terms: { note: "A note." }   # ROOT facet, no context block
+        ladder [ "cheap" ]
+        verify_floor "cheap"
+      end
+    end
+    w = Widget.create!(title: "ch", body: "b")
+    w.place_in_context!(book)   # book declares NO facets of its own
+    plan = Enliterator::Heartbeat::Pulse.resolve(context: "the-smaller-infinity")
+    # tended at ROOT scope (context nil), NOT at the target context — so the pulse
+    # refreshes the member's existing root-scoped claims rather than minting a
+    # parallel, book-scoped set.
+    expect(plan.items.map { |i| [ i.facet, i.context ] }).to eq([ [ "significance", nil ] ])
+    # but the pulse still TARGETS the book → pulse_synthesis re-derives its syntheses.
+    expect(plan.pulse_contexts).to eq([ book ])
+  end
 end

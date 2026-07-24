@@ -542,7 +542,10 @@ module Enliterator
         return
       end
 
-      contexts = plan.items.filter_map(&:context).uniq
+      # v0.65.1: the contexts the pulse TARGETED, not item contexts — a member is
+      # tended at its facet's declaration scope (root for facets-at-root topologies),
+      # so item.context may be nil while the pulse still targets a book.
+      contexts = plan.pulse_contexts
       return if contexts.empty?
 
       pulse!("pulse_synthesis")

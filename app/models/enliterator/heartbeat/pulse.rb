@@ -63,11 +63,11 @@ module Enliterator
           end
         end
 
-        pairs = {}   # [type, id, context_id] => [record, context]
-        add   = ->(record, in_ctx) do
+        pairs = {}   # [type, id, target_context_id] => [record, target_context]
+        add   = ->(record, target_ctx) do
           next if record.nil?
-          key = [ record.class.name, record.public_send(record.class.primary_key).to_s, in_ctx&.id ]
-          pairs[key] ||= [ record, in_ctx ]
+          key = [ record.class.name, pk(record), target_ctx&.id ]
+          pairs[key] ||= [ record, target_ctx ]
         end
 
         # Explicit tokens pair with each context the record belongs to (root when
@@ -87,25 +87,41 @@ module Enliterator
         end
         members_of(ctx).each { |record| add.call(record, ctx) } if ctx
 
-        budget_val = (budget || Enliterator.configuration.heartbeat_budget_tokens).to_i
-        items = []
-        pairs.each_value do |(record, in_ctx)|
-          facets_for(in_ctx).each do |facet|
-            next if stale && !source_moved?(record, facet, in_ctx)
-            items << Enliterator::Heartbeat::Plan::Item.new(
-              tendable_type: record.class.name,
-              tendable_id:   record.public_send(record.class.primary_key).to_s,
-              facet:         facet.to_s,
-              context:       in_ctx,
-              reason:        "pulse",
-              est_tokens:    planner.estimate(facet)
-            )
+        # The contexts this pulse TARGETED — what pulse_synthesis re-derives. Kept
+        # SEPARATE from item contexts (below): a member is tended at its facet's
+        # declaration scope (root for facets-at-root topologies), so item.context
+        # can be nil while the pulse still targets a book.
+        pulse_contexts = pairs.each_value.filter_map { |(_r, c)| c }.uniq
+
+        # (record, facet, scope) triples, deduped. For each targeted (record,
+        # context) replicate the LANES the pacemaker would tend the record on
+        # (Planner#context_lanes + root_lanes): the context's own scheduled facets
+        # IN the context, PLUS the root scheduled facets AT root. `scope` is the
+        # facet's DECLARATION context — so the pulse refreshes the SAME claims the
+        # beat keeps current, never a parallel differently-scoped set.
+        triples = {}
+        pairs.each_value do |(record, target_ctx)|
+          lanes_for(target_ctx).each do |facet, scope|
+            triples[[ record.class.name, pk(record), facet, scope&.id ]] ||= [ record, facet, scope ]
           end
+        end
+
+        budget_val = (budget || Enliterator.configuration.heartbeat_budget_tokens).to_i
+        items = triples.each_value.filter_map do |(record, facet, scope)|
+          next if stale && !source_moved?(record, facet, scope)
+          Enliterator::Heartbeat::Plan::Item.new(
+            tendable_type: record.class.name,
+            tendable_id:   pk(record),
+            facet:         facet.to_s,
+            context:       scope,
+            reason:        "pulse",
+            est_tokens:    planner.estimate(facet)
+          )
         end
 
         Enliterator::Heartbeat::Plan.new(
           budget: budget_val, change_cap: 0, items: items, warnings: planner.warnings,
-          frontier_remaining: {}, horizon_tokens: 0
+          frontier_remaining: {}, horizon_tokens: 0, pulse_contexts: pulse_contexts
         )
       end
 
@@ -139,14 +155,34 @@ module Enliterator
 
       # --- facets + staleness -------------------------------------------------
 
-      # A context: exactly the scheduled facets it declares. Root (contextless):
-      # mirror Planner#root_lanes — fall back to config.tending_facets when the
-      # policy declares NO root facets at all, so a root pulse matches beat!.
-      def facets_for(ctx)
-        return Enliterator.staffing.schedulable_facets_declared_in(ctx.key) if ctx
-        return Enliterator.staffing.schedulable_facets_declared_in(nil) unless
-          Enliterator.staffing.facets_declared_in(nil).empty?
-        Array(Enliterator.configuration.tending_facets).map(&:to_s)
+      # The lanes a directed pulse tends a record on, given the context it was
+      # targeted through — mirroring Planner#context_lanes + root_lanes so the
+      # pulse refreshes the SAME (facet, scope) claims the beat keeps current.
+      # Returns [facet, scope] pairs: the target context's own scheduled facets
+      # tended IN that context, PLUS the root scheduled facets tended AT root
+      # (every host record is a root-lane candidate — this is what makes a
+      # context pulse work for facets-at-root topologies, where the context
+      # declares nothing and the facets live at root). Deduped. Root fallback to
+      # config.tending_facets when the policy declares no root facets, exactly as
+      # Planner#root_lanes.
+      def lanes_for(target_ctx)
+        lanes = []
+        if target_ctx
+          Enliterator.staffing.schedulable_facets_declared_in(target_ctx.key)
+                     .each { |f| lanes << [ f.to_s, target_ctx ] }
+        end
+        root =
+          if Enliterator.staffing.facets_declared_in(nil).any?
+            Enliterator.staffing.schedulable_facets_declared_in(nil)
+          else
+            Array(Enliterator.configuration.tending_facets).map(&:to_s)
+          end
+        root.each { |f| lanes << [ f.to_s, nil ] }
+        lanes.uniq
+      end
+
+      def pk(record)
+        record.public_send(record.class.primary_key).to_s
       end
 
       # Source moved since the last succeeded applied visit on this (facet,

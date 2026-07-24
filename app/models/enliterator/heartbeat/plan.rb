@@ -23,9 +23,10 @@ module Enliterator
       end
 
       attr_reader :budget, :change_cap, :items, :warnings,
-                  :frontier_remaining, :horizon_tokens
+                  :frontier_remaining, :horizon_tokens, :pulse_contexts
 
-      def initialize(budget:, change_cap:, items:, warnings:, frontier_remaining:, horizon_tokens:)
+      def initialize(budget:, change_cap:, items:, warnings:, frontier_remaining:, horizon_tokens:,
+                     pulse_contexts: [])
         @budget             = budget
         @change_cap         = change_cap
         @items              = items
@@ -33,6 +34,12 @@ module Enliterator
         # {lane_label => untended count} BEFORE this cycle — the whole shelf.
         @frontier_remaining = frontier_remaining
         @horizon_tokens     = horizon_tokens
+        # v0.65.1: the contexts a DIRECTED PULSE targeted — what pulse_synthesis
+        # re-derives. Kept separate from item contexts: a member is tended at its
+        # facet's DECLARATION scope (root for facets-at-root topologies), not the
+        # target context, so item.context can be nil while the pulse still targets
+        # a book. Empty for a pacemaker plan (the default).
+        @pulse_contexts     = pulse_contexts
       end
 
       # v0.20: the polymorphic preview interface shared with PreparedPlan —
