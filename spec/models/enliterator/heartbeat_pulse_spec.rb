@@ -10,4 +10,11 @@ RSpec.describe "Enliterator::Heartbeat directed pulse (v-next)" do
       expect(row.trigger).to eq("scheduled")
     end
   end
+
+  describe "config hooks" do
+    it "default to nil" do
+      expect(Enliterator.configuration.pulse_resolver).to be_nil
+      expect(Enliterator.configuration.pulse_synthesis).to be_nil
+    end
+  end
 end

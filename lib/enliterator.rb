@@ -124,6 +124,24 @@ module Enliterator
     # re-derivation, not a cheap NOOP — key the test on genuine content change.
     attr_accessor :heartbeat_source_changed
 
+    # ---- v-next: directed pulse (a definable, targeted heartbeat) ----------
+
+    # Optional callable mapping a human target token to a host record, so a
+    # pulse can name records in the host's own vocabulary (a Chapter slug, a
+    # DocMetum id): ->(token) { Chapter.find_by(slug: token) }. nil ⇒ explicit
+    # targets must be canonical "Type/id" form. The host owns its identifier
+    # space; the engine never guesses it.
+    attr_accessor :pulse_resolver
+
+    # Optional callable that re-derives a touched context's syntheses at the end
+    # of a pulse: ->(context:, heartbeat:) { ... }. Syntheses (thesis/arc/
+    # structure) are declared-but-unscheduled facets produced by deliberate
+    # reading invocation, NOT pacemaker Items — so only the host knows how to
+    # re-derive them. Called once per touched context on a pulse; nil ⇒ skipped
+    # (byte-identical). The return value is folded into the ledger row's
+    # `considerer` jsonb under "pulse_synthesis".
+    attr_accessor :pulse_synthesis
+
     # ---- v0.17 Condition (the collection shelf-reads itself) ---------------
 
     # Wall-clock budget (ms) for the per-cycle survey phase: probes are
@@ -411,6 +429,8 @@ module Enliterator
       @heartbeat_change_share = 0.2
       @heartbeat_neighbor_threshold = 3
       @heartbeat_source_changed = nil
+      @pulse_resolver = nil
+      @pulse_synthesis = nil
       @heartbeat_survey_budget_ms = 10_000
       @condition_claim_scope = :untendable
       @heartbeat_audit_sample = 0
