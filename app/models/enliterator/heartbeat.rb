@@ -66,7 +66,11 @@ module Enliterator
     # spend, the exact failure this instrument exists to prevent. The engine
     # is Postgres-only (pgvector), so the lock costs nothing and needs no
     # migration. `Overlap` raises synchronously, before any row exists.
-    def self.open!(mode: :sync, budget: nil, force: false)
+    # v-next: `plan:` injects a directed plan (Heartbeat.pulse) instead of
+    # computing the change-envelope plan — the ONE seam that turns a beat into a
+    # pulse. nil ⇒ today's exact path (the change-envelope Planner), so a
+    # non-pulse caller is byte-identical.
+    def self.open!(mode: :sync, budget: nil, force: false, plan: nil)
       mode = mode.to_s
       raise ArgumentError, "mode must be one of #{MODES.join('/')}" unless MODES.include?(mode)
 
@@ -83,10 +87,11 @@ module Enliterator
                          "a running or crashed cycle. Investigate it, or pass force: true / FORCE=1."
         end
 
-        the_plan = plan(budget: budget)
+        the_plan = plan || self.plan(budget: budget)
         row = create!(
           started_at:      Time.current,
           mode:            mode,
+          trigger:         plan ? "pulse" : "scheduled",
           budget_tokens:   the_plan.budget,
           planned:         the_plan.to_ledger,
           config_snapshot: config_snapshot,
