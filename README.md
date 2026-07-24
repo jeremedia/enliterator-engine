@@ -35,7 +35,7 @@ the lower rungs are the load-bearing structure that makes rung 5 honest.
 | 1 | **searchable** | the text can be found by similarity | `Embedding` rows + HNSW cosine index; `Embedding.nearest_to` |
 | 2 | **structured** | understanding is discrete fields, not a blob | `Claim` rows keyed by `key` with typed `value` |
 | 3 | **provenanced** | every claim knows where it came from | `visit_id` (wasGeneratedBy), `derived_from` (wasDerivedFrom), `attributed_to` (wasAttributedTo) |
-| 4 | **tended** | understanding is maintained, not abandoned | the event-driven heartbeat (`enliterator:heartbeat`): frontier first, re-tend on change, budget-capped, on a ledger |
+| 4 | **tended** | understanding is maintained, not abandoned | the event-driven heartbeat (`enliterator:heartbeat`): frontier first, re-tend on change, budget-capped, on a ledger — or a **directed pulse** (`enliterator:pulse`) to refresh a named or drifted set of records on demand |
 | 5 | **compounding** | each visit improves on the last | the Visitor hands prior claims + recent visits into the next visit's context; claims are reconciled (ADD/UPDATE/DELETE/NOOP), not overwritten |
 
 Beneath the rungs sits the substrate's own ladder (v0.17 — digital preservation's):
