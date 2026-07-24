@@ -55,6 +55,29 @@ module Enliterator
       row
     end
 
+    # v-next: the DIRECTED PULSE — a definable, targeted cycle. Resolve the
+    # target set to a Plan (Heartbeat::Pulse), then run it through the SAME
+    # open!/execute! machinery a beat uses: overlap lock, budget-as-guarantee,
+    # per-visit provenance (heartbeat_id + reason "pulse"), the full considerer/
+    # audit tail, the ledger row. An empty resolution is a LOUD no-op — no row
+    # opens (never a silent success; the v0.5 lesson). Returns the finalized row,
+    # or nil when nothing resolved.
+    def self.pulse(targets: [], stale: false, context: nil,
+                   execute: :sync, budget: nil, skip_consider: false, force: false)
+      the_plan = Enliterator::Heartbeat::Pulse.resolve(
+        targets: targets, stale: stale, context: context, budget: budget
+      )
+      if the_plan.items.empty?
+        Enliterator.logger&.info("[enliterator:pulse] nothing to pulse — no row opened " \
+                                 "(targets=#{Array(targets).size} stale=#{stale} context=#{context.inspect})")
+        return nil
+      end
+
+      row, injected = open!(mode: execute, force: force, plan: the_plan)
+      row.execute!(injected, skip_consider: skip_consider)
+      row
+    end
+
     # Open a cycle: validate, take the lock, plan, create the row — and return
     # [row, plan] so the caller chooses HOW to execute (inline via execute!,
     # or in the background via execute_async! — the v0.16 trigger page).
