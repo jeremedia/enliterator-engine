@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_18_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_23_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -542,6 +542,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_18_000000) do
     t.datetime "started_at", null: false
     t.jsonb "survey", default: {}
     t.jsonb "tokens_spent", default: {}
+    t.string "trigger", default: "scheduled", null: false
     t.datetime "updated_at", null: false
     t.jsonb "warnings", default: []
     t.index ["started_at"], name: "index_enliterator_heartbeats_on_started_at"
