@@ -189,6 +189,62 @@ namespace :enliterator do
     end
   end
 
+  # Usage:
+  #   enliterator:pulse TARGETS="combustion-edge where-you-begin"   # explicit records
+  #   enliterator:pulse STALE=1 CONTEXT=the-smaller-infinity        # refresh what drifted
+  #   enliterator:pulse CONTEXT=the-smaller-infinity                # the whole book
+  #   BUDGET=  SKIP_CONSIDER=1  FORCE=1  ENQUEUE=1  PLAN=1          # same knobs as :heartbeat
+  desc "Run a directed pulse (tend named/stale records + host syntheses). TARGETS= STALE=1 CONTEXT= BUDGET= PLAN=1 FORCE=1 SKIP_CONSIDER=1 ENQUEUE=1"
+  task pulse: :environment do
+    logger = Enliterator.logger
+    log = ->(msg) { logger ? logger.info("[enliterator:pulse] #{msg}") : puts(msg) }
+
+    targets = ENV["TARGETS"].to_s.split(/\s+/).reject(&:empty?)
+    stale   = ENV["STALE"].present?
+    context = ENV["CONTEXT"].presence
+    budget  = ENV["BUDGET"].presence&.to_i
+
+    if targets.empty? && !stale && context.nil?
+      abort "[enliterator:pulse] nothing named — pass TARGETS=, STALE=1, and/or CONTEXT="
+    end
+
+    begin
+      if ENV["PLAN"].present?
+        plan = Enliterator::Heartbeat::Pulse.resolve(targets: targets, stale: stale,
+                                                     context: context, budget: budget)
+        log.call("── pulse plan ── budget #{plan.budget} tokens")
+        plan.lane_counts.sort.each { |lane, reasons| log.call("   #{lane}: #{reasons.sort.map { |r, n| "#{r}=#{n}" }.join('  ')}") }
+        log.call("   total: #{plan.items.size} item(s), est #{plan.est_total} tokens")
+        next
+      end
+
+      row = Enliterator::Heartbeat.pulse(
+        targets:       targets,
+        stale:         stale,
+        context:       context,
+        execute:       ENV["ENQUEUE"].present? ? :enqueue : :sync,
+        budget:        budget,
+        skip_consider: ENV["SKIP_CONSIDER"].present?,
+        force:         ENV["FORCE"].present?
+      )
+      if row.nil?
+        log.call("nothing to pulse — no row opened")
+      else
+        log.call("pulse ##{row.id} #{row.error ? 'ABORTED' : 'done'} — " \
+                 "executed #{row.executed.values.sum { |c| c.values.sum }}, " \
+                 "tokens #{row.tokens_spent['total'] || 'enqueued'}")
+        row.warnings.each { |w| log.call("   ⚠ #{w}") }
+      end
+    # A bad CONTEXT= (typo) or unscoped STALE= raises ArgumentError from the
+    # resolver — surface it as a clean caller error, not a stack trace. `next`
+    # inside begin returns from the task block (begin/end is not a block).
+    rescue ArgumentError => e
+      abort "[enliterator:pulse] #{e.message}"
+    rescue Enliterator::Heartbeat::Overlap => e
+      abort "[enliterator:pulse] REFUSED: #{e.message}"
+    end
+  end
+
   # The retrospective conversion (v0.17): shelf-read the whole collection in
   # one run — the initial condition inventory. The heartbeat's survey phase is
   # the ONGOING shelf-read; without this task, adopting condition would mean

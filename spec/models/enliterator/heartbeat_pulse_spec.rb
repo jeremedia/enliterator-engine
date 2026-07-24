@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "rails_helper"
+require "rake" # the pulse rake-task example loads + invokes tasks
 
 # v-next — the directed pulse: a definable, targeted heartbeat.
 RSpec.describe "Enliterator::Heartbeat directed pulse (v-next)" do
@@ -153,6 +154,32 @@ RSpec.describe "Enliterator::Heartbeat directed pulse (v-next)" do
       row = Enliterator::Heartbeat.pulse(stale: true, context: "the-smaller-infinity", execute: :enqueue)
       expect(called).to be(false)
       expect(row.warnings.join).to match(/enqueue mode/)
+    end
+  end
+
+  describe "rake enliterator:pulse" do
+    before do
+      Rails.application.load_tasks unless Rake::Task.task_defined?("enliterator:pulse")
+    end
+    after { Rake::Task["enliterator:pulse"].reenable if Rake::Task.task_defined?("enliterator:pulse") }
+
+    it "delegates to Heartbeat.pulse with parsed env args" do
+      # Capture keyword args in the stub block (Ruby-3 kwargs) and assert on a
+      # plain hash — avoids the `.with(hash_including(...))` positional/keyword
+      # ambiguity against Heartbeat.pulse's keyword-only signature, and needs no
+      # ClimateControl gem (not a dependency) — plain ENV set/ensure instead.
+      received = nil
+      allow(Enliterator::Heartbeat).to receive(:pulse) { |**kwargs| received = kwargs; nil }
+      env = { "TARGETS" => "combustion-edge where-you-begin", "STALE" => "1",
+              "CONTEXT" => "the-smaller-infinity", "SKIP_CONSIDER" => "1" }
+      env.each { |k, v| ENV[k] = v }
+      begin
+        Rake::Task["enliterator:pulse"].invoke
+      ensure
+        env.each_key { |k| ENV.delete(k) }
+      end
+      expect(received).to include(targets: %w[combustion-edge where-you-begin], stale: true,
+                                  context: "the-smaller-infinity", skip_consider: true)
     end
   end
 end
