@@ -125,5 +125,34 @@ RSpec.describe "Enliterator::Heartbeat directed pulse (v-next)" do
       expect(Enliterator::Heartbeat.pulse(stale: true, context: "the-smaller-infinity")).to be_nil
       expect(Enliterator::Heartbeat.count).to eq(0)
     end
+
+    it "calls config.pulse_synthesis once per touched context and folds the result into the ledger" do
+      stale_member!("combustion-edge")
+      seen = []
+      Enliterator.configuration.pulse_synthesis = lambda do |context:, heartbeat:|
+        seen << context.key
+        { "re_derived" => %w[thesis arc structure] }
+      end
+      row = Enliterator::Heartbeat.pulse(stale: true, context: "the-smaller-infinity")
+      expect(seen).to eq([ "the-smaller-infinity" ])
+      expect(row.considerer["pulse_synthesis"]["the-smaller-infinity"]).to eq("re_derived" => %w[thesis arc structure])
+    end
+
+    it "does NOT call the hook on a normal beat (byte-identical)" do
+      stale_member!("x")
+      called = false
+      Enliterator.configuration.pulse_synthesis = ->(context:, heartbeat:) { called = true }
+      Enliterator::Heartbeat.beat!(budget: 50_000)
+      expect(called).to be(false)
+    end
+
+    it "skips synthesis in enqueue mode (would re-derive from un-tended state) with a warning" do
+      stale_member!("x")
+      called = false
+      Enliterator.configuration.pulse_synthesis = ->(context:, heartbeat:) { called = true }
+      row = Enliterator::Heartbeat.pulse(stale: true, context: "the-smaller-infinity", execute: :enqueue)
+      expect(called).to be(false)
+      expect(row.warnings.join).to match(/enqueue mode/)
+    end
   end
 end

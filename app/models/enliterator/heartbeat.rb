@@ -204,6 +204,7 @@ module Enliterator
         reconcile_charter!(run_warnings) # same discipline: no collection_tendable ⇒ no phase
         pulse!("survey")      ; survey_phase!(run_warnings)
         pulse!("work")        ; work_items!(plan, counts, run_warnings)
+        pulse_synthesis!(plan, run_warnings)   # v-next: gated — pulse rows with a hook only
         pulse!("considerer")  ; consider!(run_warnings) unless skip_consider
         pulse!("conservator") ; conserve! unless skip_consider
         pulse!("audit")       ; audit_phase!(run_warnings)
@@ -459,7 +460,13 @@ module Enliterator
           log(run_warnings.last)
         end
       end
-      update!(considerer: outcomes)
+      # v-next: MERGE, not replace — pulse_synthesis! may have written
+      # "pulse_synthesis" into `considerer` before this runs. INVARIANT: on a
+      # normal beat nothing writes `considerer` before consider! (survey/topology/
+      # charter/work don't touch it), so (nil||{}).merge(outcomes) == outcomes —
+      # byte-identical. Preserve this: any future phase writing `considerer`
+      # earlier must also merge, or it will clobber / be clobbered.
+      update!(considerer: (considerer || {}).merge(outcomes))
     end
 
     # Enqueue mode's queue boundary made visible: if the PREVIOUS enqueue cycle's
@@ -511,6 +518,46 @@ module Enliterator
       log("cycle #{error_message ? 'ABORTED' : 'finished'}: " \
           "#{counts.map { |r, c| "#{r}=#{c.compact.map { |k, v| "#{k}:#{v}" }.join(',')}" }.join('  ')} " \
           "tokens=#{mode == 'sync' ? actual_tokens_spent : 'enqueued'}#{error_message ? " error=#{error_message}" : ''}")
+    end
+
+    # v-next: re-derive each touched context's syntheses at the end of a pulse.
+    # Syntheses (thesis/arc/structure) are deliberate-invocation readings, not
+    # pacemaker Items — so the host owns the re-derivation via config.pulse_synthesis.
+    # Gated BEFORE any pulse! (a normal beat, or a pulse on a host with no hook,
+    # gets a byte-identical phase trace — the sync_topology!/reconcile_charter!
+    # discipline). Fail-soft: identity-of-the-book work never halts the cycle.
+    def pulse_synthesis!(plan, run_warnings)
+      cb = Enliterator.configuration.pulse_synthesis
+      return unless trigger == "pulse" && cb
+
+      # In enqueue mode work_items! only QUEUES the member tends (not yet run), so a
+      # synthesis would re-derive thesis/arc/structure from STALE member claims — a
+      # fantasy-fresh artifact, worse than absent. Skip it loudly; re-derive with a
+      # sync pulse once the jobs drain. (consider! tolerates a one-cycle lag because
+      # a re-consider self-corrects; a written-stale synthesis does not.)
+      if mode != "sync"
+        run_warnings << "pulse_synthesis skipped — enqueue mode tends run async; re-derive " \
+                        "syntheses with a sync pulse after the jobs drain"
+        log(run_warnings.last)
+        return
+      end
+
+      contexts = plan.items.filter_map(&:context).uniq
+      return if contexts.empty?
+
+      pulse!("pulse_synthesis")
+      outcomes = {}
+      contexts.each do |ctx|
+        stand_down_check!
+        outcomes[ctx.key] = cb.call(context: ctx, heartbeat: self)
+        log("pulse_synthesis #{ctx.key}: #{outcomes[ctx.key].inspect[0, 120]}")
+      rescue StoodDown
+        raise
+      rescue => e
+        run_warnings << "pulse_synthesis #{ctx.key} failed: #{e.class}: #{e.message}"
+        log(run_warnings.last)
+      end
+      update!(considerer: (considerer || {}).merge("pulse_synthesis" => outcomes))
     end
 
     # v0.17: the conservator's pass — diagnosis + treatment proposals over the
