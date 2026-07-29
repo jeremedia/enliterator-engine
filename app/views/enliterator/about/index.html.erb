@@ -312,6 +312,7 @@
         <li class="toc-h2"><a href="#the-conscience-is-human">The conscience is human</a></li>
         <li class="toc-h2"><a href="#for-a-collection-like-this-one">For a collection like this one</a></li>
         <li class="toc-h2"><a href="#the-four-surfaces">The surfaces</a></li>
+        <li class="toc-h2"><a href="#version-history">Version history</a></li>
       </ol>
     </nav>
   </aside>
@@ -676,7 +677,7 @@
       </div>
     </div>
 
-    <div class="about-colophon">
+    <div class="about-colophon" id="version-history">
       <p>
         Living document &middot; reflects Enliterator as of <strong>July 2026</strong>.
         The most recent changes:
@@ -918,7 +919,8 @@
     'the-reference-desk',
     'the-conscience-is-human',
     'for-a-collection-like-this-one',
-    'the-four-surfaces'
+    'the-four-surfaces',
+    'version-history'
   ];
 
   // Smooth-scroll on TOC link click
@@ -945,6 +947,11 @@
   var THRESHOLD = 0.20; // heading must be within top 20% of viewport to activate
 
   function findActive() {
+    // At the very bottom, the last section is active even when it's too short
+    // for its top ever to cross the activation line.
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+      return headingIds[headingIds.length - 1];
+    }
     var vh = window.innerHeight;
     var line = vh * THRESHOLD; // pixel offset — headings above this line are "past"
     var best = null;
