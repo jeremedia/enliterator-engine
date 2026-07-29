@@ -8,7 +8,8 @@
     display: grid;
     grid-template-columns: 220px minmax(0, 1fr);
     gap: 0 2.75rem;
-    align-items: start;
+    /* No align-items: start — the aside must stretch to full column height
+       or the sticky TOC inside it has no room to travel and never sticks. */
   }
 
   /* ── Scrollspy TOC ─────────────────────────────────────────────────────── */
