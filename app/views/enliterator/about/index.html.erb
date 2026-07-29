@@ -225,6 +225,45 @@
   .about-colophon strong {
     color: var(--ink);
   }
+  .about-colophon p {
+    max-width: none;
+    margin: 0 0 .6rem;
+  }
+  .about-colophon .colophon-list {
+    list-style: none;
+    margin: 0 0 .75rem;
+    padding: 0;
+  }
+  .about-colophon .colophon-list li {
+    margin: 0 0 .55rem;
+    padding-left: 1.1rem;
+    line-height: 1.55;
+    position: relative;
+  }
+  .about-colophon .colophon-list li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: .62em;
+    width: .45rem;
+    height: 1px;
+    background: var(--line);
+  }
+  .about-colophon details {
+    margin: .25rem 0 .85rem;
+  }
+  .about-colophon summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--muted);
+    padding: .15rem 0;
+  }
+  .about-colophon summary:hover {
+    color: var(--ink);
+  }
+  .about-colophon details[open] summary {
+    margin-bottom: .55rem;
+  }
 
   /* ── Narrow-screen: hide TOC, collapse grids ───────────────────────────── */
   @media (max-width: 759px) {
@@ -262,6 +301,7 @@
       <div class="toc-label">On this page</div>
       <ol>
         <li class="toc-h1"><a href="#what-is-enliterator">What is Enliterator?</a></li>
+        <li class="toc-h2"><a href="#one-record-before-and-after">One record, before and after</a></li>
         <li class="toc-h2"><a href="#the-missing-word">The missing word</a></li>
         <li class="toc-h2"><a href="#what-tended-means">What "tended" means</a></li>
         <li class="toc-h2"><a href="#compounding-attention">Compounding attention</a></li>
@@ -319,9 +359,11 @@
         <% end %>
         <% if (@stats[:vocab_resolved].to_i + @stats[:vocab_pending].to_i).positive? %>
           <div class="stats-footer">
-            Vocabulary: <strong><%= @stats[:vocab_resolved] %></strong> requests resolved &middot;
-            <%= @stats[:vocab_pending] %> still open.
-            The ontology tends itself — see <%= link_to "Requests", suggestions_path %>.
+            Vocabulary: <strong><%= number_with_delimiter @stats[:vocab_resolved] %></strong> requests resolved &middot;
+            <%= number_with_delimiter @stats[:vocab_pending] %> open.
+            The open count is evidence, not arrears: each request is <em>literary warrant</em> accumulating
+            from reading, and most will fold into an existing term or be declined — only the genuinely
+            new are held for a human. The vocabulary tends itself — see <%= link_to "Requests", suggestions_path %>.
           </div>
         <% end %>
       </div>
@@ -329,6 +371,39 @@
         These numbers are live. Everything below explains how they came to be, and what they become over time.
       </p>
     <% end %>
+
+    <h2 id="one-record-before-and-after">One record, before and after</h2>
+    <p>
+      The claim is abstract until you watch it happen to a single record. Take one work off the shelf:
+    </p>
+    <div class="duo-row">
+      <div class="card">
+        <div class="card-head"><strong>Before</strong> <span class="chip">the catalog record</span></div>
+        <ul>
+          <li>A title, an author line, a date, an abstract — the surrogate a catalog keeps.</li>
+          <li>Findable by keyword; readable only by a person with the time to read it.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-head"><strong>After</strong> <span class="chip">the tended record</span></div>
+        <ul>
+          <li>What it argues, what it found, where it's limited, which other work it speaks to — held
+            as claims in the collection's governed vocabulary, with the author under one authorized
+            name rather than five spellings.</li>
+          <li>Every claim carries provenance: which model read it, on which visit, attributed to what.</li>
+          <li>Named gaps — what was looked for and not found, and why.</li>
+          <li>A visit-by-visit history of what changed each time it was read, so deepening is
+            visible rather than assumed.</li>
+        </ul>
+      </div>
+    </div>
+    <p>
+      And the difference is <strong>measured, not asserted</strong>: a first-impression diagnostic asks
+      a machine reader questions about the record under both conditions and scores the lift over the bare
+      surrogate — in its first controlled run, roughly a sevenfold improvement in the reader's calibration,
+      an effect that persisted even at the strongest model. Everything below is that difference at
+      collection scale: the machinery that produces it, and the instruments for checking the machinery's work.
+    </p>
 
     <h2 id="the-missing-word">The missing word</h2>
     <p>
@@ -600,180 +675,222 @@
       </div>
     </div>
 
-    <p class="about-colophon">
-      Living document &middot; reflects Enliterator as of <strong>July 2026</strong> (v0.65 &mdash;
-      the directed pulse: tending gains a second door &mdash; <code>enliterator:pulse</code> tends a named or
-      drifted set of records (and a book&rsquo;s syntheses, where the host wires it) as one governed cycle,
-      marked on the ledger, for when you need a specific pass rather than the frontier; v0.64 &mdash;
-      an agent reading a claim through the tools gets the whole thing, not a preview: the drill-down
-      views (provenance, the source-quote) now return a claim&rsquo;s full value instead of a
-      four-hundred-character card, and a record&rsquo;s entry can be asked for full values too &mdash;
-      so a long contribution argument reads complete over the reference desk and the machine interface
-      alike, not just on the review screen; v0.63 &mdash;
-      the focus view&rsquo;s verdict bar learns to speak: each verdict is a named lane with its own
-      controls fused together and its consequence previewed under an &ldquo;if you do this&rdquo;
-      rubric, the recommended lane visibly recommended &mdash; and the Review source pane renders
-      the source as formatted text (the same escape-first markdown the Chat answer uses), with the
-      claim&rsquo;s words highlighted where they appear; v0.62 &mdash;
-      the two human queues get a room to decide in: Requests and Review keep their triage lists but
-      gain a <em>focus view</em> &mdash; one proposal or one examined claim per screen, its evidence
-      and its comparison (the map target&rsquo;s neighborhood; the claim beside its <em>full</em>
-      source, fetched whole and highlighted where the claim&rsquo;s words appear) side by side, the
-      verdict lanes always in reach with each lane&rsquo;s consequence stated in plain terms, arrow
-      keys to move through the queue, and a verdict that advances to the next decision &mdash; and
-      Review finally addresses every record by its human name rather than its identifier; v0.61.1 &mdash;
-      the drain gauge learns to credit a claim re-read by an ordinary edit, not only by a deliberate
-      revalidation, so a chapter already freshened when its source was last touched is not counted as
-      still-owing &mdash; each visit now records whether it re-derived or merely inherited, and the gauge
-      reads that; v0.61 &mdash;
-      the fix reaches backward: v0.59 corrects a claim the next time its source is edited, but a claim
-      already wrong on a chapter that is never touched again would stay wrong &mdash; so a deliberate
-      <em>revalidation</em> pass re-reads a collection&rsquo;s claims against their current text and
-      supersedes the ones that no longer hold, draining the sediment already in the store, with a gauge
-      that reports how much remains; v0.60 &mdash;
-      a claim stops calling itself <em>verified</em> when it only means the model was confident: a
-      machine-asserted claim is now minted &ldquo;asserted,&rdquo; reserving &ldquo;verified&rdquo; for a
-      claim a human stands behind, and every claim carries its honest <em>warrant</em> &mdash; whether an
-      audit supported or contradicted it, whether a person or the model is behind it &mdash; so trust is
-      read from the evidence rather than assumed from a reassuring label; v0.59 &mdash;
-      a record whose source has changed stops inheriting its old reading: when an edit to the source
-      triggers a re-tend, the reader is told the text has moved and re-derives each claim from the
-      current words rather than confirming the prior one &mdash; the fix for a claim that went on saying
-      &ldquo;improbable&rdquo; after its chapter had been rewritten to &ldquo;contingent,&rdquo; fresh
-      but wrong &mdash; and the change signal can now be scoped per facet, so an edit that touches one
-      dimension need not re-read them all; v0.58 &mdash;
-      the first-impression diagnostic: <span class="mono">rake enliterator:first_impression</span>
-      measures, in one number, how much a record&rsquo;s enliteration adds to a machine reader&rsquo;s
-      first impression over the bare surrogate a catalog gives it &mdash; sampling records, generating
-      a grounded question set, answering it under four reading conditions (abstract, catalog,
-      abstract-plus-enliteration, raw source), blind-grading, and reporting the coverage and
-      reliability lift with a canary that catches a leaked answer &mdash; the finding-aid thesis made
-      falsifiable, that a stronger model cannot reason its way to knowledge that isn&rsquo;t in front
-      of it; v0.57.2 &mdash;
-      the heartbeat&rsquo;s budget box stops lying by omission: a value typed above the configured
-      ceiling was silently clamped down to it, so raising it did nothing &mdash; now the form names
-      the ceiling, warns live as you cross it, and the post-beat notice says when a request was
-      clamped; v0.57 &mdash;
-      the charter&rsquo;s telling half: the collection <em>introduces itself</em> &mdash; its proper
-      noun, purpose, and audience, the extrinsic identity no synthesis can derive, told by its
-      keepers as human-attributed claims on a one-row collection record, led with by every reader
-      surface (the overview an agent reads first, the finding aid&rsquo;s header, the reference
-      desk&rsquo;s own voice), with each still-untold field an open, named gap &mdash; the answer to
-      the first external reader&rsquo;s complaint that the collection could report its skeleton but
-      not say what it was; v0.57.1 &mdash; a transient provider-serialization quirk (a double-encoded
-      tool-call array, ~7% of long indexing reads) stops making permanent facet holes: named
-      honestly, auto-retried with every attempt&rsquo;s spend on the ledger; v0.56 &mdash;
-      the topology declaration: a host tells the engine its collection&rsquo;s <em>shape</em> &mdash;
-      the grouping that composes records into wholes (chapters into a book) &mdash; and the engine
-      derives one context per whole (membership: the whole&rsquo;s full holdings, drafts included)
-      and, when the collection declares itself an archive of sovereign works, reads each record
-      against <em>its own whole</em> at tending time instead of the undifferentiated shelf &mdash;
-      scoped by the host grouping itself, so a book&rsquo;s chapter meets its own book&rsquo;s
-      chapters, never another&rsquo;s; v0.55 &mdash;
-      the synthesized tendable: the engine&rsquo;s first <em>whole above records</em> &mdash; a host
-      type that is a composite whole (a book made of its chapters) is tended by deliberate invocation
-      and held out of the pacemaker and the corpus census, yet stays a real, drillable record whose
-      book-level understanding still shows on every claim surface &mdash; &ldquo;the collection can
-      think about itself,&rdquo; one level up; v0.54.1 &mdash;
-      the review desk, finished: the evidence behind each proposal now names its source record by
-      human title (not a uuid) and orders it in book position, and the per-record page shows full
-      claim values instead of truncating them &mdash; the reviewer can finally read what they are
-      judging; v0.54 &mdash;
-      the review desk gives the reviewer what they need to decide: the full evidence behind each
-      proposal &mdash; every record&rsquo;s reasoning and example, no truncation &mdash; is one click
-      away, and a suggested mapping now shows what the target term means and what already folds onto it,
-      so the fit can be judged before accepting; v0.53 &mdash;
-      the review desk, reviewer-flow-first: each request card now leads with the considerer&rsquo;s
-      recommended action &mdash; a suggested mapping puts a green Map first with the target already
-      filled in, a suggested approval a green Approve &mdash; so a whole queue can be worked one click
-      at a time, and the map target is a type-ahead over the vocabulary instead of a long dropdown;
-      v0.52 &mdash;
-      curator corrections: the standing vocabulary can now be re-adjudicated from the
-      <%= link_to "authority file", vocabulary_path %> itself &mdash; re-route a variant onto a different
-      preferred term, promote a variant to a preferred term, demote a preferred term, or merge a whole
-      term and its variants into another &mdash; the work that previously required hand-editing the
-      database; v0.51 &mdash;
-      the <%= link_to "authority file", vocabulary_path %>: the standing controlled vocabulary drawn as a
-      thesaurus &mdash; each preferred term with the variant terms folded onto it, ranked by how many it
-      has gathered, so a curator can see the shape of the whole: a term absorbing variants from many
-      facets, or a long tail of terms seen on a single record. The resolved companion to the Requests
-      queue; v0.50 &mdash;
-      the authority-control desk stops misleading the curator: the Map dropdown pre-fills the
-      considerer&rsquo;s suggested target only when the considerer was confident enough to have applied it
-      itself, a verdict that changes nothing now says so instead of reporting success, and a recommended
-      target that is itself still pending explains that it must be approved before it can be mapped onto;
-      v0.49 &mdash;
-      the vocabulary desk stops blocking: the considerer reads the request field in batches and runs in
-      the background, so &ldquo;Consider all requests&rdquo; returns at once and a live monitor shows it
-      converge &mdash; a large queue no longer overruns a single giant call that times out; v0.47 &mdash;
-      the atlas became a research instrument: alongside the orientation Overview, an Ego lens to explore
-      around one record or entity &mdash; a ranked neighbor list beside the graph, an inspector showing a
-      node&rsquo;s claims, provenance, and known gaps, and typed-edge filters by relation, confidence,
-      audit, and depth, all sharing one selection; v0.46.1 &mdash;
-      lacunae: the collection now records what it looked for and could not find &mdash; and why. When a
-      required fact (an author, a date) comes back empty, the engine no longer files a blank claim that
-      reads as a broken record &mdash; it opens a named gap, a known-unknown, diagnosed as to cause (the
-      byline our extraction lost, a fact the document never carried, a name beyond recovery), and closes
-      it the day a later reading supplies the value. A collection that can say not only what it knows but
-      what it knows it is missing, and why; v0.45 &mdash;
-      name authority control: the same person, written a dozen ways across the records
-      (&ldquo;Jordan Avery,&rdquo; &ldquo;Jordan L. Avery,&rdquo; &ldquo;Jordan L. Avery
-      (contractor)&rdquo;), now resolves to one authorized name, so a count is the person and not a
-      spelling &mdash; the value-side twin of the vocabulary that tends itself, conservative by
-      design (it folds the certain and holds the ambiguous, never merging two people); v0.44 —
-      the desk can deliver: when the Reference Desk consults a record, it now names that record to
-      the host as plain identity, so a federated front-end can turn &ldquo;what do you have on
-      this?&rdquo; into a link to the catalog and, on request, the document itself &mdash; the desk
-      stays read-only, it only surfaces; v0.41.2 —
-      read-time warrant accrual: a reader now works with the vocabulary in hand, seeing the candidate
-      terms other readers proposed and affirming one that fits rather than coining a synonym, so the
-      controlled vocabulary converges where the reading happens; v0.41.1 —
-      graceful bedrock unavailability: with all enliteration on bedrock and no fallback, an expired
-      SSO session or a gateway timeout is a pause, not a failure — the heartbeat defers the work and
-      resumes on the next beat; v0.41 —
-      reset to seed: a desk returns to its registered persona, auditably — the persona editor,
-      completed; v0.40 — the method, shipped: <em>enliterating-a-collection</em>, the practice of
-      taking a collection from dormant to literate, encoded as a first-draft skill in the gem to be
-      tended through every use; v0.39 — chat retention: every conversation kept as a first-class
-      artifact and replayed from its own event stream, so the desk's conversations become tendable;
-      v0.38 — the desk made testable: a per-desk step budget and a no-browser way to evaluate a desk
-      as data; v0.37 — persona editing: each desk's voice is curator-editable, versioned, and
-      reversible — code seeds, the store governs; v0.36 — the reference register: an engine-owned
-      institutional voice beneath every desk's persona; v0.35 — the desk helps you ask: the agent
-      reasons its own next questions, clickable; v0.34 — follow the stream: the answer auto-scrolls
-      and the sources tuck away; v0.33 — the agentic answer streams token-by-token; v0.32 — a
-      consulted record becomes a door back into the conversation; v0.31 — the reading room quiets:
-      the chrome recedes as you talk and the desk shows it's thinking; v0.30 —
-      actionable errors at the desk: when a turn fails, the reading room now tells you
-      <em>what</em> broke and what to do about it &mdash; the exception, the tier it failed at,
-      and a hint for the fix (a stale login, a slow tier) &mdash; shown in development, never
-      leaked in production; v0.29 —
-      the Reference Desk made legible: the agentic turn reads as a reference interview &mdash;
-      a live work-trace, the answer, the records consulted &mdash; with provenance woven into
-      the prose as inline citations you can follow, and the whole reading room lifted into a
-      scholarly serif register; v0.28 —
-      the Reference Desk: the chat becomes an agent that triages, routes to grounded specialists,
-      and shows its provenance inline &mdash; opt-in behind <code>config.chat_federation</code>;
-      v0.27 —
-      the brief: the collection reports its own night — cycles, failures with their
-      reasons, readings, governance motion — as one rake task and one agent tool; v0.26 —
-      the MCP surface: conversational agents get the reading-room card — provenance,
-      trajectory, and self-knowledge as queryable tools, with writes only through the
-      governed queues; v0.25 —
-      analytical cataloging: sections become tendable parts, a reading takes per-section
-      notes the way a librarian reads, and the work-level understanding is re-synthesized
-      from the notebook — deepening that supersedes in place; v0.24 the
-      catalog: the holdings browsable at last — search by meaning, subject headings congruent
-      with their click-throughs, the open-stacks wander; v0.23 every cycle
-      ends on the ledger: orphaned cycles are reaped with their endings reconstructed from
-      provenance; v0.22 portability: the enliteration moves between deployments instead of
-      re-buying the inference; v0.21 the atlas: the collection drawn as a graph whose every edge
-      carries its provenance, replayable in time; v0.20 the prepared finding aid; v0.19 one
-      quiet component system; v0.18 the audit:
-      the catalog measures its own accuracy, humans anchor the examiner; v0.17 condition; v0.16
-      the pressable pulse; v0.15 the heartbeat; v0.13 contexts; v0.12 spoke the library's
-      language). Not searchability conferred once — <strong>attention that compounds</strong>.
-    </p>
+    <div class="about-colophon">
+      <p>
+        Living document &middot; reflects Enliterator as of <strong>July 2026</strong>.
+        The most recent changes:
+      </p>
+      <ul class="colophon-list">
+        <li><strong>v0.65</strong> &mdash; the directed pulse: tending gains a second door &mdash;
+          <code>enliterator:pulse</code> tends a named or drifted set of records (and a book&rsquo;s
+          syntheses, where the host wires it) as one governed cycle, marked on the ledger, for when you
+          need a specific pass rather than the frontier.</li>
+        <li><strong>v0.64</strong> &mdash; an agent reading a claim through the tools gets the whole
+          thing, not a preview: the drill-down views (provenance, the source-quote) now return a
+          claim&rsquo;s full value instead of a four-hundred-character card, and a record&rsquo;s entry
+          can be asked for full values too &mdash; so a long contribution argument reads complete over
+          the reference desk and the machine interface alike, not just on the review screen.</li>
+        <li><strong>v0.63</strong> &mdash; the focus view&rsquo;s verdict bar learns to speak: each
+          verdict is a named lane with its own controls fused together and its consequence previewed
+          under an &ldquo;if you do this&rdquo; rubric, the recommended lane visibly recommended &mdash;
+          and the Review source pane renders the source as formatted text (the same escape-first
+          markdown the Chat answer uses), with the claim&rsquo;s words highlighted where they appear.</li>
+      </ul>
+      <details class="colophon-more">
+        <summary>The full history, v0.12 &ndash; v0.62</summary>
+        <ul class="colophon-list">
+          <li><strong>v0.62</strong> &mdash; the two human queues get a room to decide in: Requests and
+            Review keep their triage lists but gain a <em>focus view</em> &mdash; one proposal or one
+            examined claim per screen, its evidence and its comparison (the map target&rsquo;s
+            neighborhood; the claim beside its <em>full</em> source, fetched whole and highlighted where
+            the claim&rsquo;s words appear) side by side, the verdict lanes always in reach with each
+            lane&rsquo;s consequence stated in plain terms, arrow keys to move through the queue, and a
+            verdict that advances to the next decision &mdash; and Review finally addresses every record
+            by its human name rather than its identifier.</li>
+          <li><strong>v0.61.1</strong> &mdash; the drain gauge learns to credit a claim re-read by an
+            ordinary edit, not only by a deliberate revalidation, so a chapter already freshened when its
+            source was last touched is not counted as still-owing &mdash; each visit now records whether
+            it re-derived or merely inherited, and the gauge reads that.</li>
+          <li><strong>v0.61</strong> &mdash; the fix reaches backward: v0.59 corrects a claim the next
+            time its source is edited, but a claim already wrong on a chapter that is never touched again
+            would stay wrong &mdash; so a deliberate <em>revalidation</em> pass re-reads a
+            collection&rsquo;s claims against their current text and supersedes the ones that no longer
+            hold, draining the sediment already in the store, with a gauge that reports how much
+            remains.</li>
+          <li><strong>v0.60</strong> &mdash; a claim stops calling itself <em>verified</em> when it only
+            means the model was confident: a machine-asserted claim is now minted &ldquo;asserted,&rdquo;
+            reserving &ldquo;verified&rdquo; for a claim a human stands behind, and every claim carries
+            its honest <em>warrant</em> &mdash; whether an audit supported or contradicted it, whether a
+            person or the model is behind it &mdash; so trust is read from the evidence rather than
+            assumed from a reassuring label.</li>
+          <li><strong>v0.59</strong> &mdash; a record whose source has changed stops inheriting its old
+            reading: when an edit to the source triggers a re-tend, the reader is told the text has moved
+            and re-derives each claim from the current words rather than confirming the prior one &mdash;
+            the fix for a claim that went on saying &ldquo;improbable&rdquo; after its chapter had been
+            rewritten to &ldquo;contingent,&rdquo; fresh but wrong &mdash; and the change signal can now
+            be scoped per facet, so an edit that touches one dimension need not re-read them all.</li>
+          <li><strong>v0.58</strong> &mdash; the first-impression diagnostic:
+            <span class="mono">rake enliterator:first_impression</span> measures, in one number, how much
+            a record&rsquo;s enliteration adds to a machine reader&rsquo;s first impression over the bare
+            surrogate a catalog gives it &mdash; sampling records, generating a grounded question set,
+            answering it under four reading conditions (abstract, catalog, abstract-plus-enliteration,
+            raw source), blind-grading, and reporting the coverage and reliability lift with a canary
+            that catches a leaked answer &mdash; the finding-aid thesis made falsifiable, that a stronger
+            model cannot reason its way to knowledge that isn&rsquo;t in front of it.</li>
+          <li><strong>v0.57.2</strong> &mdash; the heartbeat&rsquo;s budget box stops lying by omission:
+            a value typed above the configured ceiling was silently clamped down to it, so raising it did
+            nothing &mdash; now the form names the ceiling, warns live as you cross it, and the post-beat
+            notice says when a request was clamped.</li>
+          <li><strong>v0.57.1</strong> &mdash; a transient provider-serialization quirk (a double-encoded
+            tool-call array, ~7% of long indexing reads) stops making permanent facet holes: named
+            honestly, auto-retried with every attempt&rsquo;s spend on the ledger.</li>
+          <li><strong>v0.57</strong> &mdash; the charter&rsquo;s telling half: the collection
+            <em>introduces itself</em> &mdash; its proper noun, purpose, and audience, the extrinsic
+            identity no synthesis can derive, told by its keepers as human-attributed claims on a one-row
+            collection record, led with by every reader surface (the overview an agent reads first, the
+            finding aid&rsquo;s header, the reference desk&rsquo;s own voice), with each still-untold
+            field an open, named gap &mdash; the answer to the first external reader&rsquo;s complaint
+            that the collection could report its skeleton but not say what it was.</li>
+          <li><strong>v0.56</strong> &mdash; the topology declaration: a host tells the engine its
+            collection&rsquo;s <em>shape</em> &mdash; the grouping that composes records into wholes
+            (chapters into a book) &mdash; and the engine derives one context per whole (membership: the
+            whole&rsquo;s full holdings, drafts included) and, when the collection declares itself an
+            archive of sovereign works, reads each record against <em>its own whole</em> at tending time
+            instead of the undifferentiated shelf &mdash; scoped by the host grouping itself, so a
+            book&rsquo;s chapter meets its own book&rsquo;s chapters, never another&rsquo;s.</li>
+          <li><strong>v0.55</strong> &mdash; the synthesized tendable: the engine&rsquo;s first
+            <em>whole above records</em> &mdash; a host type that is a composite whole (a book made of
+            its chapters) is tended by deliberate invocation and held out of the pacemaker and the corpus
+            census, yet stays a real, drillable record whose book-level understanding still shows on
+            every claim surface &mdash; &ldquo;the collection can think about itself,&rdquo; one level
+            up.</li>
+          <li><strong>v0.54.1</strong> &mdash; the review desk, finished: the evidence behind each
+            proposal now names its source record by human title (not a uuid) and orders it in book
+            position, and the per-record page shows full claim values instead of truncating them &mdash;
+            the reviewer can finally read what they are judging.</li>
+          <li><strong>v0.54</strong> &mdash; the review desk gives the reviewer what they need to decide:
+            the full evidence behind each proposal &mdash; every record&rsquo;s reasoning and example, no
+            truncation &mdash; is one click away, and a suggested mapping now shows what the target term
+            means and what already folds onto it, so the fit can be judged before accepting.</li>
+          <li><strong>v0.53</strong> &mdash; the review desk, reviewer-flow-first: each request card now
+            leads with the considerer&rsquo;s recommended action &mdash; a suggested mapping puts a green
+            Map first with the target already filled in, a suggested approval a green Approve &mdash; so
+            a whole queue can be worked one click at a time, and the map target is a type-ahead over the
+            vocabulary instead of a long dropdown.</li>
+          <li><strong>v0.52</strong> &mdash; curator corrections: the standing vocabulary can now be
+            re-adjudicated from the <%= link_to "authority file", vocabulary_path %> itself &mdash;
+            re-route a variant onto a different preferred term, promote a variant to a preferred term,
+            demote a preferred term, or merge a whole term and its variants into another &mdash; the work
+            that previously required hand-editing the database.</li>
+          <li><strong>v0.51</strong> &mdash; the <%= link_to "authority file", vocabulary_path %>: the
+            standing controlled vocabulary drawn as a thesaurus &mdash; each preferred term with the
+            variant terms folded onto it, ranked by how many it has gathered, so a curator can see the
+            shape of the whole: a term absorbing variants from many facets, or a long tail of terms seen
+            on a single record. The resolved companion to the Requests queue.</li>
+          <li><strong>v0.50</strong> &mdash; the authority-control desk stops misleading the curator: the
+            Map dropdown pre-fills the considerer&rsquo;s suggested target only when the considerer was
+            confident enough to have applied it itself, a verdict that changes nothing now says so
+            instead of reporting success, and a recommended target that is itself still pending explains
+            that it must be approved before it can be mapped onto.</li>
+          <li><strong>v0.49</strong> &mdash; the vocabulary desk stops blocking: the considerer reads the
+            request field in batches and runs in the background, so &ldquo;Consider all requests&rdquo;
+            returns at once and a live monitor shows it converge &mdash; a large queue no longer overruns
+            a single giant call that times out.</li>
+          <li><strong>v0.47</strong> &mdash; the atlas became a research instrument: alongside the
+            orientation Overview, an Ego lens to explore around one record or entity &mdash; a ranked
+            neighbor list beside the graph, an inspector showing a node&rsquo;s claims, provenance, and
+            known gaps, and typed-edge filters by relation, confidence, audit, and depth, all sharing one
+            selection.</li>
+          <li><strong>v0.46.1</strong> &mdash; lacunae: the collection now records what it looked for and
+            could not find &mdash; and why. When a required fact (an author, a date) comes back empty,
+            the engine no longer files a blank claim that reads as a broken record &mdash; it opens a
+            named gap, a known-unknown, diagnosed as to cause (the byline our extraction lost, a fact the
+            document never carried, a name beyond recovery), and closes it the day a later reading
+            supplies the value. A collection that can say not only what it knows but what it knows it is
+            missing, and why.</li>
+          <li><strong>v0.45</strong> &mdash; name authority control: the same person, written a dozen
+            ways across the records (&ldquo;Jordan Avery,&rdquo; &ldquo;Jordan L. Avery,&rdquo;
+            &ldquo;Jordan L. Avery (contractor)&rdquo;), now resolves to one authorized name, so a count
+            is the person and not a spelling &mdash; the value-side twin of the vocabulary that tends
+            itself, conservative by design (it folds the certain and holds the ambiguous, never merging
+            two people).</li>
+          <li><strong>v0.44</strong> &mdash; the desk can deliver: when the Reference Desk consults a
+            record, it now names that record to the host as plain identity, so a federated front-end can
+            turn &ldquo;what do you have on this?&rdquo; into a link to the catalog and, on request, the
+            document itself &mdash; the desk stays read-only, it only surfaces.</li>
+          <li><strong>v0.41.2</strong> &mdash; read-time warrant accrual: a reader now works with the
+            vocabulary in hand, seeing the candidate terms other readers proposed and affirming one that
+            fits rather than coining a synonym, so the controlled vocabulary converges where the reading
+            happens.</li>
+          <li><strong>v0.41.1</strong> &mdash; graceful bedrock unavailability: with all enliteration on
+            bedrock and no fallback, an expired SSO session or a gateway timeout is a pause, not a
+            failure &mdash; the heartbeat defers the work and resumes on the next beat.</li>
+          <li><strong>v0.41</strong> &mdash; reset to seed: a desk returns to its registered persona,
+            auditably &mdash; the persona editor, completed.</li>
+          <li><strong>v0.40</strong> &mdash; the method, shipped: <em>enliterating-a-collection</em>, the
+            practice of taking a collection from dormant to literate, encoded as a first-draft skill in
+            the gem to be tended through every use.</li>
+          <li><strong>v0.39</strong> &mdash; chat retention: every conversation kept as a first-class
+            artifact and replayed from its own event stream, so the desk's conversations become
+            tendable.</li>
+          <li><strong>v0.38</strong> &mdash; the desk made testable: a per-desk step budget and a
+            no-browser way to evaluate a desk as data.</li>
+          <li><strong>v0.37</strong> &mdash; persona editing: each desk's voice is curator-editable,
+            versioned, and reversible &mdash; code seeds, the store governs.</li>
+          <li><strong>v0.36</strong> &mdash; the reference register: an engine-owned institutional voice
+            beneath every desk's persona.</li>
+          <li><strong>v0.35</strong> &mdash; the desk helps you ask: the agent reasons its own next
+            questions, clickable.</li>
+          <li><strong>v0.34</strong> &mdash; follow the stream: the answer auto-scrolls and the sources
+            tuck away.</li>
+          <li><strong>v0.33</strong> &mdash; the agentic answer streams token-by-token.</li>
+          <li><strong>v0.32</strong> &mdash; a consulted record becomes a door back into the
+            conversation.</li>
+          <li><strong>v0.31</strong> &mdash; the reading room quiets: the chrome recedes as you talk and
+            the desk shows it's thinking.</li>
+          <li><strong>v0.30</strong> &mdash; actionable errors at the desk: when a turn fails, the
+            reading room now tells you <em>what</em> broke and what to do about it &mdash; the
+            exception, the tier it failed at, and a hint for the fix (a stale login, a slow tier) &mdash;
+            shown in development, never leaked in production.</li>
+          <li><strong>v0.29</strong> &mdash; the Reference Desk made legible: the agentic turn reads as a
+            reference interview &mdash; a live work-trace, the answer, the records consulted &mdash;
+            with provenance woven into the prose as inline citations you can follow, and the whole
+            reading room lifted into a scholarly serif register.</li>
+          <li><strong>v0.28</strong> &mdash; the Reference Desk: the chat becomes an agent that triages,
+            routes to grounded specialists, and shows its provenance inline &mdash; opt-in behind
+            <code>config.chat_federation</code>.</li>
+          <li><strong>v0.27</strong> &mdash; the brief: the collection reports its own night &mdash;
+            cycles, failures with their reasons, readings, governance motion &mdash; as one rake task and
+            one agent tool.</li>
+          <li><strong>v0.26</strong> &mdash; the MCP surface: conversational agents get the reading-room
+            card &mdash; provenance, trajectory, and self-knowledge as queryable tools, with writes only
+            through the governed queues.</li>
+          <li><strong>v0.25</strong> &mdash; analytical cataloging: sections become tendable parts, a
+            reading takes per-section notes the way a librarian reads, and the work-level understanding
+            is re-synthesized from the notebook &mdash; deepening that supersedes in place.</li>
+          <li><strong>v0.24</strong> &mdash; the catalog: the holdings browsable at last &mdash; search
+            by meaning, subject headings congruent with their click-throughs, the open-stacks wander.</li>
+          <li><strong>v0.23</strong> &mdash; every cycle ends on the ledger: orphaned cycles are reaped
+            with their endings reconstructed from provenance.</li>
+          <li><strong>v0.22</strong> &mdash; portability: the enliteration moves between deployments
+            instead of re-buying the inference.</li>
+          <li><strong>v0.21</strong> &mdash; the atlas: the collection drawn as a graph whose every edge
+            carries its provenance, replayable in time.</li>
+          <li><strong>v0.20</strong> &mdash; the prepared finding aid.</li>
+          <li><strong>v0.19</strong> &mdash; one quiet component system.</li>
+          <li><strong>v0.18</strong> &mdash; the audit: the catalog measures its own accuracy, humans
+            anchor the examiner.</li>
+          <li><strong>v0.17</strong> &mdash; condition.</li>
+          <li><strong>v0.16</strong> &mdash; the pressable pulse.</li>
+          <li><strong>v0.15</strong> &mdash; the heartbeat.</li>
+          <li><strong>v0.13</strong> &mdash; contexts.</li>
+          <li><strong>v0.12</strong> &mdash; spoke the library's language.</li>
+        </ul>
+      </details>
+      <p>
+        Not searchability conferred once &mdash; <strong>attention that compounds</strong>.
+      </p>
+    </div>
 
   </div><%# /about-content %>
 </div><%# /about-layout %>
@@ -791,6 +908,7 @@
 
   var headingIds = [
     'what-is-enliterator',
+    'one-record-before-and-after',
     'the-missing-word',
     'what-tended-means',
     'compounding-attention',
