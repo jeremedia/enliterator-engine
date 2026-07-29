@@ -121,6 +121,27 @@
     nav.enl a { color: var(--ink); padding-bottom: .1rem; border-bottom: 2px solid transparent; }
     nav.enl a:hover { color: var(--accent); text-decoration: none; }
     nav.enl a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); }
+    /* Grouped destinations: related surfaces fold into <details> menus (Holdings /
+       Reference / Governance / Operations) — self-contained per rule 2: <details>
+       opens without JS; a small script only closes siblings / outside clicks / Esc.
+       The group label wears the link idiom, and when the current surface lives
+       inside, the label carries the accent underline (.is-current). */
+    nav.enl details.nav-menu { position: relative; }
+    nav.enl details.nav-menu summary { cursor: pointer; list-style: none; user-select: none;
+      color: var(--ink); padding-bottom: .1rem; border-bottom: 2px solid transparent; }
+    nav.enl details.nav-menu summary::-webkit-details-marker { display: none; }
+    nav.enl details.nav-menu summary::after { content: " ▾"; font-size: .72em; color: var(--muted); }
+    nav.enl details.nav-menu summary:hover,
+    nav.enl details.nav-menu[open] summary { color: var(--accent); }
+    nav.enl details.nav-menu summary.is-current { color: var(--accent); border-bottom-color: var(--accent); }
+    nav.enl .nav-menu-pop { position: absolute; top: calc(100% + .5rem); left: -.65rem; z-index: 60;
+      min-width: 10.5rem; display: flex; flex-direction: column; gap: .1rem; padding: .35rem;
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm);
+      box-shadow: var(--shadow-pop); }
+    nav.enl .nav-menu-pop a { padding: .38rem .6rem; border-bottom: none; border-radius: var(--r-sm);
+      white-space: nowrap; }
+    nav.enl .nav-menu-pop a:hover { background: var(--chip); }
+    nav.enl .nav-menu-pop a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
 
     /* ── Page frame & headings ───────────────────────────────────────────── */
     main.enl { max-width: 980px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
@@ -526,27 +547,76 @@
         </select>
       <% end %>
     </div>
-    <%= link_to "Status", root_path %>
-    <%= link_to "Catalog", catalog_path %>
-    <%= link_to "Chat", conversation_path %>
-    <%= link_to "Requests", suggestions_path %>
-    <%= link_to "Vocabulary", vocabulary_path %>
-    <%= link_to "Review", review_path %>
-    <%= link_to "Contexts", contexts_path %>
-    <%= link_to "Atlas", atlas_path %>
-    <%= link_to "Heartbeat", heartbeat_path %>
-    <% if Enliterator.configuration.chat_persona_editing %><%= link_to "Desks", desks_path %><% end %>
-    <% if Enliterator.configuration.chat_retention %><%= link_to "Conversations", conversations_path %><% end %>
-    <%= link_to "Settings", settings_path, class: "nav-spacer" %>
-    <%= link_to "About", about_path %>
+    <%
+      # The destinations, grouped in the field's own families rather than build order.
+      # Current-surface marking: exact match, or path-prefix so a drill-down
+      # (status/:type/:id, chat/replay/:id, catalog/wander) still lights its family;
+      # Status (root) additionally claims the /status pages.
+      nav_current = ->(path) do
+        req  = request.path.chomp("/")
+        tgt  = path.chomp("/")
+        hit  =
+          if tgt == root_path.chomp("/")
+            req == tgt || req.start_with?("#{tgt}/status")
+          else
+            req == tgt || req.start_with?("#{tgt}/")
+          end
+        "page" if hit
+      end
+      reference_items = [["Chat", conversation_path]]
+      reference_items << ["Conversations", conversations_path] if Enliterator.configuration.chat_retention
+      reference_items << ["Desks", desks_path] if Enliterator.configuration.chat_persona_editing
+      nav_menus = [
+        ["Holdings",   [["Catalog", catalog_path], ["Atlas", atlas_path], ["Contexts", contexts_path]]],
+        ["Reference",  reference_items],
+        ["Governance", [["Requests", suggestions_path], ["Vocabulary", vocabulary_path], ["Review", review_path]]],
+        ["Operations", [["Heartbeat", heartbeat_path], ["Settings", settings_path]]]
+      ]
+    %>
+    <%= link_to "Status", root_path, "aria-current": nav_current.(root_path) %>
+    <% nav_menus.each do |group, items| %>
+      <details class="nav-menu">
+        <%= tag.summary group, class: (items.any? { |_, p| nav_current.(p) } ? "is-current" : nil) %>
+        <div class="nav-menu-pop">
+          <% items.each do |label, path| %>
+            <%= link_to label, path, "aria-current": nav_current.(path) %>
+          <% end %>
+        </div>
+      </details>
+    <% end %>
+    <%= link_to "About", about_path, class: "nav-spacer", "aria-current": nav_current.(about_path) %>
   </nav>
+  <%# The id also keeps this tag distinct from the focus driver's bare, attribute-less
+      script tag, which the focus-view JS test extracts from this file by exact match —
+      don't remove the id, and don't write that tag's literal form anywhere above it. %>
+  <script id="enl-nav-menus">
+  (function () {
+    // Grouped-nav behavior: one menu open at a time; close on outside click / Esc.
+    // <details> handles open/close itself — this script only tidies.
+    var menus = document.querySelectorAll("nav.enl details.nav-menu");
+    if (!menus.length) return;
+    function closeAll(except) {
+      menus.forEach(function (m) { if (m !== except) m.open = false; });
+    }
+    menus.forEach(function (m) {
+      m.addEventListener("toggle", function () { if (m.open) closeAll(m); });
+    });
+    document.addEventListener("click", function (e) {
+      if (e.target.closest && e.target.closest("details.nav-menu")) return;
+      closeAll(null);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeAll(null);
+    });
+  })();
+  </script>
   <main class="enl">
     <% flash.each do |type, msg| %>
       <div class="flash flash-<%= type %>"><%= msg %></div>
     <% end %>
     <%= yield %>
   </main>
-  <%# v0.62: the Focus-view driver — the layout's first (and only) script. Shared by the
+  <%# v0.62: the Focus-view driver. Shared by the
       two adjudication queues (Requests, Review): each renders <template data-focus-item>
       per queue item plus one <dialog class="focus-dialog"> shell; this drives open /
       clone / navigate / keyboard / consequence lines / verdict param threading. ALL
