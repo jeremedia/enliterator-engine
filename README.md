@@ -98,7 +98,9 @@ pulse monitor** (trigger one tending cycle and watch it live), an **About explai
 and a **Settings** surface — plus, when the reference desk's optional features are enabled,
 a **persona editor** for the desks (versioned, with rollback and reset-to-seed) and a
 **conversations** browser (retained, replayable exchanges) —
-all styled by one inline component system (no asset pipeline, no style dependency) — for free:
+all styled by one inline component system (no asset pipeline, no style dependency), the nav
+grouping them into the field's families (Holdings · Reference · Governance · Operations, the
+current surface marked) — for free:
 
 ```ruby
 # config/routes.rb
