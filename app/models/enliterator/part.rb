@@ -27,6 +27,11 @@ module Enliterator
       heading.presence || "Section #{ordinal}"
     end
 
+    # Label's narrow-select contract: the columns the computed #title needs, so a
+    # batch label lookup never loads the stored section text (33K parts' full rows
+    # was most of a four-second Requests page).
+    def self.label_column_names = %w[id heading ordinal]
+
     def to_enliterator_text(facet: nil)
       [ heading.presence, text ].compact.join("\n\n")
     end

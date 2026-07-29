@@ -16,10 +16,37 @@ module Enliterator
       pairs.group_by(&:first).each_with_object({}) do |(type, ps), out|
         klass = type.to_s.safe_constantize
         ids   = ps.map(&:last)
-        recs  = (klass && Enliterator.tendable_type?(klass)) ? klass.where(id: ids).index_by { |r| r.id.to_s } : {}
+        recs  =
+          if klass && Enliterator.tendable_type?(klass)
+            # Select ONLY the label columns. Host rows can be megabytes (extracted
+            # text, serialized analysis) — loading ~1,300 whole theses to read their
+            # titles made Requests a four-second page (3.9s in this one call).
+            # A model whose title/name is COMPUTED declares the columns it needs via
+            # `label_column_names` (Enliterator::Part: heading + ordinal); without the
+            # declaration we select the conventional columns that exist.
+            cols  =
+              if klass.respond_to?(:label_column_names)
+                (Array(klass.label_column_names).map(&:to_s) | %w[id]) & klass.column_names
+              else
+                klass.column_names & %w[id title name position]
+              end
+            scope = klass.where(id: ids)
+            scope = scope.select(*cols) if cols.size > 1
+            scope.index_by { |r| r.id.to_s }
+          else
+            {}
+          end
         ids.each do |id|
           rec = recs[id.to_s]
-          out[[ type, id ]] = { title: one(rec, type: type, id: id), position: rec&.try(:position) }
+          out[[ type, id ]] =
+            begin
+              { title: one(rec, type: type, id: id), position: rec&.try(:position) }
+            rescue ActiveModel::MissingAttributeError
+              # A host that COMPUTES its title/name/position from columns outside the
+              # narrow select lands here — take the contract's honest floor ("Type #id")
+              # rather than loading megabyte rows for a label.
+              { title: "#{type.to_s.demodulize} ##{id}", position: nil }
+            end
         end
       end
     end

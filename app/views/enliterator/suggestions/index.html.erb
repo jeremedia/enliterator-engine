@@ -62,13 +62,15 @@
   }
 </style>
 
-<h1>Authority control <span class="subtitle">— the controlled vocabulary, reviewing itself</span></h1>
+<h1>Requests <span class="subtitle">— authority control: the vocabulary, reviewing itself</span></h1>
 <p class="muted">
   When the established vocabulary can't express something, the model <em>proposes a term</em> rather than
   inventing one off-list — and a term earns its place by recurring across records (literary warrant). The
   <strong>considerer</strong> reads the whole field, auto-applies the safe verdicts (USE/UF synonym
   references, confident rejects), and leaves the approvals — which change the vocabulary — for you.
-  <strong><%= @pending %></strong> pending · <%= @resolved %> resolved.
+  <strong><%= number_with_delimiter @pending %></strong> pending observations across
+  <strong><%= number_with_delimiter @pending_keys.size %></strong> proposed term<%= "s" if @pending_keys.size != 1 %> ·
+  <%= number_with_delimiter @resolved %> resolved.
 </p>
 
 <% if @running %>
@@ -92,12 +94,17 @@
   <div class="strip" style="margin:1rem 0">
     <%= button_to "Consider all requests →", suggestions_consider_path, class: "btn btn-affirmative",
           data: { turbo: false } %>
-    <span class="samples">Runs the agent across all <%= @terms.size %> open key<%= "s" if @terms.size != 1 %>.</span>
+    <span class="samples">Runs the agent across all <%= number_with_delimiter @queue_size %> open key<%= "s" if @queue_size != 1 %>.</span>
   </div>
 <% end %>
 
 <% if @terms.any? %>
-  <h2>Pending — <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure
+  <h2>Pending —
+    <% if @queue_size > @terms.size %>
+      the <%= @terms.size %> highest-pressure of <%= number_with_delimiter @queue_size %> open keys
+    <% else %>
+      <%= @terms.size %> key<%= "s" if @terms.size != 1 %>, by pressure
+    <% end %>
     <%# v0.62: the focus view — one proposal per screen. Hidden until the driver proves
         JS is live (.focus-ready); no-JS reviewers keep the full plain list. %>
     <button type="button" class="btn btn-sm" data-focus-open>Consider one at a time ⤢</button>

@@ -20,7 +20,38 @@ RSpec.describe "Enliterator suggestion review", type: :request do
   it "GET /enliterator/suggestions renders the ranked queue" do
     get "/enliterator/suggestions"
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include("Authority control").and include("keywords").and include("author")
+    expect(response.body).to include("Requests").and include("authority control")
+      .and include("keywords").and include("author")
+  end
+
+  # The page renders only the QUEUE_CAP highest-pressure keys (a deep context was
+  # rendering 2,000+ evidence-bearing cards in one response). The cap is NAMED on the
+  # page — never a silent truncation — and evidence is fetched for rendered keys only.
+  it "caps the rendered queue at QUEUE_CAP and names the truncation" do
+    stub_const("Enliterator::SuggestionsController::QUEUE_CAP", 1)
+    # author gets a second proposal → higher pressure → it takes the one rendered slot
+    Enliterator::Suggestion.create!(tendable: Widget.create!(title: "B", body: "y"),
+                                    facet: "summary", proposed_key: "author", rationale: "again", status: "pending")
+    get "/enliterator/suggestions"
+    expect(response.body).to include("the 1 highest-pressure of 2 open keys")
+    # author (pressure 2) takes the rendered slot; keywords (pressure 1) is off-page
+    expect(response.body).to include("author")
+    expect(response.body).not_to include("keywords")
+    # the considerer strip still speaks for the WHOLE field, not the rendered page
+    expect(response.body).to include("across all 2 open keys")
+  end
+
+  # Evidence is window-capped in SQL (EVIDENCE_SCAN_CAP observations per key, earliest
+  # first) — a deep key's thousands of rows must not be dragged through Ruby for a
+  # 12-row panel.
+  it "caps the evidence scan per key at EVIDENCE_SCAN_CAP" do
+    stub_const("Enliterator::SuggestionsController::EVIDENCE_SCAN_CAP", 1)
+    w2 = Widget.create!(title: "B", body: "y")
+    Enliterator::Suggestion.create!(tendable: w2, facet: "summary", proposed_key: "keywords",
+                                    rationale: "later evidence", status: "pending")
+    get "/enliterator/suggestions"
+    expect(response.body).to include("kw terms")               # earliest observation kept
+    expect(response.body).not_to include("later evidence")     # past the window
   end
 
   it "approve marks the key approved and surfaces it under contract additions" do

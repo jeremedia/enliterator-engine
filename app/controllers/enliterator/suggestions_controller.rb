@@ -9,6 +9,13 @@ module Enliterator
   # verdicts write to their own context). Root shows the root-scope (NULL) queue —
   # the entire pre-v0.13 universe, so flat installs are unchanged.
   class SuggestionsController < ApplicationController
+    # The page renders the QUEUE_CAP highest-pressure keys, never the whole field — a
+    # context deep in accumulated warrant (chds-theses: 65K pending rows over 2K keys)
+    # was rendering 2,066 evidence-bearing cards plus their focus templates in one
+    # response. The cap is NAMED on the page (no silent truncation); verdicts drain the
+    # top and the next load brings more, and the considerer always works the whole field.
+    QUEUE_CAP = 50
+
     def index
       Enliterator::ConsidererRun.reap_orphans!
       @running      = Enliterator::ConsidererRun.unfinished
@@ -16,14 +23,17 @@ module Enliterator
                         .order(:started_at).last
       Enliterator::ProposedTerm.refresh!                            # materialize pressure
       @pending_keys = pending_keys                                  # current-scope pending proposed keys
+      @queue_size   = Enliterator::ProposedTerm.open.where(proposed_key: @pending_keys).count
       @terms        = Enliterator::ProposedTerm.open.by_pressure.where(proposed_key: @pending_keys)
+                        .limit(QUEUE_CAP).to_a
       @vocab        = effective_vocabulary                          # {term => description} across facets
       @canonical    = @vocab.keys.sort                              # legal map targets in this context
       # v0.54: what a reviewer needs to actually decide — the FULL per-record evidence for
       # each key (every rationale + example, no dead-end truncation), and for a map
       # recommendation, what already lives under the suggested target (its definition + the
-      # variants folded onto it) so the reviewer can judge the fit.
-      @evidence        = full_evidence(@pending_keys)
+      # variants folded onto it) so the reviewer can judge the fit. Evidence is fetched for
+      # the RENDERED keys only — the uncapped pluck was 65K text rows in the deep context.
+      @evidence        = full_evidence(@terms.map(&:proposed_key))
       @target_variants = target_variants(@terms)
       # v0.50: the auto-apply floor, so the Map dropdown only PRE-FILLS the considerer's
       # recommended target when the considerer was confident enough to have auto-applied it
@@ -127,6 +137,13 @@ module Enliterator
       effective_vocabulary.keys.sort
     end
 
+    # The evidence panel keeps 12 rows per key, but a deep key can carry THOUSANDS of
+    # observations (chds-theses: 60K rows under one page's 50 keys) — so the scan is
+    # window-capped in SQL at EVIDENCE_SCAN_CAP per key, id-ordered (the earliest
+    # observations; stable across loads). Only past that window does the panel's pick
+    # of 12 differ from a full scan — and which 12 was already a capped sample.
+    EVIDENCE_SCAN_CAP = 120
+
     # v0.54: every record's rationale + example for each pending key (deduped, capped) — the
     # full evidence a reviewer reads to decide, behind the card's Evidence expander. v0.54.1:
     # each row carries the SOURCE record's human title (a reviewer who knows the material reads
@@ -134,8 +151,14 @@ module Enliterator
     # {proposed_key => [{rationale:, example:, source:, type:, id:}, ...]}.
     def full_evidence(keys)
       return {} if keys.empty?
-      rows = Enliterator::Suggestion.where(context_id: current_context&.id, proposed_key: keys)
-               .order(:id).pluck(:proposed_key, :rationale, :example_value, :tendable_type, :tendable_id)
+      windowed = Enliterator::Suggestion.where(context_id: current_context&.id, proposed_key: keys)
+                   .select(:id, :proposed_key, :rationale, :example_value, :tendable_type, :tendable_id)
+                   .select("ROW_NUMBER() OVER (PARTITION BY proposed_key ORDER BY id) AS evidence_rn")
+      rows = Enliterator::Suggestion.from(windowed, :evidence_rows)
+               .where("evidence_rows.evidence_rn <= ?", EVIDENCE_SCAN_CAP)
+               .order("evidence_rows.id")
+               .pluck("evidence_rows.proposed_key", "evidence_rows.rationale", "evidence_rows.example_value",
+                      "evidence_rows.tendable_type", "evidence_rows.tendable_id")
                .uniq { |k, r, e, tt, ti| [ k, tt, ti, r, e ] }   # collapse re-tend dupes, keep per-record
       labels = Enliterator::Label.for(rows.map { |r| [ r[3], r[4] ] }.uniq)
       rows.group_by(&:first).transform_values do |rs|

@@ -1,8 +1,9 @@
 <%# v0.39: retained conversations — browse, label, replay, delete.
     Each row: label (or "(unlabeled)"), context, source, turn count, updated_at,
     a Replay link (→ /enliterator/chat?replay=<token>), an inline label form,
-    and a delete button. Composed from layout tokens; ALL dynamic values via
-    <%= %> (escaped). %>
+    and a delete button. Composed from layout tokens; all dynamic values escaped.
+    (Never write literal ERB delimiters inside this comment — the comment closes
+    at the first percent-gt and the tail leaks into the page. It happened.) %>
 <h1>Conversations</h1>
 <p class="muted">Retained chat sessions. Replay any conversation to re-render it through the federated client; label sessions for later reference.</p>
 
