@@ -124,6 +124,7 @@ module Enliterator
       def call_with_staffing
         policy  = Enliterator.staffing
         allowed = policy.allowed_tiers(tendable, facet, path: @path_keys)
+        allowed = clamp_to_context_caps(policy, allowed)
 
         # v0.3 output contract for this facet (the controlled vocabulary), or
         # nil when the facet is unconstrained (declared via #assign / not at all).
@@ -896,6 +897,31 @@ module Enliterator
       # context is a DIFFERENT claim: reconcile never crosses contexts; ancestors
       # are read-only context in literacy_state, never supersession targets.
       # context nil ⇒ NULL scope = root = the entire pre-v0.13 universe.
+      # v0.2 declared `context_cap tier, tokens` — "inputs over it must
+      # escalate/chunk" — and left it unwired (zero callers) until now. A tier
+      # whose context window cannot hold this record is not ELIGIBLE, so the
+      # ladder starts, and climbs, at one that can. Deliberately NOT truncation:
+      # silently amputating the input is the degradation this engine exists to
+      # refuse, and it contradicts the knob's own stated intent.
+      #
+      # No cap declared ⇒ returns the ladder untouched WITHOUT reading the
+      # record's text — byte-identical to every host that has never declared one.
+      def clamp_to_context_caps(policy, allowed)
+        return allowed unless policy.context_caps_declared?
+        return allowed if allowed.empty?
+
+        text    = tendable.enliterator_text(facet: facet)
+        fitting = policy.tiers_fitting(allowed, text)
+        return fitting if fitting.any?
+
+        largest = allowed.filter_map { |t| policy.context_cap_for(t) }.max
+        raise Enliterator::ConfigurationError,
+              "No staffing tier can hold #{tendable.class.name}/#{tendable.id} on facet " \
+              "#{facet.inspect}: the input is ~#{policy.estimated_tokens(text)} tokens and the " \
+              "largest cap in its ladder admits #{largest}. Raise the cap, add a larger tier to " \
+              "the ladder, or read the record in parts (Tending::Reading)."
+      end
+
       def live_claim_for(key)
         tendable.enliterator_claims.live.find_by(key: key, context_id: context&.id)
       end

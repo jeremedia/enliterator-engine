@@ -329,6 +329,36 @@ module Enliterator
         @context_caps[tier.to_s]
       end
 
+      # True when ANY tier declares a cap. The Visitor's routing fast path: with
+      # nothing declared it never weighs the record at all (a host's
+      # to_enliterator_text can be expensive to build), so an uncapped policy is
+      # byte-identical to the pre-wiring behavior.
+      def context_caps_declared? = @context_caps.any?
+
+      # Rough token estimate for routing: ~4 characters per token, the standard
+      # English/code approximation. Deliberately an ESTIMATE — routing only needs
+      # to know whether an input is plainly too large for a tier, and a real
+      # tokenizer would bind the engine to one model family's vocabulary.
+      CHARS_PER_TOKEN = 4
+
+      def estimated_tokens(text)
+        (text.to_s.length / CHARS_PER_TOKEN.to_f).ceil
+      end
+
+      # Does this tier's context window admit `text`? An uncapped tier always
+      # fits — a cap is a declaration, never an inferred default.
+      def tier_fits?(tier, text)
+        cap = context_cap_for(tier)
+        cap.nil? || estimated_tokens(text) <= cap
+      end
+
+      # The subset of `tiers` whose windows admit `text`, in the order given.
+      # Rejection (not drop-while): a mid-ladder tier too small for this record
+      # is an escalation step that would be spent and wasted.
+      def tiers_fitting(tiers, text)
+        Array(tiers).select { |t| tier_fits?(t, text) }
+      end
+
       # Fail fast at boot: every tier this policy names must exist in the gateway's
       # advertised aliases (from GET /v1/models). Raises ConfigurationError listing
       # the unknown tiers.

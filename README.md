@@ -512,6 +512,7 @@ Enliterator.configure do |c|
     max_promotions 1                                # bound the climb
     verify_floor "quality"                          # min tier permitted to mint `verified`
     on_prem_tiers ["cheap"]                          # tiers that never route off-prem
+    context_cap "cheap", 8192                        # v0.67 — this tier's window, in tokens
   end
 end
 ```
@@ -530,6 +531,17 @@ junior visits are recorded as provenance only (`applied: false`), linked by
 may be minted `verified` only when the writing tier is at/above the floor **and**
 the model asserted it. Below the floor, claims stay `draft` regardless of
 confidence.
+
+**Context caps** (v0.67). `context_cap tier, tokens` declares how much a tier can
+hold. A record whose text exceeds a tier's window makes that tier **ineligible**,
+so the ladder starts — and climbs — at one that can read it whole; an oversized
+record simply begins higher, at `escalation_step: 0`. It is never truncated to
+fit: an understanding built on a silently amputated input is the failure the
+engine exists to refuse. When *no* tier can hold the record, the visit fails
+loudly, naming the estimate, the largest cap, and the remedies (raise the cap,
+add a larger tier, or read it in parts with `Tending::Reading`). Declare nothing
+and nothing changes — uncapped tiers always fit, and routing never even reads the
+record's text.
 
 **Constraints.** A tendable answering `enliterator_on_prem_only? => true` has its
 ladder clamped to `on_prem_tiers` and never routes off-prem, even on escalation.
