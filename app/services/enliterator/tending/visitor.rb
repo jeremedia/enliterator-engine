@@ -427,6 +427,7 @@ module Enliterator
             input_refs:     input_refs_for(visit, neighbors: neighbors, state: state),
             tokens:         tokens_of(response),
             duration_ms:    duration_ms,
+            model:          resolved_model_of(response, visit.model),
             finished_at:    finished
           )
           log_event("visit", visit_id: visit.id, facet: facet, tier: tier, step: step,
@@ -796,6 +797,18 @@ module Enliterator
         " =#{Array(r[:noop] || r['noop']).size}"
       end
 
+      # v0.68: a visit records BOTH identities. `tier` is the alias we ROUTED by
+      # ("enliterator-deep"); `model` is the backend that actually ANSWERED
+      # ("bedrock_mantle/openai.gpt-5.6-sol"). They were the same string until a
+      # gateway alias was repointed to a different vendor underneath us and every
+      # row on both sides of the swap read identically — provenance that cannot
+      # survive a backend change is not provenance. Adapters reporting no resolved
+      # model keep the alias, so pre-v0.68 behavior is unchanged.
+      def resolved_model_of(response, fallback)
+        reported = response.respond_to?(:model) ? response.model : nil
+        reported.presence || fallback
+      end
+
       # ---- shared visit finalization (back-compat path) --------------------
 
       def finalize_succeeded!(visit, response, recon, parsed, started, neighbors:, state:)
@@ -810,6 +823,7 @@ module Enliterator
           input_refs:     input_refs_for(visit, neighbors: neighbors, state: state),
           tokens:         tokens_of(response),
           duration_ms:    duration_ms,
+          model:          resolved_model_of(response, visit.model),
           finished_at:    finished
         )
         log_event("visit", visit_id: visit.id, facet: facet, tier: visit.tier, step: 0,

@@ -32,7 +32,11 @@ module Enliterator
         # - parsed: Hash with "claims" => [...] and "confidence" => Float
         # - raw:    Hash, the provider's raw response (for the Visit row)
         # - tokens: Hash, e.g. {"input" => Int, "output" => Int, "total" => Int}
-        Result = Struct.new(:parsed, :raw, :tokens, keyword_init: true)
+        # v0.68: +model+ carries the RESOLVED backend the gateway actually routed
+        # to (e.g. "bedrock_mantle/openai.gpt-5.6-sol"), as distinct from the tier
+        # alias we requested. Adapters that cannot report one leave it nil and the
+        # caller falls back to the alias — we never invent provenance.
+        Result = Struct.new(:parsed, :raw, :tokens, :model, keyword_init: true)
 
         # JSON Schema for the forced structured output. Providers that support
         # tool/function calling (Bedrock) bind a single tool to this schema;
@@ -131,7 +135,12 @@ module Enliterator
         # schema, so any caller can get structured output.
         #
         # @return [Hash] the parsed arguments (shape == +schema+).
-        def decide(messages:, schema:, tool_name:, tags: [])
+        # +meta+ (v0.68) is an optional caller-owned Hash the adapter may fill with
+        # call metadata — currently just :model, the resolved backend. It is an
+        # out-param rather than adapter state because Enliterator.llm MEMOIZES one
+        # adapter per tier and shares it across threads; per-instance state would
+        # cross-stamp under concurrency.
+        def decide(messages:, schema:, tool_name:, tags: [], meta: nil)
           raise NotImplementedError, "#{self.class} must implement #decide"
         end
 

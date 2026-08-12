@@ -39,7 +39,7 @@ module Enliterator
 
         # Inert structured decision (v0.8): an empty result, so a considerer run
         # with no gateway configured is a safe no-op (CI-friendly, never raises).
-        def decide(messages:, schema:, tool_name:, tags: [])
+        def decide(messages:, schema:, tool_name:, tags: [], meta: nil)
           {}
         end
       end

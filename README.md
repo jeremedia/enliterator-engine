@@ -543,6 +543,15 @@ add a larger tier, or read it in parts with `Tending::Reading`). Declare nothing
 and nothing changes — uncapped tiers always fit, and routing never even reads the
 record's text.
 
+**Alias vs. model** (v0.68). A tier name is an alias the gateway resolves to a
+deployment, and that mapping can be repointed — to a different model, or a
+different vendor — with no change here. So a visit records **both**: `tier` is the
+alias we routed by, `model` is the backend that actually answered, read from the
+response. `Audit#auditor` likewise stamps `<alias>:<resolved model>`. An adapter
+that reports no resolved model leaves the alias in place; the engine never invents
+provenance it wasn't given. Without this, repointing an alias silently rewrites who
+made every subsequent claim while the record keeps reading the same.
+
 **Constraints.** A tendable answering `enliterator_on_prem_only? => true` has its
 ladder clamped to `on_prem_tiers` and never routes off-prem, even on escalation.
 `validate!(available_aliases)` (against `GET /v1/models`) fails fast at boot if

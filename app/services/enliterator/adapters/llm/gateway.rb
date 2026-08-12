@@ -105,7 +105,7 @@ module Enliterator
           # v0.57.1: optional explicit output ceiling (nil default sends nothing —
           # request byte-identical) so finish_reason=length means a REAL truncation.
           if (cap = Enliterator.configuration.gateway_max_tokens)
-            params[:max_tokens] = cap.to_i
+            params[:max_tokens] = floored_max_tokens(cap)
           end
 
           # v0.57.1: auto-retry the PROVIDER-SERIALIZATION quirk. Root-caused by
@@ -144,7 +144,8 @@ module Enliterator
           Result.new(
             parsed: parsed,
             raw:    raw_hash(response),
-            tokens: sum_tokens(spent)
+            tokens: sum_tokens(spent),
+            model:  resolved_model(response)
           )
         end
 
@@ -184,7 +185,7 @@ module Enliterator
         # General forced-tool structured call (v0.8). Forces +tool_name+ bound to
         # +schema+ and returns the parsed arguments Hash. Reuses the tend tool
         # plumbing with a caller-supplied schema.
-        def decide(messages:, schema:, tool_name:, tags: [])
+        def decide(messages:, schema:, tool_name:, tags: [], meta: nil)
           params = {
             model:    @tier,
             messages: messages,
@@ -202,6 +203,7 @@ module Enliterator
               client.chat.completions.create(**params, request_options: request_options)
             end
 
+          meta[:model] = resolved_model(response) if meta.is_a?(Hash)
           parse_arguments(arguments_of(first_tool_call(response)))
         end
 
@@ -442,6 +444,11 @@ module Enliterator
         # data: 2 of 3 clear on the first retry, the rest on the second.
         SERIALIZATION_RETRIES = 2
 
+        # v0.68: the smallest max_tokens the mantle-routed GPT deployments accept.
+        # Boundary verified against the live gateway (2026-08-12): 15 errors, 16 is
+        # fine, on every enliterator-* tier.
+        MAX_TOKENS_FLOOR = 16
+
         # The finish_reason on the first choice ("tool_calls"/"stop"/"length"),
         # across struct/hash shapes; nil when absent (fake clients in specs).
         def finish_reason_of(response)
@@ -643,6 +650,42 @@ module Enliterator
         end
 
         # Best-effort JSON-safe snapshot of the raw response for the Visit row.
+        # v0.68: the backend LiteLLM actually routed this call to. The alias we
+        # SEND ("enliterator-deep") is routing identity; the model reported BACK is
+        # answering identity, and only the second belongs in a provenance record —
+        # an alias can be repointed to a different vendor without any code change,
+        # which is exactly what happened on 2026-08-12. Falls back to the alias
+        # when the response carries no model, so provenance is never invented.
+        def resolved_model(response)
+          reported =
+            if response.respond_to?(:model)
+              response.model
+            elsif response.is_a?(Hash)
+              response["model"] || response[:model]
+            end
+          reported = reported.to_s.strip
+          reported.presence || @tier
+        rescue StandardError
+          @tier
+        end
+
+        # v0.68: mantle-routed GPT rejects max_output_tokens < 16 and surfaces it as
+        # an HTTP 500 APIConnectionError — indistinguishable from a transport fault,
+        # so it invites blind retry into the same wall. Claude accepted such values,
+        # so a host carrying a small cap from the Anthropic era would break opaquely
+        # after a backend swap. Clamp, and SAY SO (rule 3: no silent failures).
+        def floored_max_tokens(cap)
+          asked = cap.to_i
+          return asked if asked >= MAX_TOKENS_FLOOR
+
+          Enliterator.logger&.warn(
+            "[enliterator] config.gateway_max_tokens=#{asked} is below the provider " \
+            "floor of #{MAX_TOKENS_FLOOR}; clamping to #{MAX_TOKENS_FLOOR}. " \
+            "Values under #{MAX_TOKENS_FLOOR} are rejected as an opaque HTTP 500."
+          )
+          MAX_TOKENS_FLOOR
+        end
+
         def raw_hash(response)
           if response.respond_to?(:to_h)
             response.to_h

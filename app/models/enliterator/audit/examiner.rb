@@ -53,12 +53,20 @@ module Enliterator
         truncated = full.length > ceiling
         source    = truncated ? full[0, ceiling] : full
 
-        result = adapter.decide(
+        # v0.68: ask the adapter to report which backend actually answered. The
+        # kwarg is probed rather than assumed so third-party and stub adapters
+        # with the pre-v0.68 signature keep working (the engine's established
+        # optional-kwarg idiom); those simply leave meta empty and we fall back
+        # to the alias below.
+        meta = {}
+        decide_args = {
           messages:  messages_for(claim, facet, source),
           schema:    SCHEMA,
           tool_name: TOOL_NAME,
           tags:      [ "enliterator", "audit-examiner" ]
-        )
+        }
+        decide_args[:meta] = meta if adapter.method(:decide).parameters.any? { |_t, n| n == :meta }
+        result = adapter.decide(**decide_args)
         verdict = (result["verdict"] || result[:verdict]).to_s
         verdict = "unverifiable" unless Enliterator::Audit::VERDICTS.include?(verdict)
 
@@ -69,7 +77,11 @@ module Enliterator
           corrected_value:  (result["corrected_value"] || result[:corrected_value]).presence || {},
           confidence:       (result["confidence"] || result[:confidence]).to_f,
           source:           "examiner",
-          auditor:          "#{effective_tier}:#{adapter.respond_to?(:model_id) ? adapter.model_id : 'unknown'}",
+          # v0.68: "<alias>:<resolved backend>". The examiner is the collection's
+          # measuring instrument, and `Audit.accuracy` never ages out — so a
+          # silent backend swap behind a stable alias would mix two examiners into
+          # one number with nothing in the record to separate them.
+          auditor:          "#{effective_tier}:#{meta[:model].presence || (adapter.respond_to?(:model_id) ? adapter.model_id : 'unknown')}",
           heartbeat:        heartbeat,
           source_digest:    Digest::MD5.hexdigest(full),
           source_chars:     full.length,
