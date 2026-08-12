@@ -171,6 +171,59 @@ RSpec.describe "Staffing context caps" do
       expect(quality.calls).to eq(0)
     end
 
+    # The routing decision must not be silent. Skipping a tier changes which model
+    # reads the record and what it costs; an operator reading the ledger has to be
+    # able to tell "started at quality because the record was too big" from
+    # "assigned to quality". Rule 3 applied to a decision, not just a failure.
+    it "records on the visit WHY it skipped the smaller tier" do
+      configure_policy! do
+        assign :summary, tier: "cheap"
+        ladder [ "cheap", "quality" ]
+        context_cap "cheap", 4096
+      end
+      widget = Widget.create!(title: "Big", body: "x" * 40_000)
+
+      visit = widget.tend!(facet: :summary)
+
+      note = visit.input_refs["context_cap"]
+      expect(note).to be_present
+      expect(note["skipped"]).to eq([ "cheap" ])
+      expect(note["est_tokens"]).to be > 4096
+    end
+
+    it "leaves input_refs untouched when no cap is declared" do
+      configure_policy! do
+        assign :summary, tier: "cheap"
+        ladder [ "cheap", "quality" ]
+      end
+      widget = Widget.create!(title: "Big", body: "x" * 40_000)
+
+      visit = widget.tend!(facet: :summary)
+
+      expect(visit.input_refs).not_to have_key("context_cap")
+    end
+
+    it "logs the skip as a structured event" do
+      logger = Class.new do
+        attr_reader :lines
+        def initialize = @lines = []
+        def info(msg) = @lines << msg.to_s
+      end.new
+      Enliterator.configure { |c| c.logger = logger }
+      configure_policy! do
+        assign :summary, tier: "cheap"
+        ladder [ "cheap", "quality" ]
+        context_cap "cheap", 4096
+      end
+      widget = Widget.create!(title: "Big", body: "x" * 40_000)
+
+      widget.tend!(facet: :summary)
+
+      line = logger.lines.find { |l| l.include?("event=context_cap") }
+      expect(line).to be_present
+      expect(line).to include("skipped=cheap")
+    end
+
     it "raises a clear error naming the size and the largest cap when nothing fits" do
       configure_policy! do
         assign :summary, tier: "cheap"

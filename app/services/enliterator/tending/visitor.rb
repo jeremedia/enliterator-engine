@@ -830,11 +830,15 @@ module Enliterator
       end
 
       def input_refs_for(visit, neighbors:, state:)
-        {
+        refs = {
           prior_visit_ids: prior_visit_ids(visit),
           neighbor_ids:    neighbors.map { |n| neighbor_id(n) }.compact,
           claim_keys:      Array(state[:claims]).map { |c| c[:key] }.compact
         }
+        # v0.67.1: present only when a context cap actually skipped a tier, so a
+        # host that declares none keeps the pre-v0.67 provenance shape exactly.
+        refs[:context_cap] = @context_cap_note if @context_cap_note
+        refs
       end
 
       def tokens_of(response)
@@ -912,7 +916,26 @@ module Enliterator
 
         text    = tendable.enliterator_text(facet: facet)
         fitting = policy.tiers_fitting(allowed, text)
-        return fitting if fitting.any?
+
+        if fitting.any?
+          # Skipping a tier changes which model reads the record and what it costs.
+          # With a multi-tier ladder the oversized record simply starts higher, so
+          # nothing FAILS — and an unexplained start tier is indistinguishable from
+          # an assigned one on the ledger. Name the decision in both places an
+          # operator looks: the log tail and the visit's own provenance.
+          skipped = allowed - fitting
+          if skipped.any?
+            @context_cap_note = {
+              "skipped"    => skipped,
+              "est_tokens" => policy.estimated_tokens(text),
+              "caps"       => skipped.to_h { |t| [ t, policy.context_cap_for(t) ] }
+            }
+            log_event(:context_cap, skipped: skipped.join(","),
+                                    est_tokens: @context_cap_note["est_tokens"],
+                                    started_at_tier: fitting.first)
+          end
+          return fitting
+        end
 
         largest = allowed.filter_map { |t| policy.context_cap_for(t) }.max
         raise Enliterator::ConfigurationError,
