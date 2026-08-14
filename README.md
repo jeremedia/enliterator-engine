@@ -254,7 +254,7 @@ Wire a conversational agent up with:
 claude mcp add --transport http enliterator https://your-host/enliterator/mcp
 ```
 
-Fourteen tools, designed around what an enliterated collection uniquely offers an agent —
+Fifteen tools, designed around what an enliterated collection uniquely offers an agent —
 **provenance, trajectory, and self-knowledge**: `collection_overview` and `vocabulary`
 (orient), `search` / `browse_subjects` / `subject_search` / `record_entry` (navigate — every
 claim carries its confidence, tier, and audit verdict), `connections` (the Atlas,
@@ -267,6 +267,15 @@ files into the authority-control queue and `flag_claim` files an agent audit int
 review queue. The agent is another patron and another set of eyes — never a hand that
 edits the record: agent flags change no accuracy number (instrument-scoped, spec-pinned).
 Every response is bounded (caps + truncation flags) and self-describing (`next:` hints).
+
+**Host tools** (v0.69). A host application can contribute tools of its own —
+`Enliterator::Mcp.register(YourTool)`, reset with `reset_host_tools!`, registered from your
+`to_prepare` beside `Chat.register` — so the desk can act on the host's data as well as read
+the collection (HSDL's research carrel is the first: a patron asks the desk to keep a summary
+and it does). Registered tools are validated at the door like any engine tool, and appear
+after the builtins, so with none registered the listing is byte-identical. The doctrine is
+unchanged and worth restating: a host tool acts on the **host's** data. Writes to the record
+still go only through the governed queues.
 
 `rake enliterator:deployment` prints the live deployment profile — mode and gateway
 readiness, the full config, the staffing ladder/tiers and every facet (root + per-context)
