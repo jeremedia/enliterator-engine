@@ -593,6 +593,41 @@ v0.1 single adapter.
 `Enliterator::Spend.by_facet(host:, since:)` is the engine's own local ledger,
 grouping `Visit.tokens` by facet and tier (with an optional price map → $).
 
+### Auditioning a reader (v0.70 — the bake-off)
+
+When a tier's backend changes, the question is whether the new reader is as good
+as the old one *on this collection*. The tending log's average confidence cannot
+answer it — confidence is **self-reported**, so a model that rates itself higher
+is more confident, not more right, and because confidence drives escalation a
+self-assured reader also escalates less and looks cheaper.
+
+```bash
+bin/rails enliterator:bakeoff FACET=authorship CONTEXT=chds-theses LIMIT=20 \
+  TIERS=enliterator-draft,bedrock-gpt-5.6-luna,enliterator-quality
+```
+
+Each candidate reads the same records; every claim any of them produces is scored
+by **one** blind, source-grounded `Audit::Examiner` — the same instrument as the
+standing audit, using the same `supported_rate` formula, so the numbers mean the
+same thing. **Nothing is persisted**: no visit, no claim, no audit. An experiment
+that deposits its candidates' opinions in the live claim store contaminates the
+collection it is meant to protect.
+
+Two columns, read together:
+
+- **PRECISION** (`supported_rate`) — of what the reader said, how much the source
+  bears out.
+- **COVERAGE** — of the facet's **required terms**, how many came back with a
+  non-blank value. Precision alone rewards a reader for saying *less*; coverage is
+  the counterweight, and it is the only recall signal the engine has. `n/a` when
+  the facet declares no required terms. Note required terms resolve along the
+  **context path** — pass `CONTEXT=` or a facet declared inside a context resolves
+  to none, and the run silently measures precision only.
+
+Pick the facet with care: a generative facet like `summary` is a ceiling where
+every competent reader scores 1.0 and the test has no power (the tool detects a
+no-variance result and says so). Audition on facets where readers actually fail.
+
 ## Facet Contracts & Suggestions
 
 A facet with no output contract lets the model freelance terms — `author`
