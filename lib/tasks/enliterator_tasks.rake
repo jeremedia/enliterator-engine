@@ -857,7 +857,9 @@ namespace :enliterator do
     if ENV["JSON"].present?
       File.write(ENV["JSON"], JSON.pretty_generate(outcomes.map { |o|
         { tier: o.tier, model: o.model, records: o.records, claims: o.claims,
-          counts: o.counts, supported_rate: o.supported_rate, tokens: o.tokens,
+          counts: o.counts, supported_rate: o.supported_rate, coverage: o.coverage,
+          required_terms: o.required_terms, required_met: o.required_met,
+          required_expected: o.required_expected, tokens: o.tokens,
           tokens_per_claim: o.tokens_per_claim, elapsed_s: o.elapsed_s, errors: o.errors }
       }))
       puts "  wrote #{ENV['JSON']}"
