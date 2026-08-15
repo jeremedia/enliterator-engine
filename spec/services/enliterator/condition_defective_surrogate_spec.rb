@@ -106,6 +106,26 @@ RSpec.describe "v0.71 condition-informed lacuna diagnosis" do
       expect(lacuna.note).to include("silent")      # what the reader said
       expect(lacuna.note).to match(/extraction/i)   # which probe overruled it
     end
+
+    # THE PRODUCTION PATH. A live collection's lacunae already exist — they were
+    # opened by earlier beats, misdiagnosed, and are refreshed (not created) on the
+    # next visit. The create path is the rare one; this is the common one, and it
+    # goes through Lacuna.bump! rather than create!. Found by live verification:
+    # the first version of this spec only covered creation.
+    it "UPGRADES an already-open lacuna that an earlier beat misdiagnosed" do
+      existing = Enliterator::Lacuna.open_or_refresh(
+        tendable: widget, facet: "authorship", key: "authored_by",
+        diagnosis: "silent", note: "an earlier beat believed the item was silent"
+      )
+      expect(existing.diagnosis).to eq("silent")
+
+      tend!
+
+      existing.reload
+      expect(existing.diagnosis).to eq("defective_surrogate")
+      expect(existing.detections).to eq(2)          # refreshed, not replaced
+      expect(existing.note).to match(/engine override/i)
+    end
   end
 
   context "when a defective-surrogate probe is PASSING for this record" do
