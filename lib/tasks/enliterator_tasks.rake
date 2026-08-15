@@ -858,11 +858,17 @@ namespace :enliterator do
     rates = outcomes.map(&:supported_rate).compact
     if rates.any? && rates.uniq == [ 1.0 ]
       puts
+      cov = outcomes.map(&:coverage).compact
       puts "  ⚠ NO DISCRIMINATION: every arm scored 1.0. This facet does not separate these readers"
-      puts "    — most likely a ceiling effect (a faithful summary is nearly always 'supported')."
-      puts "    Re-run on a facet where readers actually fail: one with required terms and"
-      puts "    checkable facts (authorship, directive) or a high empty-final rate. Do NOT read"
-      puts "    this as evidence the readers are equivalent; it is evidence the test had no power."
+      puts "    on this sample — a ceiling. Reading a healthy source is often simply easy: when the"
+      puts "    text is intact the answer is present and every competent reader finds it."
+      if cov.any? && cov.uniq == [ 1.0 ]
+        puts "    Coverage is 1.0 too, so this is NOT the quiet-reader artifact — they all did the job."
+      end
+      puts "    Do NOT read this as evidence the readers are equivalent; it is evidence the test had"
+      puts "    no power. To get power you need a harder task, not a bigger n: a facet these readers"
+      puts "    actually fail, or records in a degraded condition — though note that measuring on"
+      puts "    degraded records compares behavior under a condition failure, not reading ability."
     end
 
     if ENV["JSON"].present?
