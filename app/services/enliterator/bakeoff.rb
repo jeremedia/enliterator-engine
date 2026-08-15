@@ -32,13 +32,29 @@ module Enliterator
 
     Outcome = Struct.new(
       :tier, :model, :records, :claims, :counts, :tokens, :elapsed_s, :errors,
+      :required_terms, :required_met, :required_expected,
       keyword_init: true
     ) do
-      # Identical formula to Audit.accuracy: unverifiable is excluded from the
-      # denominator (the source could not decide, which is not the reader's fault).
+      # PRECISION. Identical formula to Audit.accuracy: unverifiable is excluded
+      # from the denominator (the source could not decide, which is not the
+      # reader's fault).
       def supported_rate
         decided = counts["supported"] + counts["unsupported"] + counts["contradicted"]
         decided.positive? ? (counts["supported"].to_f / decided).round(3) : nil
+      end
+
+      # RECALL, as far as the engine can see it. `supported_rate` alone rewards a
+      # reader for saying LESS: emit two safe claims instead of six and precision
+      # goes up while the collection learns less. Required terms are the one place
+      # the engine knows what SHOULD have been produced, so on a facet that
+      # declares them this is the counterweight — a reader that quietly omits the
+      # author scores 1.0 on precision and fails here.
+      #
+      # nil when the facet declares no required terms (most facets) — an honest
+      # absence, not a zero.
+      def coverage
+        return nil unless required_expected.to_i.positive?
+        (required_met.to_f / required_expected).round(3)
       end
 
       def claims_per_record = records.positive? ? (claims.to_f / records).round(2) : 0.0
@@ -52,13 +68,16 @@ module Enliterator
     # @param tiers [Array<String>] the candidate tier aliases
     # @param examiner [Audit::Examiner] ONE instrument for every arm (default: the
     #   host's configured audit tier — the same examiner the standing audit uses)
-    def initialize(records, facet:, tiers:, context: nil, examiner: nil, progress: nil)
+    def initialize(records, facet:, tiers:, context: nil, examiner: nil, progress: nil, required: nil)
       @records  = Array(records)
       @facet    = facet.to_s
       @tiers    = Array(tiers).map(&:to_s)
       @context  = context
       @examiner = examiner || Enliterator::Audit::Examiner.new
       @progress = progress
+      # Default to the staffing policy's own declaration so an arm is measured on
+      # the same obligation production imposes.
+      @required = Array(required.nil? ? default_required : required).map(&:to_s)
     end
 
     def run
@@ -75,6 +94,8 @@ module Enliterator
       tokens   = 0
       errors   = []
       model    = nil
+      req_met  = 0
+      req_seen = 0
 
       @records.each do |record|
         source = record.enliterator_text(facet: @facet).to_s
@@ -87,15 +108,27 @@ module Enliterator
                      (adapter.respond_to?(:model_id) ? adapter.model_id : tier)
 
           produced = Array((response.parsed || {})["claims"])
+          filled   = {}
           produced.each do |c|
             key   = c["key"] || c[:key]
             value = c["value"] || c[:value]
             next if key.blank?
 
+            # A required term is MET only by a non-blank value. An empty claim is
+            # the very thing v0.46's lacunae exist to stop counting as an answer.
+            filled[key.to_s] = true if value.present?
+
             claims += 1
             verdict = examine(key, value, source)
             counts[verdict] += 1 if verdict
           end
+
+          # Recall, per record: did this reader produce what the facet obliges?
+          @required.each do |term|
+            req_seen += 1
+            req_met  += 1 if filled[term]
+          end
+
           @progress&.call(tier: tier, record: record, claims: produced.size)
         rescue StandardError => e
           # One bad record must not void the arm — record it and keep measuring
@@ -107,8 +140,15 @@ module Enliterator
       Outcome.new(
         tier: tier, model: model || tier, records: @records.size, claims: claims,
         counts: counts, tokens: tokens, elapsed_s: (Time.current - started).round(1),
-        errors: errors
+        errors: errors, required_terms: @required, required_met: req_met,
+        required_expected: req_seen
       )
+    end
+
+    def default_required
+      Enliterator.staffing.required_terms(@facet, path: Array(@context&.path_keys))
+    rescue StandardError
+      []
     end
 
     # The examiner never learns which tier produced this — that blindness is what
@@ -122,9 +162,12 @@ module Enliterator
 
     def read(adapter, record, source)
       kwargs = { text: source, facet: @facet, state: {}, neighbors: [] }
-      kwargs[:tags]     = [ "enliterator", "bakeoff" ]                       if accepts?(adapter, :tags)
+      kwargs[:tags]     = [ "enliterator", "bakeoff" ] if accepts?(adapter, :tags)
       contract = Enliterator::Vocabulary.for(@facet, context: @context)
-      kwargs[:contract] = contract                                           if contract.present? && accepts?(adapter, :contract)
+      kwargs[:contract] = contract if contract.present? && accepts?(adapter, :contract)
+      # The required-terms instruction is part of the job. Measuring coverage
+      # without it would score readers on an obligation they were never given.
+      kwargs[:required] = @required if @required.present? && accepts?(adapter, :required)
       adapter.tend(**kwargs)
     end
 

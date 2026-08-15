@@ -123,6 +123,63 @@ RSpec.describe Enliterator::Bakeoff do
     end
   end
 
+  # The counterweight to supported_rate. Precision alone rewards a reader for
+  # saying less; on a facet with required terms the engine knows what SHOULD have
+  # been produced, and that is the only recall signal available.
+  describe "coverage (recall)" do
+    # Emits exactly the claims it is given, so a spec can model a reader that
+    # omits — or blanks — a required term.
+    class ScriptedArm
+      Result = Struct.new(:parsed, :raw, :tokens, :model, keyword_init: true)
+      def initialize(tier, claims) = (@tier = tier; @claims = claims)
+      def model_id = @tier
+      def tend(text:, facet:, state:, neighbors:, tags: [], contract: nil, required: nil)
+        @seen_required = required
+        Result.new(parsed: { "claims" => @claims, "confidence" => 0.9 }, raw: {}, tokens: { "total" => 10 })
+      end
+      attr_reader :seen_required
+    end
+
+    def run_with(claims, required: [ "authored_by" ])
+      arm = ScriptedArm.new("tier-a", claims)
+      stub_tiers!("tier-a" => arm)
+      out, = described_class.run([ widget ], facet: "authorship", tiers: %w[tier-a],
+                                 required: required, examiner: RecordingExaminer.new)
+      [ out, arm ]
+    end
+
+    it "is nil when the facet declares no required terms — an honest absence, not a zero" do
+      out, = run_with([ { "key" => "note", "value" => "x" } ], required: [])
+      expect(out.coverage).to be_nil
+    end
+
+    it "counts a required term filled with a real value" do
+      out, = run_with([ { "key" => "authored_by", "value" => "A. Author" } ])
+      expect(out.coverage).to eq(1.0)
+    end
+
+    it "does NOT count a required term the reader omitted entirely" do
+      out, = run_with([ { "key" => "summary", "value" => "something else" } ])
+      expect(out.coverage).to eq(0.0)
+    end
+
+    it "does NOT count a BLANK value as met — an empty claim is not an answer" do
+      out, = run_with([ { "key" => "authored_by", "value" => "" } ])
+      expect(out.coverage).to eq(0.0)
+    end
+
+    it "exposes the quiet reader: perfect precision, zero coverage" do
+      out, = run_with([ { "key" => "summary", "value" => "a safe true thing" } ])
+      expect(out.supported_rate).to eq(1.0)   # everything it said was supported
+      expect(out.coverage).to eq(0.0)         # and it never did the job
+    end
+
+    it "hands the required terms to the reader — coverage must not score an unstated obligation" do
+      _, arm = run_with([ { "key" => "authored_by", "value" => "A" } ])
+      expect(arm.seen_required).to eq([ "authored_by" ])
+    end
+  end
+
   describe "resilience" do
     class ExplodingStub < ArmStub
       def tend(**) = raise(Errno::ECONNREFUSED)

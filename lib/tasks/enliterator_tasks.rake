@@ -801,14 +801,27 @@ namespace :enliterator do
       records, facet: facet, tiers: tiers, context: context, examiner: examiner
     )
 
-    fmt = "%-34s %7s %7s %9s %9s %9s %9s %8s"
-    puts format(fmt, "tier / resolved model", "claims", "c/rec", "supported", "unsupp", "contra", "unverif", "rate")
-    puts "-" * 100
+    required = outcomes.first&.required_terms.presence
+    puts "[enliterator:bakeoff] required terms: #{required ? required.join(', ') : '(none — precision only, no recall signal)'}"
+    puts
+
+    fmt = "%-32s %7s %6s %6s %6s %6s %6s %9s %9s"
+    puts format(fmt, "tier / resolved model", "claims", "c/rec", "supp", "unsup", "contra", "unver",
+                "PRECISION", "COVERAGE")
+    puts "-" * 104
     outcomes.each do |o|
       label = o.tier == o.model ? o.tier : "#{o.tier} -> #{o.model.to_s.split('/').last}"
-      puts format(fmt, label.to_s[0, 34], o.claims, o.claims_per_record,
+      puts format(fmt, label.to_s[0, 32], o.claims, o.claims_per_record,
                   o.counts["supported"], o.counts["unsupported"], o.counts["contradicted"],
-                  o.counts["unverifiable"], (o.supported_rate || "n/a").to_s)
+                  o.counts["unverifiable"], (o.supported_rate || "n/a").to_s,
+                  (o.coverage || "n/a").to_s)
+    end
+    if required
+      puts
+      puts "  COVERAGE = required terms filled with a non-blank value / required terms expected."
+      puts "  It is the only recall signal available: PRECISION rewards a reader for saying less,"
+      puts "  so read the two columns together — a high rate with low coverage is a quiet reader,"
+      puts "  not a good one."
     end
     puts
     outcomes.each do |o|
