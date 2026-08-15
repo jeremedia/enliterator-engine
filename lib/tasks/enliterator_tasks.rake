@@ -784,8 +784,19 @@ namespace :enliterator do
     scope = Enliterator::Visit.where(facet: facet, status: "succeeded")
     scope = scope.where(context_id: context.id) if context
     scope = scope.where(tendable_type: ENV["TYPE"]) if ENV["TYPE"].present?
-    pairs = scope.order(id: :desc).limit(limit * 4).pluck(:tendable_type, :tendable_id).uniq.first(limit)
-    abort "[enliterator:bakeoff] no tended records found for facet #{facet}" if pairs.empty?
+    # RANDOM, not most-recent. `order(id: :desc)` on visits looks like a sample and
+    # is actually the FRONTIER: on a converged collection the records re-tended most
+    # often are precisely the ones that never satisfy the facet, so the "sample" fills
+    # with the pathological tail. Measured on HSDL: 17 of 20 records drawn that way
+    # lacked extracted full text, against 2.9% of the collection — a comparison run on
+    # that is a comparison of behavior under a condition failure, not of reading.
+    # Sample distinct RECORDS (not visits, or often-revisited ones are over-drawn).
+    all_pairs = scope.distinct.pluck(:tendable_type, :tendable_id)
+    abort "[enliterator:bakeoff] no tended records found for facet #{facet}" if all_pairs.empty?
+    rng   = Random.new(ENV["SEED"].present? ? ENV["SEED"].to_i : Random.new_seed)
+    pairs = all_pairs.shuffle(random: rng).first(limit)
+    puts "[enliterator:bakeoff] sampled #{pairs.size} at random from #{all_pairs.size} records tended on this facet" \
+         "#{ENV['SEED'].present? ? " (SEED=#{ENV['SEED']})" : ''}"
 
     records = pairs.group_by(&:first).flat_map do |type, rows|
       klass = type.safe_constantize or next []
