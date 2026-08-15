@@ -760,4 +760,73 @@ namespace :enliterator do
   rescue Enliterator::FirstImpression::NullAdapterError => e
     abort "[enliterator:first_impression] #{e.message} — configure the gateway"
   end
+
+  # v0.70 — the model bake-off. Answers "is this reader as good as the last one
+  # on THIS collection" with the blind grounded examiner rather than the tending
+  # log's self-reported confidence. Writes NOTHING: no visit, no claim, no audit.
+  #
+  #   bin/rails enliterator:bakeoff FACET=summary TIERS=enliterator-draft,bedrock-gpt-5.6-luna LIMIT=20
+  #   bin/rails enliterator:bakeoff FACET=summary TIERS=... CONTEXT=chds-theses JSON=out.json
+  desc "Compare candidate reader tiers on the same records, scored by the blind examiner. FACET= TIERS= [LIMIT= CONTEXT= TYPE= JSON=]"
+  task bakeoff: :environment do
+    require "json"
+
+    facet = ENV["FACET"].presence or abort "[enliterator:bakeoff] FACET= is required"
+    tiers = ENV["TIERS"].to_s.split(",").map(&:strip).reject(&:empty?)
+    abort "[enliterator:bakeoff] TIERS= is required (comma-separated tier aliases)" if tiers.size < 1
+    limit = (ENV["LIMIT"].presence || 20).to_i
+
+    context = ENV["CONTEXT"].present? ? Enliterator::Context.find_by(key: ENV["CONTEXT"]) : nil
+    abort "[enliterator:bakeoff] no context #{ENV['CONTEXT'].inspect}" if ENV["CONTEXT"].present? && context.nil?
+
+    # Sample from records that have already been tended on this facet — they are
+    # known-legible, so the comparison measures reading, not condition.
+    scope = Enliterator::Visit.where(facet: facet, status: "succeeded")
+    scope = scope.where(context_id: context.id) if context
+    scope = scope.where(tendable_type: ENV["TYPE"]) if ENV["TYPE"].present?
+    pairs = scope.order(id: :desc).limit(limit * 4).pluck(:tendable_type, :tendable_id).uniq.first(limit)
+    abort "[enliterator:bakeoff] no tended records found for facet #{facet}" if pairs.empty?
+
+    records = pairs.group_by(&:first).flat_map do |type, rows|
+      klass = type.safe_constantize or next []
+      klass.where(id: rows.map(&:last)).to_a
+    end
+
+    examiner = Enliterator::Audit::Examiner.new
+    puts "[enliterator:bakeoff] facet=#{facet} records=#{records.size} tiers=#{tiers.join(', ')}"
+    puts "[enliterator:bakeoff] examiner tier=#{Enliterator.configuration.audit_tier || Enliterator.staffing.ladder.last} (one instrument, blind to the arm)"
+    puts
+
+    outcomes = Enliterator::Bakeoff.run(
+      records, facet: facet, tiers: tiers, context: context, examiner: examiner
+    )
+
+    fmt = "%-34s %7s %7s %9s %9s %9s %9s %8s"
+    puts format(fmt, "tier / resolved model", "claims", "c/rec", "supported", "unsupp", "contra", "unverif", "rate")
+    puts "-" * 100
+    outcomes.each do |o|
+      label = o.tier == o.model ? o.tier : "#{o.tier} -> #{o.model.to_s.split('/').last}"
+      puts format(fmt, label.to_s[0, 34], o.claims, o.claims_per_record,
+                  o.counts["supported"], o.counts["unsupported"], o.counts["contradicted"],
+                  o.counts["unverifiable"], (o.supported_rate || "n/a").to_s)
+    end
+    puts
+    outcomes.each do |o|
+      puts "  #{o.tier}: #{o.tokens} tokens (#{o.tokens_per_claim}/claim), #{o.elapsed_s}s#{o.errors.any? ? ", #{o.errors.size} FAILED records" : ''}"
+      o.errors.first(3).each { |e| puts "      #{e}" }
+    end
+
+    decided = outcomes.map { |o| o.counts["supported"] + o.counts["unsupported"] + o.counts["contradicted"] }.min.to_i
+    puts
+    puts "  NOTE: smallest arm has #{decided} decided claims. Treat a gap under ~10 points as noise at this n."
+
+    if ENV["JSON"].present?
+      File.write(ENV["JSON"], JSON.pretty_generate(outcomes.map { |o|
+        { tier: o.tier, model: o.model, records: o.records, claims: o.claims,
+          counts: o.counts, supported_rate: o.supported_rate, tokens: o.tokens,
+          tokens_per_claim: o.tokens_per_claim, elapsed_s: o.elapsed_s, errors: o.errors }
+      }))
+      puts "  wrote #{ENV['JSON']}"
+    end
+  end
 end

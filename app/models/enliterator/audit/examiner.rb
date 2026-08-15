@@ -53,6 +53,47 @@ module Enliterator
         truncated = full.length > ceiling
         source    = truncated ? full[0, ceiling] : full
 
+        rendered = verdict_for(facet: facet, key: claim.key, value: claim.value,
+                               context: claim.context, source: source)
+        return rendered if rendered.is_a?(Symbol)
+
+        Enliterator::Audit.create!(
+          claim:            claim,
+          verdict:          rendered[:verdict],
+          rationale:        rendered[:rationale],
+          corrected_value:  rendered[:corrected_value],
+          confidence:       rendered[:confidence],
+          source:           "examiner",
+          # v0.68: "<alias>:<resolved backend>". The examiner is the collection's
+          # measuring instrument, and `Audit.accuracy` never ages out — so a
+          # silent backend swap behind a stable alias would mix two examiners into
+          # one number with nothing in the record to separate them.
+          auditor:          "#{rendered[:tier]}:#{rendered[:model]}",
+          heartbeat:        heartbeat,
+          source_digest:    Digest::MD5.hexdigest(full),
+          source_chars:     full.length,
+          source_truncated: truncated
+        )
+      end
+
+      # v0.70 — the INSTRUMENT, separated from the filing cabinet.
+      #
+      # Renders one grounded verdict on one key/value against one source and
+      # returns it. Persists NOTHING. `examine!` is this plus an Audit row; a
+      # bake-off is this over claims that were never written, so a candidate
+      # reader can be measured without touching the live claim store.
+      #
+      # Blind by construction: the caller passes a key, a value, and a source —
+      # there is no parameter through which the model that PRODUCED the value
+      # could reach the examiner, which is what makes a comparison fair.
+      #
+      # Returns a Hash, or :unavailable / :blank_source.
+      def verdict_for(facet:, key:, value:, source:, context: nil)
+        return :blank_source if source.to_s.strip.empty?
+
+        adapter = resolve_llm
+        return :unavailable if adapter.is_a?(Enliterator::Adapters::LLM::Null)
+
         # v0.68: ask the adapter to report which backend actually answered. The
         # kwarg is probed rather than assumed so third-party and stub adapters
         # with the pre-v0.68 signature keep working (the engine's established
@@ -60,33 +101,25 @@ module Enliterator
         # to the alias below.
         meta = {}
         decide_args = {
-          messages:  messages_for(claim, facet, source),
+          messages:  messages_for(facet: facet, key: key, value: value, context: context, source: source),
           schema:    SCHEMA,
           tool_name: TOOL_NAME,
           tags:      [ "enliterator", "audit-examiner" ]
         }
         decide_args[:meta] = meta if adapter.method(:decide).parameters.any? { |_t, n| n == :meta }
         result = adapter.decide(**decide_args)
+
         verdict = (result["verdict"] || result[:verdict]).to_s
         verdict = "unverifiable" unless Enliterator::Audit::VERDICTS.include?(verdict)
 
-        Enliterator::Audit.create!(
-          claim:            claim,
-          verdict:          verdict,
-          rationale:        (result["rationale"] || result[:rationale]).to_s,
-          corrected_value:  (result["corrected_value"] || result[:corrected_value]).presence || {},
-          confidence:       (result["confidence"] || result[:confidence]).to_f,
-          source:           "examiner",
-          # v0.68: "<alias>:<resolved backend>". The examiner is the collection's
-          # measuring instrument, and `Audit.accuracy` never ages out — so a
-          # silent backend swap behind a stable alias would mix two examiners into
-          # one number with nothing in the record to separate them.
-          auditor:          "#{effective_tier}:#{meta[:model].presence || (adapter.respond_to?(:model_id) ? adapter.model_id : 'unknown')}",
-          heartbeat:        heartbeat,
-          source_digest:    Digest::MD5.hexdigest(full),
-          source_chars:     full.length,
-          source_truncated: truncated
-        )
+        {
+          verdict:         verdict,
+          rationale:       (result["rationale"] || result[:rationale]).to_s,
+          corrected_value: (result["corrected_value"] || result[:corrected_value]).presence || {},
+          confidence:      (result["confidence"] || result[:confidence]).to_f,
+          tier:            effective_tier,
+          model:           meta[:model].presence || (adapter.respond_to?(:model_id) ? adapter.model_id : "unknown")
+        }
       end
 
       private
@@ -101,8 +134,8 @@ module Enliterator
           Enliterator.staffing.ladder.last || "quality"
       end
 
-      def messages_for(claim, facet, source)
-        meaning = Enliterator::Vocabulary.for(facet, context: claim.context)&.dig(claim.key)
+      def messages_for(facet:, key:, value:, context:, source:)
+        meaning = Enliterator::Vocabulary.for(facet, context: context)&.dig(key)
         [ { role: "system", content: <<~SYS.strip },
             You are the QUALITY REVIEWER of a library catalog's claim store. Verify ONE
             claim against the source document, and render exactly one verdict:
@@ -118,8 +151,8 @@ module Enliterator
           SYS
           { role: "user", content: <<~USER.strip } ]
             FACET: #{facet}
-            CLAIM KEY: #{claim.key}#{meaning ? "\nKEY MEANING (controlled vocabulary): #{meaning}" : ''}
-            CLAIM VALUE: #{render(claim.value)}
+            CLAIM KEY: #{key}#{meaning ? "\nKEY MEANING (controlled vocabulary): #{meaning}" : ''}
+            CLAIM VALUE: #{render(value)}
 
             SOURCE:
             #{source}
