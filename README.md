@@ -64,6 +64,27 @@ is in the item but extraction lost it), `silent` (the item omits it; an authorit
 (known-unknown) / claim (known-known). Surfaced as a record-page "Known gaps" panel, a Status rollup,
 `rake enliterator:lacunae`, and the `lacunae` MCP tool. Off by default ⇒ byte-identical.
 
+**But a reader cannot diagnose its own blindness** (v0.71). It is shown the *surrogate* and never the
+item, so a record whose text extraction failed looks to it exactly like an item that stayed silent —
+and it will say `silent`, truthfully about the text and wrongly about the item. On one live collection
+that was 26 of 31 gaps. The cost is not an inaccurate label: `silent` sends a conservator to ask an
+authority when the actual remedy was to re-run extraction.
+
+A condition probe knows better, so let it say so:
+
+```ruby
+Enliterator::Condition.register(:extraction, defective_surrogate: true) do |record|
+  record.extracted_text.present? ? { ok: true } : { ok: false, code: "extract_error" }
+end
+```
+
+`defective_surrogate:` is a third probe semantic beside `gates_tending:` — gating means *the engine
+cannot read this record at all*, while this means *what we can read is a damaged copy*. When such a
+probe is failing, the visitor records `defective_surrogate` whatever the reader said, **keeping the
+reader's original answer and the probe's name in the lacuna's note** — the correction is visible, not
+a silent substitution. Declare no such probe and nothing changes: the check short-circuits before any
+query.
+
 ## Quick start
 
 Add the engine to the host Gemfile and mount it.

@@ -39,15 +39,50 @@ module Enliterator
 
     # ---- registration --------------------------------------------------------
 
-    def register(name, gates_tending: false, &block)
+    # +defective_surrogate+ (v0.71): when THIS probe fails, the record's derived
+    # text is known to be incomplete or lost — the item holds facts the surrogate
+    # does not. Distinct from +gates_tending+: a gating probe says the engine
+    # cannot read the record at all, while this one says what we CAN read is a
+    # damaged copy. It exists because a reader cannot tell those apart — it is
+    # shown the surrogate, never the item, so an unmet required term reads to it
+    # as "the item is silent" when the truth is "extraction lost it." The engine
+    # knows; the reader cannot. See Lacuna diagnosis in Tending::Visitor.
+    def register(name, gates_tending: false, defective_surrogate: false, &block)
       n = name.to_s
       raise ArgumentError, "probe name must be snake_case (got #{n.inspect})" unless n.match?(NAME_FORMAT)
       if n == ROLLUP || n.start_with?(ROLLUP)
         raise ArgumentError, "probe name may not be or begin with #{ROLLUP.inspect} — " \
                              "the rollup namespace is reserved (the gate depends on it)"
       end
-      @registry[n.to_sym] = { block: block, gates_tending: gates_tending, position: @registry.size + 1 }
+      @registry[n.to_sym] = { block: block, gates_tending: gates_tending,
+                              defective_surrogate: defective_surrogate,
+                              position: @registry.size + 1 }
       n.to_sym
+    end
+
+    # v0.71: does the SURVEY say this record's derived text is a damaged copy?
+    #
+    # Reads the survey's persisted verdict (Measure rows) rather than re-running
+    # probes — a tend must not pay for a shelf-read, and the survey's answer is
+    # the collection's ground truth about condition.
+    #
+    # Returns false WITHOUT touching the database when no probe declares the flag,
+    # so a host that never adopts it is byte-identical and pays nothing.
+    def surrogate_defective?(record)
+      names = surrogate_defect_probe_names
+      return false if names.empty?
+
+      Enliterator::Measure
+        .where(tendable_type: record.class.name,
+               tendable_id:   record.public_send(record.class.primary_key).to_s,
+               name:          names)
+        .where(score: 0.0)
+        .exists?
+    end
+
+    # The probes that, when failing, mean the surrogate is damaged.
+    def surrogate_defect_probe_names
+      @registry.filter_map { |n, p| "#{PROBE_PREFIX}#{n}" if p[:defective_surrogate] }
     end
 
     def registry = @registry

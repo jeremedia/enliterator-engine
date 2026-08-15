@@ -528,10 +528,30 @@ module Enliterator
 
           # Unmet (no non-blank value in this visit or the live store): open/refresh
           # the lacuna (diagnosis from absences, else undiagnosed).
-          diag = absences[key]
+          diag      = absences[key]
+          diagnosis = diag && diag[:diagnosis]
+          note      = diag && diag[:note]
+
+          # v0.71: the READER cannot answer the question v0.46.1 asks it. It is shown
+          # the surrogate and never the item, so when extraction has failed it
+          # truthfully reports the text is `silent` — and is wrong about the item,
+          # which holds the fact. The SURVEY knows. Where a condition probe says the
+          # surrogate is a damaged copy, the engine's knowledge outranks the reader's
+          # inference. The reader's answer is preserved in the note rather than
+          # overwritten: an override that hides what it overrode is not an
+          # improvement in honesty, only a change of opinion.
+          if diagnosis != "defective_surrogate" && Enliterator::Condition.surrogate_defective?(tendable)
+            was      = diagnosis.presence || "undiagnosed"
+            probes   = Enliterator::Condition.surrogate_defect_probe_names.join(", ")
+            note     = [ note.presence, "engine override: reader said #{was}; " \
+                                        "condition probe (#{probes}) reports the surrogate is defective" ]
+                         .compact.join(" — ")
+            diagnosis = "defective_surrogate"
+          end
+
           Enliterator::Lacuna.open_or_refresh(
             tendable: tendable, facet: facet, key: key, context: context,
-            diagnosis: diag && diag[:diagnosis], note: diag && diag[:note], visit: visit
+            diagnosis: diagnosis, note: note, visit: visit
           )
           # Evict the standing live blank ATOMICALLY: scope to its id with a still-
           # current guard (superseded_by_id IS NULL). Combined with the Ruby blank +
