@@ -803,6 +803,14 @@ namespace :enliterator do
 
     required = outcomes.first&.required_terms.presence
     puts "[enliterator:bakeoff] required terms: #{required ? required.join(', ') : '(none — precision only, no recall signal)'}"
+    unless required
+      # Required terms are declared per-context; a facet declared inside a context
+      # resolves to NOTHING at the root path. Without this hint the run silently
+      # measures precision only and looks like it answered the recall question.
+      puts "[enliterator:bakeoff] NOTE: required terms resolve along the CONTEXT PATH. If this facet"
+      puts "[enliterator:bakeoff]       declares them inside a context, re-run with CONTEXT=<key> or"
+      puts "[enliterator:bakeoff]       this run cannot see a missed term at all."
+    end
     puts
 
     fmt = "%-32s %7s %6s %6s %6s %6s %6s %9s %9s"
