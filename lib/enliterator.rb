@@ -190,6 +190,18 @@ module Enliterator
     # host's choosing.
     attr_accessor :gateway_max_tokens
 
+    # v0.68.1: resolve tier aliases to the backend actually standing behind them.
+    #
+    # v0.68 read the resolved model from the chat response body. LiteLLM ECHOES
+    # the requested alias there ("enliterator-draft" in, "enliterator-draft" out),
+    # so the fallback fired on every call and the provenance kept recording the
+    # alias — the exact gap v0.68 existed to close. The mapping lives instead at
+    # GET {gateway_base_url}/model/info.
+    #
+    # nil/false (default) ⇒ no lookup, no network, provenance behaves exactly as
+    # v0.68. Setting it makes the engine consult (and cache) the deployment map.
+    attr_accessor :resolve_model_backends
+
     # ---- v0.28 Agentic Reference Desk ------------------------------------
 
     # Gate for the agentic federation. nil/false ⇒ /enliterator/chat is the
@@ -440,6 +452,7 @@ module Enliterator
       @gateway_timeout = 180
       @gateway_max_retries = 1
       @gateway_max_tokens = nil
+      @resolve_model_backends = nil
     end
 
     def logger

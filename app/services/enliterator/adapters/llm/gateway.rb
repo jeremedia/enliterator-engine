@@ -664,7 +664,17 @@ module Enliterator
               response["model"] || response[:model]
             end
           reported = reported.to_s.strip
-          reported.presence || @tier
+
+          # A gateway that reports something OTHER than the alias we sent is
+          # telling us what actually answered — take it.
+          return reported if reported.present? && reported != @tier
+
+          # LiteLLM instead ECHOES the alias (v0.68's wrong assumption), so the
+          # body tells us nothing. Consult the published deployment map. Disabled
+          # by default ⇒ nil, no network, and we fall back to the alias exactly as
+          # v0.68 did.
+          Enliterator::ModelRegistry.backend_for(@tier, base_url: @base_url, api_key: @api_key).presence ||
+            reported.presence || @tier
         rescue StandardError
           @tier
         end

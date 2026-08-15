@@ -19,11 +19,14 @@ claims and recent visits as context, so the model revises in light of what it
 already concluded rather than starting from zero. That feedback — prior visits
 conditioning the next — is what makes understanding *compound*.
 
-First consumer: **HSDL** (Homeland Security Digital Library). Substrate: AWS
-Bedrock (Claude) for the LLM, OpenAI `text-embedding-3-small` (1536d) for
-embeddings, Sidekiq for jobs. Nothing in the engine depends on Solid Queue — all
-jobs are plain ActiveJob, so they run on whatever queue backend the host already
-uses.
+First consumer: **HSDL** (Homeland Security Digital Library). Substrate: models
+reached through a LiteLLM gateway by **capability tier**, not by vendor — the host
+names `draft`/`quality`/`deep` and the gateway resolves each to a deployment, which
+can be repointed without touching the engine (HSDL's tiers have served both Claude
+and GPT backends; the engine records which one answered — see *Alias vs. model*
+below). Embeddings via OpenAI `text-embedding-3-small` (1536d); jobs via Sidekiq.
+Nothing in the engine depends on Solid Queue — all jobs are plain ActiveJob, so
+they run on whatever queue backend the host already uses.
 
 ## The literacy ladder
 
@@ -552,14 +555,26 @@ add a larger tier, or read it in parts with `Tending::Reading`). Declare nothing
 and nothing changes — uncapped tiers always fit, and routing never even reads the
 record's text.
 
-**Alias vs. model** (v0.68). A tier name is an alias the gateway resolves to a
-deployment, and that mapping can be repointed — to a different model, or a
+**Alias vs. model** (v0.68 / v0.68.1). A tier name is an alias the gateway resolves
+to a deployment, and that mapping can be repointed — to a different model, or a
 different vendor — with no change here. So a visit records **both**: `tier` is the
-alias we routed by, `model` is the backend that actually answered, read from the
-response. `Audit#auditor` likewise stamps `<alias>:<resolved model>`. An adapter
-that reports no resolved model leaves the alias in place; the engine never invents
-provenance it wasn't given. Without this, repointing an alias silently rewrites who
-made every subsequent claim while the record keeps reading the same.
+alias we routed by, `model` is the backend that actually answered. `Audit#auditor`
+likewise stamps `<alias>:<resolved model>`.
+
+Where the resolved backend comes from is provider-specific. If the chat response
+reports a model *different* from the alias, that is taken directly. LiteLLM instead
+**echoes the alias**, so with `config.resolve_model_backends` enabled the engine
+consults the gateway's published deployment map (`GET {base_url}/model/info`,
+cached 5 minutes) and records what stands behind the alias — e.g.
+`enliterator-draft` → `bedrock_mantle/openai.gpt-5.4`. Disabled by default: no
+lookup, no network, and the alias is recorded exactly as before. The engine never
+invents provenance it wasn't given.
+
+Honest limit: the map is the mapping *as published now*, not proof of what served
+one call, so a repoint inside the cache window mis-stamps it. Exact per-call
+attribution lives in LiteLLM's `x-litellm-model-id` response header, which the
+`openai` gem gives no way to read. The map beats recording the alias — which is
+never informative — without pretending to be a guarantee.
 
 **Constraints.** A tendable answering `enliterator_on_prem_only? => true` has its
 ladder clamped to `on_prem_tiers` and never routes off-prem, even on escalation.
