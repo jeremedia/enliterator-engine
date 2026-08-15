@@ -820,6 +820,19 @@ namespace :enliterator do
     puts
     puts "  NOTE: smallest arm has #{decided} decided claims. Treat a gap under ~10 points as noise at this n."
 
+    # A facet every candidate passes cannot rank candidates. Say so, rather than
+    # letting a wall of 1.0s read as "they are equivalent" — an instrument with no
+    # variance measured nothing, which is a different claim entirely.
+    rates = outcomes.map(&:supported_rate).compact
+    if rates.any? && rates.uniq == [ 1.0 ]
+      puts
+      puts "  ⚠ NO DISCRIMINATION: every arm scored 1.0. This facet does not separate these readers"
+      puts "    — most likely a ceiling effect (a faithful summary is nearly always 'supported')."
+      puts "    Re-run on a facet where readers actually fail: one with required terms and"
+      puts "    checkable facts (authorship, directive) or a high empty-final rate. Do NOT read"
+      puts "    this as evidence the readers are equivalent; it is evidence the test had no power."
+    end
+
     if ENV["JSON"].present?
       File.write(ENV["JSON"], JSON.pretty_generate(outcomes.map { |o|
         { tier: o.tier, model: o.model, records: o.records, claims: o.claims,
