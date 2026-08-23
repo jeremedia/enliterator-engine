@@ -19,6 +19,9 @@ module Enliterator
       # v0.18: the accuracy panel — gated on any audit existing.
       if (@audit_adopted = Enliterator::Audit.exists?)
         @audit_accuracy  = Enliterator::Audit.accuracy
+        # v0.72.3: the facet rollups — population-weighted and live-scoped
+        # truth beside the pooled process record (computed from the same rows).
+        @audit_rollups   = Enliterator::Audit.accuracy_rollups(@audit_accuracy)
         @audit_agreement = Enliterator::Audit.anchor_agreement
         @audit_corrected = Enliterator::Audit.corrected_count
         @examiner_down   = @last_heartbeat&.audits&.key?("skipped_null_adapter")

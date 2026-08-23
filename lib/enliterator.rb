@@ -202,6 +202,14 @@ module Enliterator
     # v0.68. Setting it makes the engine consult (and cache) the deployment map.
     attr_accessor :resolve_model_backends
 
+    # v0.72: optional visibility partition for the census — a callable
+    # (record) → boolean, true when the record surfaces publicly (e.g. in the
+    # host's catalog). When set, `enliterator:census` reports rates split
+    # visible/withheld beside the pooled number; the split is where population
+    # structure hides (measured on HSDL: .708 visible vs .591 withheld under a
+    # .695 pooled average). nil (default) ⇒ no partition, pooled + per-key only.
+    attr_accessor :census_visibility
+
     # ---- v0.28 Agentic Reference Desk ------------------------------------
 
     # Gate for the agentic federation. nil/false ⇒ /enliterator/chat is the
@@ -453,6 +461,7 @@ module Enliterator
       @gateway_max_retries = 1
       @gateway_max_tokens = nil
       @resolve_model_backends = nil
+      @census_visibility = nil
     end
 
     def logger

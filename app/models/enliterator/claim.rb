@@ -22,6 +22,18 @@ module Enliterator
     # supersede! would corrupt the chain.
     class AlreadySuperseded < StandardError; end
 
+    # v0.72: THE definition of an empty claim value — one predicate shared by
+    # the reader loop (v0.46 blank handling), the examiner (the absence
+    # verdict), and the measurement stack (abstention metrics). Two definitions
+    # of "empty" would let the reader and its instrument disagree about which
+    # claims assert absence.
+    def self.blank_value?(value)
+      return true if value.nil?
+      return value.strip.empty? if value.is_a?(String)
+      return value.empty? if value.respond_to?(:empty?)
+      false
+    end
+
     # The latest claim in a supersession chain.
     scope :current, -> { where(superseded_by_id: nil) }
     # Current AND not tombstoned (a DELETE supersedes without a replacement).

@@ -147,15 +147,42 @@
       <div class="warn" style="margin-bottom:.5rem">Examiner unavailable on the last cycle (Null adapter) — no new verdicts.</div>
     <% end %>
     <table>
-      <tr><th>facet</th><th>tier</th><th>audited</th><th>supported rate</th><th>contradicted</th><th>unverifiable</th></tr>
+      <tr><th>facet</th><th>tier</th><th>audited</th><th>supported rate</th><th>live rate</th><th>contradicted</th><th>unverifiable</th><th>abstained</th><th>population</th></tr>
       <% @audit_accuracy.each do |c| %>
         <tr>
           <td><%= c[:facet] %></td><td><%= c[:tier] %></td><td><%= c[:audited] %></td>
-          <td><strong><%= c[:supported_rate] ? "#{(c[:supported_rate] * 100).round}%" : "—" %></strong></td>
+          <td>
+            <strong><%= c[:supported_rate] ? "#{(c[:supported_rate] * 100).round}%" : "—" %></strong>
+            <% if c[:insufficient] %><span class="muted" title="fewer than <%= Enliterator::Audit::MIN_DECIDED %> decided verdicts — insufficient to rank">n&lt;<%= Enliterator::Audit::MIN_DECIDED %></span><% end %>
+          </td>
+          <td><%= c[:live_supported_rate] ? "#{(c[:live_supported_rate] * 100).round}%" : "—" %></td>
           <td><%= c[:contradicted] %></td><td class="muted"><%= c[:unverifiable] %></td>
+          <td class="muted"><%= c[:abstained] %></td>
+          <td class="muted"><%= c[:population] %></td>
         </tr>
       <% end %>
     </table>
+    <% if @audit_rollups.present? %>
+      <div class="muted samples" style="margin-top:.5rem">
+        <% @audit_rollups.each do |facet, r| %>
+          <div>
+            <strong><%= facet %></strong>:
+            pooled <%= r[:pooled_rate] ? "#{(r[:pooled_rate] * 100).round}%" : "—" %>
+            · weighted <%= r[:weighted_rate] ? "#{(r[:weighted_rate] * 100).round}%" : "—" %>
+              over audited cells<%= r[:coverage] ? " (#{(r[:coverage] * 100).round}% of holdings)" : "" %>
+            · live <%= r[:live_rate] ? "#{(r[:live_rate] * 100).round}%" : "—" %>
+            <% if r[:insufficient_cells].positive? %>· <%= r[:insufficient_cells] %> cell(s) under the n-floor<% end %>
+          </div>
+        <% end %>
+        <div style="margin-top:.25rem">
+          The pooled rate is the PROCESS record — audits never age out, so a remediation moves the
+          live rate while the pooled rate honestly does not; that contrast is the finding. Weighted =
+          per-cell rates weighted by live claim population (the sampler equalizes cells, so the pooled
+          number weights a 2-claim cell like a 2,400-claim one). Abstained = verdicts on empty claims
+          (claims of absence), counted inside the rate.
+        </div>
+      </div>
+    <% end %>
     <div class="muted samples" style="margin-top:.5rem">
       <% if @audit_agreement[:rate] %>
         examiner–human agreement <strong><%= (@audit_agreement[:rate] * 100).round %>%</strong> on <%= @audit_agreement[:overlaps] %> overlap(s)

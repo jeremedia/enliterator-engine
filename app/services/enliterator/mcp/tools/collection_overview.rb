@@ -39,8 +39,13 @@ module Enliterator
             },
             condition: condition.slice(:surveyed, :total, :untendable, :residue_count)
                                 .merge(piles: Array(condition[:piles]).map { |p| p.slice(:signature, :count, :band) }),
+            # v0.72.3/72.5: the slice is EXPLICIT, so new accuracy keys must be
+            # admitted deliberately — live_supported_rate (nil under the
+            # n-floor), insufficient (pooled decided < 30), abstained (audits
+            # of empty claims — absence-supported verdicts inside the rate).
             accuracy: Enliterator::Audit.accuracy_cached.map { |r|
-              r.slice(:facet, :tier, :audited, :supported_rate, :contradicted)
+              r.slice(:facet, :tier, :audited, :supported_rate, :contradicted,
+                      :live_supported_rate, :insufficient, :abstained)
             },
             next: {
               vocabulary:      "term meanings per facet",

@@ -33,15 +33,14 @@ module Enliterator
     Outcome = Struct.new(
       :tier, :model, :records, :claims, :counts, :tokens, :elapsed_s, :errors,
       :required_terms, :required_met, :required_expected,
+      :abstained, :abstention_counts,
       keyword_init: true
     ) do
-      # PRECISION. Identical formula to Audit.accuracy: unverifiable is excluded
-      # from the denominator (the source could not decide, which is not the
-      # reader's fault).
-      def supported_rate
-        decided = counts["supported"] + counts["unsupported"] + counts["contradicted"]
-        decided.positive? ? (counts["supported"].to_f / decided).round(3) : nil
-      end
+      # PRECISION — v0.72: DELEGATES to Audit.rate, the one definition. The
+      # v0.70 header said "identical formula to Audit.accuracy" without
+      # enforcing it; now a bake-off number and the standing audit number are
+      # the same computation, not a maintained coincidence.
+      def supported_rate = Enliterator::Audit.rate(counts)
 
       # RECALL, as far as the engine can see it. `supported_rate` alone rewards a
       # reader for saying LESS: emit two safe claims instead of six and precision
@@ -59,6 +58,16 @@ module Enliterator
 
       def claims_per_record = records.positive? ? (claims.to_f / records).round(2) : 0.0
       def tokens_per_claim  = claims.positive? ? (tokens.to_f / claims).round(0).to_i : 0
+
+      # v0.72.5 — ABSTENTION, its own metric, never folded into precision.
+      # Folding correct-abstention into `supported` lets a quiet reader inflate
+      # precision (the quiet-reader trap in a new costume); excluding empties
+      # entirely makes virtuous restraint and damaging silence look identical.
+      # `supported_rate` is FILLED claims only; this is: of the empty claims,
+      # what fraction did the source support? Low density + high
+      # abstention-accuracy = restraint; low density + low = damaging silence.
+      # nil when the reader never abstained — an honest absence, not a zero.
+      def abstention_accuracy = Enliterator::Audit.rate(abstention_counts || {})
     end
 
     def self.run(records, **kwargs) = new(records, **kwargs).run
@@ -90,6 +99,7 @@ module Enliterator
       started  = Time.current
       adapter  = Enliterator.llm(tier: tier)
       counts   = Hash.new(0).tap { |h| VERDICTS.each { |v| h[v] = 0 } }
+      abst     = Hash.new(0)
       claims   = 0
       tokens   = 0
       errors   = []
@@ -120,7 +130,15 @@ module Enliterator
 
             claims += 1
             verdict = examine(key, value, source)
-            counts[verdict] += 1 if verdict
+            next unless verdict
+            # v0.72.5: empties aggregate SEPARATELY. Before this, an empty
+            # claim was excluded from coverage but coin-flip-scored into
+            # precision — the asymmetry resolved by the absence verdict.
+            if Enliterator::Claim.blank_value?(value)
+              abst[verdict] += 1
+            else
+              counts[verdict] += 1
+            end
           end
 
           # Recall, per record: did this reader produce what the facet obliges?
@@ -141,7 +159,8 @@ module Enliterator
         tier: tier, model: model || tier, records: @records.size, claims: claims,
         counts: counts, tokens: tokens, elapsed_s: (Time.current - started).round(1),
         errors: errors, required_terms: @required, required_met: req_met,
-        required_expected: req_seen
+        required_expected: req_seen,
+        abstained: abst.values.sum, abstention_counts: abst
       )
     end
 
@@ -153,9 +172,16 @@ module Enliterator
 
     # The examiner never learns which tier produced this — that blindness is what
     # makes the comparison worth running.
+    #
+    # truncated: false is EXPLICIT and correct: the bake-off sends the FULL
+    # `enliterator_text` with no `audit_source_chars` ceiling, so it has no
+    # truncation to report. (Adopting the ceiling would shift bake-off numbers
+    # against v0.70's — deliberately not done.) On empty claims this makes the
+    # examiner's `supported` branch available: the source is whole.
     def examine(key, value, source)
       rendered = @examiner.verdict_for(
-        facet: @facet, key: key, value: value, context: @context, source: source
+        facet: @facet, key: key, value: value, context: @context, source: source,
+        truncated: false
       )
       rendered.is_a?(Hash) ? rendered[:verdict] : nil
     end

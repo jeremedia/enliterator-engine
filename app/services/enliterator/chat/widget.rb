@@ -238,7 +238,7 @@ module Enliterator
         }.join
         return "" if rows.empty?
         %(<details class="enl-overview__accuracy"><summary>accuracy</summary>) +
-          %(<table class="enl-accuracy"><thead><tr><th>facet</th><th>tier</th><th>audited</th><th>supported</th><th>contradicted</th></tr></thead>) +
+          %(<table class="enl-accuracy"><thead><tr><th>facet</th><th>tier</th><th>audited</th><th>supported rate</th><th>contradicted</th></tr></thead>) +
           %(<tbody>#{rows}</tbody></table></details>)
       end
 

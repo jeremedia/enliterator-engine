@@ -42,6 +42,10 @@ module Enliterator
       picks = targets(facet: facet, context: context)
       picks = picks.first(limit) if limit
 
+      # v0.72.4: say so at enqueue time if nothing is listening (logged; the
+      # jobs still enqueue — a worker booting later legitimately drains them).
+      Enliterator::QueueHealth.warn_if_unconsumed(context: "revalidation #{facet}") if picks.any?
+
       enqueued = 0
       picks.each do |type, id|
         record = resolve(type, id) or next

@@ -18,6 +18,12 @@ namespace :enliterator do
 
     log = ->(msg) { logger ? logger.info("[enliterator:tend] #{msg}") : puts("[enliterator:tend] #{msg}") }
 
+    # v0.72.4: loud enqueue — the failure this closes was 32 jobs sitting in a
+    # consumerless queue silently, indefinitely. Once per task run.
+    if (queue_warning = Enliterator::QueueHealth.warn_if_unconsumed(context: "rake enliterator:tend"))
+      log.call("WARNING: #{queue_warning}")
+    end
+
     total_enqueued = 0
 
     # Skip synthesized types (composite-work wholes) — this legacy walk is a
@@ -824,16 +830,17 @@ namespace :enliterator do
     end
     puts
 
-    fmt = "%-32s %7s %6s %6s %6s %6s %6s %9s %9s"
+    fmt = "%-32s %7s %6s %6s %6s %6s %6s %9s %9s %6s %8s"
     puts format(fmt, "tier / resolved model", "claims", "c/rec", "supp", "unsup", "contra", "unver",
-                "PRECISION", "COVERAGE")
-    puts "-" * 104
+                "PRECISION", "COVERAGE", "abst", "abst_acc")
+    puts "-" * 120
     outcomes.each do |o|
       label = o.tier == o.model ? o.tier : "#{o.tier} -> #{o.model.to_s.split('/').last}"
       puts format(fmt, label.to_s[0, 32], o.claims, o.claims_per_record,
                   o.counts["supported"], o.counts["unsupported"], o.counts["contradicted"],
                   o.counts["unverifiable"], (o.supported_rate || "n/a").to_s,
-                  (o.coverage || "n/a").to_s)
+                  (o.coverage || "n/a").to_s, o.abstained.to_i,
+                  (o.abstention_accuracy || "n/a").to_s)
     end
     if required
       puts
@@ -875,11 +882,106 @@ namespace :enliterator do
       File.write(ENV["JSON"], JSON.pretty_generate(outcomes.map { |o|
         { tier: o.tier, model: o.model, records: o.records, claims: o.claims,
           counts: o.counts, supported_rate: o.supported_rate, coverage: o.coverage,
+          abstained: o.abstained.to_i, abstention_counts: o.abstention_counts,
+          abstention_accuracy: o.abstention_accuracy,
           required_terms: o.required_terms, required_met: o.required_met,
           required_expected: o.required_expected, tokens: o.tokens,
           tokens_per_claim: o.tokens_per_claim, elapsed_s: o.elapsed_s, errors: o.errors }
       }))
       puts "  wrote #{ENV['JSON']}"
     end
+  end
+end
+
+namespace :enliterator do
+  # v0.72 — the census. The standing sampler measures a stratified sliver (the
+  # right shape for detecting a garbage tier, no statistical power per key);
+  # the census walks the POPULATION: every live engine-derived claim on a
+  # facet, one blind grounded verdict each, pooled + per-key rates, split by
+  # the host's visibility partition when `config.census_visibility` is set.
+  #
+  # WRITES NOTHING by default. FLAG=1 files defective verdicts as agent-source
+  # audits (outside the accuracy instrument, lands on /review) capped at
+  # FLAG_LIMIT (default 50) — found vs filed is always printed.
+  #
+  #   bin/rails enliterator:census FACET=legal_relations CONTEXT=executive-orders
+  #   bin/rails enliterator:census FACET=authorship KEY=authored_by LIMIT=100
+  #   bin/rails enliterator:census FACET=legal_relations FLAG=1 FLAG_LIMIT=25 JSON=census.json
+  desc "Full-population grounded verdict sweep of a facet's live claims. FACET= [CONTEXT= TYPE= KEY= LIMIT= FLAG=1 FLAG_LIMIT= JSON=]"
+  task census: :environment do
+    require "json"
+
+    facet = ENV["FACET"].presence or abort "[enliterator:census] FACET= is required"
+    context = ENV["CONTEXT"].present? ? Enliterator::Context.find_by(key: ENV["CONTEXT"]) : nil
+    abort "[enliterator:census] no context #{ENV['CONTEXT'].inspect}" if ENV["CONTEXT"].present? && context.nil?
+
+    log = ->(msg) { puts "[enliterator:census] #{msg}" }
+    log.call("facet=#{facet}#{context ? " context=#{context.key}" : ''}#{ENV['KEY'].present? ? " key=#{ENV['KEY']}" : ''}")
+    log.call("examiner tier=#{Enliterator.configuration.audit_tier || Enliterator.staffing.ladder.last} (one instrument for the whole walk)")
+    log.call("visibility partition: #{Enliterator.configuration.census_visibility ? 'configured' : 'none (set config.census_visibility for the visible/withheld split)'}")
+
+    last_tick = Time.current
+    progress = lambda do |examined:, total:, **|
+      if Time.current - last_tick > 15
+        log.call("  #{examined}/#{total} examined...")
+        last_tick = Time.current
+      end
+    end
+
+    report = Enliterator::Census.run(
+      facet: facet, context: context, key: ENV["KEY"].presence,
+      type: ENV["TYPE"].presence, limit: ENV["LIMIT"].presence,
+      flag: ENV["FLAG"] == "1", flag_limit: ENV["FLAG_LIMIT"].presence,
+      progress: progress
+    )
+
+    puts
+    log.call("population=#{report[:population]} walked=#{report[:walked]} examined=#{report[:examined]} " \
+             "blank_source=#{report[:blank_source]} errors=#{report[:error_count]} (#{report[:elapsed_s]}s)")
+    log.call("LIMIT=#{report[:limit]} is a RANDOM subsample of the population") if report[:limit]
+    c = report[:counts]
+    log.call("pooled (filled): supp=#{c['supported'] || 0} unsup=#{c['unsupported'] || 0} " \
+             "contra=#{c['contradicted'] || 0} unver=#{c['unverifiable'] || 0}  " \
+             "SUPPORTED_RATE=#{report[:supported_rate] || 'n/a'}")
+    if report[:abstained].to_i.positive?
+      log.call("abstentions (empty claims): #{report[:abstained]}  " \
+               "ABSTENTION_ACCURACY=#{report[:abstention_accuracy] || 'n/a'} " \
+               "(of the empties, the fraction the source supports — restraint vs damaging silence)")
+    end
+    if (v = report[:visibility])
+      log.call("visible:  n=#{v[:visible][:examined]}  rate=#{v[:visible][:supported_rate] || 'n/a'}")
+      log.call("withheld: n=#{v[:withheld][:examined]}  rate=#{v[:withheld][:supported_rate] || 'n/a'}")
+    end
+
+    puts
+    fmt = "%-28s %6s %6s %6s %6s %6s %9s %6s %8s"
+    puts format(fmt, "key", "n", "supp", "unsup", "contra", "unver", "RATE", "abst", "abst_acc")
+    puts "-" * 92
+    report[:per_key].each do |key, k|
+      kc = k[:counts]
+      puts format(fmt, key.to_s[0, 28], k[:examined], kc["supported"] || 0, kc["unsupported"] || 0,
+                  kc["contradicted"] || 0, kc["unverifiable"] || 0, (k[:supported_rate] || "n/a").to_s,
+                  k[:abstained], (k[:abstention_accuracy] || "n/a").to_s)
+    end
+
+    if (f = report[:flags])
+      puts
+      log.call("FLAG: defects found=#{f[:found]} filed=#{f[:filed]} already_flagged=#{f[:already_flagged]} " \
+               "human_settled=#{f[:human_settled]} over_limit=#{f[:over_limit]} (cap #{f[:limit]})")
+      log.call("filed flags land on /review as agent audits — they change NO accuracy number") if f[:filed].positive?
+    end
+
+    if report[:error_count].positive?
+      puts
+      log.call("#{report[:error_count]} claims errored (walk continued):")
+      report[:errors].first(3).each { |e| log.call("  #{e}") }
+    end
+
+    if ENV["JSON"].present?
+      File.write(ENV["JSON"], JSON.pretty_generate(report))
+      log.call("wrote #{ENV['JSON']}")
+    end
+  rescue Enliterator::Census::ExaminerUnavailable => e
+    abort "[enliterator:census] ABORT: #{e.message}"
   end
 end

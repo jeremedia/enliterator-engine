@@ -37,8 +37,8 @@ RSpec.describe Enliterator::Bakeoff do
       @verdicts = verdicts   # optional queue of verdicts to return, cycled
       @i = -1
     end
-    def verdict_for(facet:, key:, value:, source:, context: nil)
-      @seen << { facet: facet, key: key, value: value, source: source, context: context }
+    def verdict_for(facet:, key:, value:, source:, context: nil, truncated: nil)
+      @seen << { facet: facet, key: key, value: value, source: source, context: context, truncated: truncated }
       @i += 1
       v = @verdicts ? @verdicts[@i % @verdicts.size] : "supported"
       { verdict: v, rationale: "r", confidence: 0.9, corrected_value: {}, tier: "x", model: "y" }
@@ -74,7 +74,11 @@ RSpec.describe Enliterator::Bakeoff do
       described_class.run([ widget ], facet: "summary", tiers: %w[tier-a tier-b], examiner: examiner)
 
       expect(examiner.seen.size).to eq(2)
-      expect(examiner.seen.first.keys).to contain_exactly(:facet, :key, :value, :source, :context)
+      # v0.72.5 adds :truncated — a property of the SOURCE (always false here:
+      # the bake-off sends full text), not of the producing arm. No parameter
+      # through which the producing model could reach the examiner.
+      expect(examiner.seen.first.keys).to contain_exactly(:facet, :key, :value, :source, :context, :truncated)
+      expect(examiner.seen.map { |s| s[:truncated] }).to all(be(false))
     end
 
     it "judges both arms with the SAME instrument" do

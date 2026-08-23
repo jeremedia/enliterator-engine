@@ -364,14 +364,19 @@
 <div class="card">
   <% if @accuracy.any? %>
     <table>
-      <tr><th>facet</th><th>tier</th><th>audited</th><th>supported</th><th>unsupported</th><th>contradicted</th><th>unverifiable</th><th>still live</th><th>supported rate</th></tr>
+      <tr><th>facet</th><th>tier</th><th>audited</th><th>supported</th><th>unsupported</th><th>contradicted</th><th>unverifiable</th><th>abstained</th><th>still live</th><th>supported rate</th><th>live rate</th></tr>
       <% @accuracy.each do |c| %>
         <tr>
           <td><%= c[:facet] %></td><td><%= c[:tier] %></td>
           <td><%= c[:audited] %></td><td><%= c[:supported] %></td>
           <td><%= c[:unsupported] %></td><td><%= c[:contradicted] %></td>
-          <td class="muted"><%= c[:unverifiable] %></td><td class="muted"><%= c[:live] %></td>
-          <td><strong><%= c[:supported_rate] ? "#{(c[:supported_rate] * 100).round}%" : "—" %></strong></td>
+          <td class="muted"><%= c[:unverifiable] %></td><td class="muted"><%= c[:abstained] %></td>
+          <td class="muted"><%= c[:live] %></td>
+          <td>
+            <strong><%= c[:supported_rate] ? "#{(c[:supported_rate] * 100).round}%" : "—" %></strong>
+            <% if c[:insufficient] %><span class="muted" title="fewer than <%= Enliterator::Audit::MIN_DECIDED %> decided verdicts — insufficient to rank">n&lt;<%= Enliterator::Audit::MIN_DECIDED %></span><% end %>
+          </td>
+          <td><%= c[:live_supported_rate] ? "#{(c[:live_supported_rate] * 100).round}%" : "—" %></td>
         </tr>
       <% end %>
     </table>

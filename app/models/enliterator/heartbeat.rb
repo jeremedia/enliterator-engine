@@ -392,6 +392,13 @@ module Enliterator
                 "#{item.tendable_type}/#{item.tendable_id} tier=#{visit.tier} " \
                 "conf=#{visit.confidence} spent=#{actual_tokens_spent}/#{budget_tokens}")
           else
+            # v0.72.4: warn ONCE PER CYCLE, at the first enqueue — when someone
+            # can still act (the v0.23 drain-deficit check fires after the fact
+            # and stays). The ledger gets it every cycle the condition holds.
+            if counts.values.sum { |h| h["enqueued"] }.zero? &&
+               (w = Enliterator::QueueHealth.warn_if_unconsumed(context: "heartbeat #{id}"))
+              run_warnings << w
+            end
             Enliterator::TendingVisitJob.perform_later(record, item.facet, item.context,
                                                        heartbeat_id: id, reason: item.reason)
             counts[item.reason]["enqueued"] += 1

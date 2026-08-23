@@ -151,6 +151,54 @@ RSpec.describe "Enliterator::Audit instrument (v0.18)" do
     end
   end
 
+  # v0.72.1 — ONE definition of supported_rate. Three computations existed
+  # (accuracy cells, Bakeoff's reimplementation, ad-hoc SQL); they agreed only
+  # because bake-offs have no human verdicts. The fixture that matters below
+  # CONTAINS a human overruling an examiner — a fixture without one would
+  # certify the coincidence instead of the invariant.
+  describe ".rate (the definition)" do
+    it "is the pure ratio: supported over decided, unverifiable excluded, symbol or string keys" do
+      expect(Enliterator::Audit.rate(supported: 2, unsupported: 1, contradicted: 0)).to eq(0.667)
+      expect(Enliterator::Audit.rate("supported" => 2, "unsupported" => 1)).to eq(0.667)
+      expect(Enliterator::Audit.rate(supported: 3, unverifiable: 5)).to eq(1.0)
+    end
+
+    it "returns nil — not 0.0 — when nothing was decided" do
+      expect(Enliterator::Audit.rate({})).to be_nil
+      expect(Enliterator::Audit.rate(unverifiable: 4)).to be_nil
+    end
+
+    it "equals the published accuracy rate on a fixture WHERE A HUMAN OVERRULES AN EXAMINER" do
+      w = Widget.create!(title: "w", body: "b")
+      overruled = claim!(w, key: "k1")
+      audit!(overruled, verdict: "supported", at: 2.days.ago)
+      audit!(overruled, verdict: "contradicted", source: "human", at: 1.day.ago)
+      standing = claim!(w, key: "k2")
+      audit!(standing, verdict: "supported")
+      undecided = claim!(w, key: "k3")
+      audit!(undecided, verdict: "unverifiable")
+
+      cell = Enliterator::Audit.accuracy.find { |c| c[:facet] == "summary" }
+      # The cell's counts follow the HUMAN (effective-verdict precedence)...
+      expect(cell.slice(:supported, :contradicted, :unverifiable))
+        .to eq(supported: 1, contradicted: 1, unverifiable: 1)
+      # ...and the published rate IS Audit.rate over those effective counts.
+      expect(cell[:supported_rate]).to eq(0.5)
+      expect(Enliterator::Audit.rate(cell)).to eq(cell[:supported_rate])
+      # A raw-audit count (precedence dropped) gives a DIFFERENT number —
+      # the divergence the single definition exists to prevent.
+      raw = Enliterator::Audit.group(:verdict).count
+      expect(Enliterator::Audit.rate(raw)).to eq(0.667)
+    end
+
+    it "is what Bakeoff::Outcome#supported_rate computes (string-keyed counts, delegated)" do
+      counts = { "supported" => 2, "unsupported" => 1, "contradicted" => 0, "unverifiable" => 9 }
+      outcome = Enliterator::Bakeoff::Outcome.new(tier: "t", counts: counts)
+      expect(outcome.supported_rate).to eq(Enliterator::Audit.rate(counts))
+      expect(outcome.supported_rate).to eq(0.667)
+    end
+  end
+
   describe ".anchor_agreement" do
     it "binary agreement, min-n gate, and the overruled-supported line" do
       w = Widget.create!(title: "w", body: "b")

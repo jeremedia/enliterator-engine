@@ -776,12 +776,9 @@ module Enliterator
       end
 
       # Blank = nil, empty/whitespace string, or empty array/hash.
-      def blank_value?(value)
-        return true if value.nil?
-        return value.strip.empty? if value.is_a?(String)
-        return value.empty? if value.respond_to?(:empty?)
-        false
-      end
+      # v0.72: delegates to the shared definition — the reader and the
+      # measurement stack must agree on what "empty" means.
+      def blank_value?(value) = Enliterator::Claim.blank_value?(value)
 
       # Emit one structured log line for a tending event, nil-safe (no logger → no-op).
       # Shape: "[enliterator] event=<event> k=v k=v ...". Whitespace values are quoted;

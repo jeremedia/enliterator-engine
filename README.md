@@ -649,6 +649,39 @@ Pick the facet with care: a generative facet like `summary` is a ceiling where
 every competent reader scores 1.0 and the test has no power (the tool detects a
 no-variance result and says so). Audition on facets where readers actually fail.
 
+### Measuring the population (v0.72 — the census)
+
+The standing audit sampler equalizes count per facet×tier cell — the right shape
+for catching a garbage tier, and no statistical power per key. The census is the
+population instrument: it walks **every** live, engine-derived claim on a facet
+and renders one blind, grounded verdict each (the same examiner, still writing
+nothing by default).
+
+```bash
+bin/rails enliterator:census FACET=legal_relations CONTEXT=executive-orders
+bin/rails enliterator:census FACET=legal_relations FLAG=1 FLAG_LIMIT=25 JSON=census.json
+```
+
+Pooled + per-key rates, with three refinements:
+
+- **visible/withheld split** when the host sets `config.census_visibility`
+  (a callable, record → boolean) — population structure hides in that split.
+- **Abstention as its own metric.** An empty claim is a claim of *absence*, and
+  v0.72 teaches the examiner what that asserts (confirmable only against a
+  complete source; refutable from any fragment). Census and bake-off report
+  `precision` (filled claims), `abstained`, and `abstention_accuracy` —
+  the pair separates virtuous restraint from damaging silence.
+- **`FLAG=1`** files defective verdicts as **agent-source** audits (capped,
+  idempotent, printed): they land on `/review` for a human and change **no**
+  accuracy number. Agents flag; humans retract.
+
+The accuracy report itself now shows population truth beside the process record:
+each cell carries `population`, `live_supported_rate` (n-floored on its own
+denominator), and `insufficient` (decided < 30); `Audit.accuracy_rollups` gives
+per-facet weighted/live rates with `coverage` (how much of the facet the
+weighted number actually represents). After a remediation the live rate moves
+and the pooled rate honestly does not — that contrast is the finding.
+
 ## Facet Contracts & Suggestions
 
 A facet with no output contract lets the model freelance terms — `author`

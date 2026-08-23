@@ -39,6 +39,14 @@ module Enliterator
 
     MIN_AGREEMENT_OVERLAPS = 10
 
+    # v0.72.3 — the structural n-floor for the NEW rate surfaces. The failure
+    # it prevents was live: per-key rates at n=24 displayed with three decimal
+    # places and read as facet-level signal where a census found a 10-point gap
+    # they could not see. Conventional minimum for a proportion. It floors ONLY
+    # the new keys (`insufficient`, `live_supported_rate` nil-ing) — never the
+    # v0.18 `supported_rate`, whose consumers and history predate it.
+    MIN_DECIDED = 30
+
     class << self
       # Stratified uniform-random sample for examination: per facet × tier
       # cell (the report's cell — facet via the claim's visit; tier NULL
@@ -88,6 +96,29 @@ module Enliterator
                           .where.not(id: Enliterator::Audit.instrument.select(:claim_id))
       end
 
+      # v0.72: THE definition of supported_rate. There were three computations
+      # of "the" rate (this class's accuracy cells, Bakeoff's reimplementation,
+      # ad-hoc SQL) that agreed only by luck — two competent readers derived
+      # .698 and .740 from the same data without noticing. One formula now:
+      # supported over DECIDED, where decided excludes `unverifiable` (the
+      # source could not decide, which is not the reader's fault). nil when
+      # nothing was decided — never 0.0, which would read as a measured zero.
+      #
+      # Effective-verdict precedence (human outranks examiner) is part of the
+      # metric's DEFINITION but lives in the caller that assembles the counts
+      # (`effective_verdicts` here) — this method is the pure ratio over
+      # already-adjudicated counts. Floor-FREE by design: small-n judgment
+      # belongs to the caller (Bakeoff's rake prints its own noise warning;
+      # the report's n-floor arrives on NEW keys in v0.72.3, never here —
+      # flooring this would silently change v0.70 bake-off semantics).
+      def rate(counts)
+        # fetch, not `||`: a Hash.new(0) answers 0 (truthy) for the absent
+        # symbol key, which would shadow the string key it actually holds.
+        n = ->(k) { counts.fetch(k) { counts.fetch(k.to_s, 0) }.to_i }
+        decided = n[:supported] + n[:unsupported] + n[:contradicted]
+        decided.positive? ? (n[:supported].to_f / decided).round(3) : nil
+      end
+
       # v0.28: cached accuracy for the hot first-turn path (collection_overview /
       # the accuracy tool). Keyed on the audit set's last write + count — NOT the
       # heartbeat id — because audits are filed out-of-band (human /review, agent
@@ -112,18 +143,93 @@ module Enliterator
           cell  = cells[[ facet, tier ]]
           cell[:audited] += 1
           cell[verdict.to_sym] += 1
-          cell[:live] += 1 if claim.superseded_by_id.nil? && claim.status != "superseded"
+          if claim.superseded_by_id.nil? && claim.status != "superseded"
+            cell[:live] += 1
+            # v0.72.3: the live-scoped verdict components — after a remediation
+            # supersedes bad claims, the LIVE rate moves while the pooled rate
+            # honestly does not; that contrast is the finding.
+            cell[:"live_#{verdict}"] += 1
+          end
+          # v0.72.5: audits of EMPTY claims (claims of absence), counted beside
+          # the rate. Post-72.5 the examiner renders mostly-`supported` on
+          # correct abstentions, and pooling those unmarked would quietly
+          # inflate abstention-heavy cells — negligible at 0.19% of all claims,
+          # material at 7.4% on the facet that motivated this. The pooled rate
+          # still includes them (it is the process record); this count is what
+          # lets a reader see how much of a cell's rate is absence-supported.
+          cell[:abstained] += 1 if Enliterator::Claim.blank_value?(claim.value)
         end
 
+        pops = cell_populations
         cells.map do |(facet, tier), c|
-          decided = c[:supported] + c[:unsupported] + c[:contradicted]
+          decided      = c[:supported] + c[:unsupported] + c[:contradicted]
+          live_counts  = { supported: c[:live_supported], unsupported: c[:live_unsupported],
+                           contradicted: c[:live_contradicted] }
+          live_decided = live_counts.values.sum
           {
             facet: facet, tier: tier, audited: c[:audited], live: c[:live],
             supported: c[:supported], unsupported: c[:unsupported],
             contradicted: c[:contradicted], unverifiable: c[:unverifiable],
-            supported_rate: decided.positive? ? (c[:supported].to_f / decided).round(3) : nil
+            abstained: c[:abstained],
+            # v0.18 key, BYTE-UNTOUCHED by the floor: nil-ing it under MIN_DECIDED
+            # would be an ungated behavior change on every existing consumer.
+            supported_rate: rate(c),
+            # v0.72.3 additive keys. Each new rate is floored on ITS OWN
+            # denominator — live-decided ⊆ pooled-decided, and they diverge most
+            # right after a remediation (200 pooled, 4 live must not display a
+            # live rate over n=4). No NEW number pretends to power it lacks.
+            population: pops[[ facet, tier ]].to_i,
+            live_decided: live_decided,
+            live_supported_rate: live_decided >= MIN_DECIDED ? rate(live_counts) : nil,
+            insufficient: decided < MIN_DECIDED
           }
         end.sort_by { |c| [ c[:facet], c[:tier] ] }
+      end
+
+      # v0.72.3 — facet-level rollups, a COMPANION method rather than appended
+      # rows: every consumer iterates accuracy rows as facet×tier cells, so a
+      # rollup row would render as a bogus cell in all of them.
+      #
+      # weighted_rate weighs each cell's rate by its live claim POPULATION —
+      # the sampler equalizes count per cell, so pooled audit counts reflect
+      # sampling intensity, not the collection (a 2,400-claim cell and a
+      # 2-claim cell carry equal weight in the pooled number; that is the
+      # distortion this exists to undo). Cells are admitted by pooled decided
+      # ≥ MIN_DECIDED; the LIVE rollup admits by live decided.
+      #
+      # coverage = live population in cells that HAVE accuracy rows / the
+      # facet's total live population. Rows exist only where audits exist, so
+      # a never-audited cell's population silently drops out of the weighted
+      # denominator — coverage says how much of the facet the weighted number
+      # actually represents.
+      def accuracy_rollups(rows = accuracy)
+        pops = cell_populations
+        facet_pop = pops.each_with_object(Hash.new(0)) { |((f, _t), n), h| h[f] += n }
+
+        rows.group_by { |r| r[:facet] }.to_h do |facet, cells|
+          pooled = { supported: cells.sum { |r| r[:supported] },
+                     unsupported: cells.sum { |r| r[:unsupported] },
+                     contradicted: cells.sum { |r| r[:contradicted] } }
+
+          admitted = cells.reject { |r| r[:insufficient] }
+          wpop     = admitted.sum { |r| r[:population] }
+          weighted = wpop.positive? ? (admitted.sum { |r| r[:supported_rate].to_f * r[:population] } / wpop).round(3) : nil
+
+          live_cells = cells.select { |r| r[:live_supported_rate] }
+          live_n     = live_cells.sum { |r| r[:live_decided] }
+          live       = live_n.positive? ? (live_cells.sum { |r| r[:live_supported_rate] * r[:live_decided] } / live_n.to_f).round(3) : nil
+
+          covered = cells.sum { |r| r[:population] }
+          total   = facet_pop[facet]
+
+          [ facet, {
+            pooled_rate:        rate(pooled),
+            weighted_rate:      weighted,
+            live_rate:          live,
+            insufficient_cells: cells.count { |r| r[:insufficient] },
+            coverage:           total.positive? ? (covered.to_f / total).round(3) : nil
+          } ]
+        end
       end
 
       # The examiner's calibration: among claims with BOTH an examiner and a
@@ -170,6 +276,17 @@ module Enliterator
       end
 
       private
+
+      # v0.72.3: live engine-derived claim stock per facet×tier cell — the
+      # weights for the rollups and each row's `population`. Same candidate
+      # philosophy as the sampler: live, visit-bearing, unlocked (locked claims
+      # are curator rulings, not the model's output).
+      def cell_populations
+        Enliterator::Claim.live.where(locked: false).where.not(visit_id: nil)
+                          .joins("JOIN enliterator_visits sv ON sv.id = enliterator_claims.visit_id")
+                          .group(Arel.sql("sv.facet"), Arel.sql("COALESCE(enliterator_claims.tier, 'unknown')"))
+                          .count
+      end
 
       # {claim => effective_verdict} — latest human, else latest examiner.
       # Instrument-scoped: agent flags carry no verdict weight (v0.26).
