@@ -38,6 +38,17 @@ module Enliterator
       merged
     end
 
+    # v0.74: the scope notes for a facet/context — `{key => {"not" => [...],
+    # "applies_only_when" => "..."}}` or nil. THE ONE SOURCE for both halves,
+    # consulted by the READER (visitor → adapter prompt) and the EXAMINER
+    # (messages_for) alike — reader and instrument diverging on what a term
+    # means is the failure this channel exists to prevent. Code-owned (the
+    # Policy DSL); curator-editable scope notes are future authority-control
+    # work.
+    def scope_notes_for(facet, context: nil)
+      Enliterator.staffing.scope_notes_for(facet, path: context&.path_keys)
+    end
+
     # Terms a curator AUTHORIZED for this facet — visible from `context` (its
     # own + ancestors + root NULL) — with a description (the term's considerer
     # rationale, else a default). {} when none.

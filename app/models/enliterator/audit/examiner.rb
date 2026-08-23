@@ -161,12 +161,31 @@ module Enliterator
         [ { role: "system", content: system },
           { role: "user", content: <<~USER.strip } ]
             FACET: #{facet}
-            CLAIM KEY: #{key}#{meaning ? "\nKEY MEANING (controlled vocabulary): #{meaning}" : ''}
+            CLAIM KEY: #{key}#{meaning ? "\nKEY MEANING (controlled vocabulary): #{meaning}" : ''}#{scope_note_lines(facet, key, context)}
             CLAIM VALUE: #{claim_line}
 
             SOURCE:
             #{source}
           USER
+      end
+
+      # v0.74: the SAME scope notes the reader was given, from the SAME source
+      # (Vocabulary.scope_notes_for) — divergence between the reader and its
+      # instrument is impossible by construction. The precondition matters MOST
+      # here: an examiner judging an empty claim on a document where the key
+      # does not apply must know that silence was the instructed behavior.
+      # nil ⇒ empty string ⇒ the prompt is byte-identical (golden).
+      def scope_note_lines(facet, key, context)
+        note = Enliterator::Vocabulary.scope_notes_for(facet, context: context)&.dig(key.to_s)
+        return "" unless note
+
+        out = +""
+        if (cond = note["applies_only_when"])
+          out << "\nKEY APPLIES ONLY WHEN: #{cond}. On a document where this does not hold, " \
+                 "an empty claim is the INSTRUCTED behavior and a value is suspect."
+        end
+        Array(note["not"]).each { |x| out << "\nKEY EXCLUDES: #{x}" }
+        out
       end
 
       def standard_system

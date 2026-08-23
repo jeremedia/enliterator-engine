@@ -702,6 +702,31 @@ phantom returns. v0.73 gives curators the ruling that *holds*:
 - The ruling binds the catalog, not the world: `correct_claim!` can later
   supply a real value over the blank — refusal stays smaller than revolution.
 
+### Scope notes (v0.74 — terms that say what they are NOT)
+
+A term's declaration may be a rich hash: the `scope` string every consumer
+already knows, plus classical thesaurus scope-note content —
+
+```ruby
+facet :legal_relations, tier: "quality", terms: {
+  supersedes: {
+    scope: "Prior orders this document changes.",
+    not: [ "orders the document explicitly preserves or continues",
+           "orders merely cited as authority" ],
+    applies_only_when: "the document actually changes a prior order"
+  },
+  citation: "Plain string terms work exactly as before."
+}
+```
+
+`not:` excludes values ("here, not there"); `applies_only_when:` gates the
+key — on a document where it fails, the reader is instructed that **no entry
+is the right entry**. Both reach the reader *and* the examiner from one source
+(`Vocabulary.scope_notes_for`), so the collection's reader and its measuring
+instrument cannot silently diverge on what a term means. A `required` term
+cannot carry a precondition (contradictory instructions — rejected at
+registration, backstopped at resolution).
+
 ## Facet Contracts & Suggestions
 
 A facet with no output contract lets the model freelance terms — `author`

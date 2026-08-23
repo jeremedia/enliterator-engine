@@ -197,6 +197,10 @@ module Enliterator
       kwargs[:tags]     = [ "enliterator", "bakeoff" ] if accepts?(adapter, :tags)
       contract = Enliterator::Vocabulary.for(@facet, context: @context)
       kwargs[:contract] = contract if contract.present? && accepts?(adapter, :contract)
+      # v0.74: an audition arm reading WITHOUT the scope notes the standing
+      # reader gets would measure a different task than production runs.
+      notes = Enliterator::Vocabulary.scope_notes_for(@facet, context: @context)
+      kwargs[:scope_notes] = notes if notes.present? && accepts?(adapter, :scope_notes)
       # The required-terms instruction is part of the job. Measuring coverage
       # without it would score readers on an obligation they were never given.
       # v0.73: per-record — adjudicated keys are not part of this record's job.

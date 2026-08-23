@@ -167,6 +167,18 @@ module Enliterator
                        Enliterator::Vocabulary.candidates_for(facet, context: context, established: contract)
                      end
 
+        # v0.74: SKOS scope notes (value exclusions + key preconditions) —
+        # resolved by the VISITOR beside the contract, never by the adapter
+        # (an adapter fetching them itself would drop the context: the exact
+        # context-path trap). One source (Vocabulary.scope_notes_for) feeds
+        # reader AND examiner. The backstop drops a precondition from any key
+        # that is ALSO required here (cross-context escape past the ingest
+        # guard: required falls through to an ancestor while scope notes read
+        # descendant-first) — required wins, loudly, because silently lifting
+        # an obligation is the worse failure.
+        scope_notes = Enliterator::Vocabulary.scope_notes_for(facet, context: context)
+        scope_notes = scope_notes_minus_required(scope_notes, required)
+
         # No tier may legally run this record (e.g. on-prem-only with no on-prem
         # ladder). Record a failed visit and surface the misconfiguration.
         if allowed.empty?
@@ -194,7 +206,8 @@ module Enliterator
             proposed_by_lower: proposed,
             contract:          contract,
             required:          required,
-            candidates:        candidates
+            candidates:        candidates,
+            scope_notes:       scope_notes
           )
 
           # v0.5: a required key that came back empty forces escalation even when the
@@ -395,7 +408,7 @@ module Enliterator
       # Run one tending at a tier, recording the Visit (tier, tokens, raw,
       # escalation linkage). Does NOT reconcile — the loop decides which visit
       # writes. Returns [visit, parsed].
-      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil, required: nil, candidates: nil)
+      def run_tier_visit(tier:, step:, escalated_from:, proposed_by_lower:, contract: nil, required: nil, candidates: nil, scope_notes: nil)
         adapter = Enliterator.llm(tier: tier)
         log_event("resolve", tier: tier, adapter: adapter.class.name, model_id: adapter.model_id,
                              facet: facet, tendable: tendable_ref, step: step)
@@ -442,6 +455,7 @@ module Enliterator
             contract:  contract,
             required:  required,
             candidates: candidates,
+            scope_notes: scope_notes,
             source_changed: re_derive?
           )
           parsed = response.parsed || {}
@@ -697,12 +711,13 @@ module Enliterator
       # to v0.2 even on adapters that DO accept `contract:`. The Gateway accepts both;
       # Null/Bedrock accept `contract:` (and ignore it); per-tier stubs that accept
       # only `tags:` (escalation spec) still work — they're never handed a contract.
-      def tend_with_optional_kwargs(adapter, text:, facet:, state:, neighbors:, tags:, contract:, required: nil, candidates: nil, source_changed: false)
+      def tend_with_optional_kwargs(adapter, text:, facet:, state:, neighbors:, tags:, contract:, required: nil, candidates: nil, scope_notes: nil, source_changed: false)
         kwargs = { text: text, facet: facet, state: state, neighbors: neighbors }
         kwargs[:tags]       = tags       if adapter_accepts_kwarg?(adapter, :tags)
         kwargs[:contract]   = contract   if !contract.nil?   && adapter_accepts_kwarg?(adapter, :contract)
         kwargs[:required]   = required   if !required.nil?   && adapter_accepts_kwarg?(adapter, :required)
         kwargs[:candidates] = candidates if !candidates.nil? && adapter_accepts_kwarg?(adapter, :candidates)
+        kwargs[:scope_notes] = scope_notes if !scope_notes.nil? && adapter_accepts_kwarg?(adapter, :scope_notes)
         # v0.59: pass source_changed ONLY when TRUE (a re-derive visit), so a normal
         # visit or a flag-off host omits the kwarg entirely ⇒ the adapter's default
         # `source_changed: false` ⇒ byte-identical prompt.
@@ -1008,6 +1023,30 @@ module Enliterator
 
       def live_claim_for(key)
         tendable.enliterator_claims.live.find_by(key: key, context_id: context&.id)
+      end
+
+      # v0.74: the resolved-path backstop — a key both REQUIRED and
+      # precondition-bearing gets the precondition DROPPED, loudly. The ingest
+      # guard catches same-declaration conflicts; this catches the cross-
+      # context shape (root-required + context-precondition'd). Exclusions
+      # (`not`) always survive — they never contradict an obligation.
+      def scope_notes_minus_required(notes, required)
+        return notes if notes.blank? || required.blank?
+
+        req = Array(required).map(&:to_s)
+        out = {}
+        notes.each do |key, note|
+          if req.include?(key.to_s) && note["applies_only_when"]
+            log_event("scope_note_precondition_dropped", facet: facet, key: key,
+                                                         tendable: tendable_ref,
+                                                         reason: "key is required here — required wins")
+            trimmed = note.except("applies_only_when")
+            out[key] = trimmed if trimmed.any?
+          else
+            out[key] = note
+          end
+        end
+        out.presence
       end
 
       # v0.73: required terms minus the ADJUDICATED ones — keys where a live

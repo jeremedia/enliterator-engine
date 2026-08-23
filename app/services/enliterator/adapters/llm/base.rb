@@ -194,12 +194,16 @@ module Enliterator
         #
         # @param contract [Hash, nil] `{key => description}` or nil.
         # @return [String]
-        def system_for(contract, required: nil, candidates: nil, source_changed: false)
+        # v0.74: `scope_notes:` ({key => {"not" => [...], "applies_only_when" => s}},
+        # resolved by the VISITOR from Vocabulary.scope_notes_for — the adapter never
+        # fetches them itself, or the context would silently drop). nil => the prompt
+        # is byte-identical to v0.73 (golden-pinned).
+        def system_for(contract, required: nil, candidates: nil, scope_notes: nil, source_changed: false)
           base = build_system(source_changed: source_changed)
           keys = allowed_terms_from(contract)
           return base if keys.nil? || keys.empty?
 
-          out = base + "\n\n" + contract_system_block(contract, required: required)
+          out = base + "\n\n" + contract_system_block(contract, required: required, scope_notes: scope_notes)
           out += "\n\n" + candidates_block(candidates) if candidates&.any?
           out
         end
@@ -289,8 +293,24 @@ module Enliterator
         # is appended emphasizing they must be asserted (instruction-level — a JSON
         # schema cannot force array CONTENTS, only shape). With no required keys the
         # text is byte-identical to v0.3/v0.4.
-        def contract_system_block(contract, required: nil)
-          lines = contract.map { |k, desc| "  - #{k}: #{desc}" }.join("\n")
+        # v0.74: a term carrying scope notes renders them UNDER its contract line —
+        # a precondition ("use only when...") gates the KEY and instructs abstention
+        # when it fails; exclusions ("here, not there") constrain the VALUES. Both are
+        # classical thesaurus scope-note content (SKOS skos:scopeNote), and the SAME
+        # notes reach the examiner from the same source, so reader and instrument
+        # cannot silently disagree about what a term means.
+        def contract_system_block(contract, required: nil, scope_notes: nil)
+          lines = contract.map { |k, desc|
+            entry = "  - #{k}: #{desc}"
+            if (note = scope_notes&.[](k.to_s))
+              if (cond = note["applies_only_when"])
+                entry += "\n      APPLIES ONLY WHEN: #{cond}. When this condition does not hold, " \
+                         "emit NO claim for this key — silence is the correct reading."
+              end
+              Array(note["not"]).each { |x| entry += "\n      NOT: #{x}" }
+            end
+            entry
+          }.join("\n")
           block = <<~CONTRACT.strip
             CONTROLLED VOCABULARY — this facet has a fixed set of allowed terms.
             Use ONLY these terms for the `key` of every claim:

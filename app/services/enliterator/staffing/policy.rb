@@ -48,6 +48,11 @@ module Enliterator
         @context_caps      = {}
         @term_lists     = {}
         @required_term_map  = {}
+        # v0.74: SKOS-style scope notes, split from rich term declarations at
+        # ingest ({facet => {key => {"not" => [...], "applies_only_when" => s}}}).
+        # A PARALLEL channel: term_lists stays {key => String} forever, so the
+        # eight consumers that interpolate descriptions never see a Hash.
+        @scope_note_map = {}
         # v0.13: facet declarations scoped to a named collection context
         # ({context_key => {assignments:, term_lists:, required:}}). Declarations
         # OUTSIDE any `context` block land in the flat root registries above —
@@ -106,11 +111,55 @@ module Enliterator
       # required terms still resolve for orchestrated or manual tending (the
       # deep read runs by deliberate invocation, never by the pacemaker).
       # Omitted ⇒ scheduled, byte-identical to v0.24.
+      # v0.74: a term's value may be a rich Hash — `{ scope: "…", not: [...],
+      # applies_only_when: "…" }` — SPLIT here, at the stringification site
+      # (thesaurus scope notes: "here, not there" + "use only when…"; SKOS
+      # skos:scopeNote, two renderings of one concept). The `scope` string
+      # lands in term_lists so every existing consumer keeps the plain-String
+      # shape; `not` (value exclusions) and `applies_only_when` (a key
+      # precondition) land in the parallel scope_note_map. A term may carry
+      # BOTH — they fix disjoint failure populations on the same key (the
+      # precondition gates the key on documents where it does not apply; the
+      # exclusion constrains values where it does). Plain-string terms:
+      # byte-identical storage.
+      #
+      # `required` × `applies_only_when` on one key is FORBIDDEN: the REQUIRED
+      # block says "these facts are present; find and assert them" while a
+      # precondition says "emit nothing unless X" — the contradictory-
+      # instruction shape v0.46.1 resolved by swap-not-append, except here
+      # neither can win. Fail-fast at registration (house style).
       def facet(name, tier:, terms:, required: nil, scheduled: true)
         assign(name, tier: tier)
-        bucket[:term_lists][name.to_s] =
-          terms.each_with_object({}) { |(k, v), h| h[k.to_s] = v.to_s }
         req = Array(required).map(&:to_s).reject(&:empty?)
+
+        lists = {}
+        notes = {}
+        terms.each do |k, v|
+          key = k.to_s
+          unless v.is_a?(Hash)
+            lists[key] = v.to_s
+            next
+          end
+          rich = v.transform_keys(&:to_s)
+          lists[key] = rich["scope"].to_s
+          note = {}
+          exclusions = Array(rich["not"]).map(&:to_s).reject(&:empty?)
+          note["not"] = exclusions if exclusions.any?
+          cond = rich["applies_only_when"].to_s
+          if cond.strip.length.positive?
+            if req.include?(key)
+              raise Enliterator::ConfigurationError,
+                    "facet #{name}: term #{key} is REQUIRED and carries applies_only_when — " \
+                    "'find and assert this' contradicts 'emit nothing unless…'; declare one or the other " \
+                    "(conditionally-required is not yet modeled)"
+            end
+            note["applies_only_when"] = cond
+          end
+          notes[key] = note if note.any?
+        end
+
+        bucket[:term_lists][name.to_s] = lists
+        bucket[:scope_notes][name.to_s] = notes if notes.any?
         bucket[:required][name.to_s] = req unless req.empty?
         bucket[:unscheduled] << name.to_s unless scheduled
         self
@@ -210,6 +259,19 @@ module Enliterator
         contract = terms_for(facet, path: path)
         return nil if contract.nil?
         contract.keys
+      end
+
+      # v0.74: the scope notes for a facet — `{key => {"not" => [...],
+      # "applies_only_when" => "..."}}` — or nil when none declared. Resolves
+      # descendant-first exactly like terms_for (declaration location = tending
+      # scope; the deepest declaration wins).
+      def scope_notes_for(facet, path: nil)
+        facet = facet.to_s
+        Array(path).reverse_each do |key|
+          notes = @context_facets.dig(key.to_s, :scope_notes)
+          return notes[facet] if notes&.key?(facet)
+        end
+        @scope_note_map[facet]
       end
 
       # The required terms for a facet as a `[String]`, or nil when the facet
@@ -408,10 +470,12 @@ module Enliterator
       def bucket
         if @current_context_key
           @context_facets[@current_context_key] ||=
-            { assignments: {}, term_lists: {}, required: {}, unscheduled: Set.new }
+            { assignments: {}, term_lists: {}, required: {}, unscheduled: Set.new,
+              scope_notes: {} }
         else
           { assignments: @assignments, term_lists: @term_lists,
-            required: @required_term_map, unscheduled: @unscheduled_root }
+            required: @required_term_map, unscheduled: @unscheduled_root,
+            scope_notes: @scope_note_map }
         end
       end
 
