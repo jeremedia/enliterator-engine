@@ -82,6 +82,7 @@
   <% conseq_confirm  = %(Records your agreeing human verdict — "#{audit.verdict}" becomes this claim's ground truth and feeds the examiner-agreement rate.#{rt_suffix}) %>
   <% conseq_overrule = %(Records your chosen verdict in place of the #{audit.source}'s — wherever both exist, the human verdict outranks it in every accuracy count.#{rt_suffix}) %>
   <% conseq_correct  = %(Supersedes the claim with your value, locked as a curator anchor — future tends will not clobber it.) %>
+  <% conseq_retract  = %(Adjudicates the key ABSENT: every live claim for it is superseded to a locked blank, open gaps close as adjudicated, and future tends can never re-assert it. For a claim that should not exist at all.) %>
   <%# The verdict lanes, rendered ONCE (capture) and used by both the list card and the
       focus template — the live/re-tended branch stays a single source of truth.
       v0.63: each verdict is wrapped in a named .focus-lane group so the three choices
@@ -118,6 +119,14 @@
           <input type="text" name="value" placeholder="the corrected value" class="field"
                  value="<%= audit.corrected_value.is_a?(String) ? audit.corrected_value : '' %>">
           <button type="submit" class="btn btn-primary">Correct</button>
+        <% end %>
+      </div>
+      <div class="focus-lane">
+        <span class="focus-lane-label">Retract — should not exist</span>
+        <%= form_with url: review_verdict_path, method: :post, html: { data: { consequence: conseq_retract } } do %>
+          <input type="hidden" name="audit_id" value="<%= audit.id %>">
+          <input type="hidden" name="decision" value="retract">
+          <button type="submit" class="btn">Retract</button>
         <% end %>
       </div>
     <% end %>

@@ -139,6 +139,24 @@ module Enliterator
         # bars `verified` at the top tier. nil ⇒ byte-identical to v0.3/v0.4.
         required = policy.required_terms(facet, path: @path_keys)
 
+        # v0.73: ADJUDICATED ABSENCE lifts the obligation. A live LOCKED BLANK
+        # claim is a curator's ruling that this key is EMPTY and stays empty —
+        # a human answered the question; the answer is "nothing"; that is
+        # knowledge. Filtering here, at resolution, is the ONE edit point that
+        # reaches all three penalty sites at once: escalation (the ladder no
+        # longer climbs chasing a value that does not exist), the adapter's
+        # REQUIRED prompt block (the reader is no longer told to force it),
+        # and apply_lacunae! (no perpetual open gap). `verified` follows for
+        # free (required_unmet is computed from this set).
+        #
+        # NOT general live-awareness — the predicate is exactly locked && blank
+        # (measured: general live-awareness would trade 5.4% waste for a stale
+        # claim suppressing escalation on a genuinely-changed source).
+        # `.presence` so a fully-adjudicated facet yields nil, never [] — the
+        # engine's nil-not-empty convention; the optional-kwarg probe gates on
+        # !nil, and third-party adapters may not guard on emptiness.
+        required = effective_required(required, context)
+
         # Stage 1 (read-time warrant accrual): the CANDIDATE vocabulary for this
         # facet/context — live pending proposals other readers have made — so the
         # model AFFIRMS an existing candidate instead of coining a synonym. Gated on
@@ -239,11 +257,23 @@ module Enliterator
 
           case op
           when "ADD"
-            create_claim(
-              key: key, value: value, confidence: confidence, visit: visit,
-              attributed_to: attributed_to, tier: tier, status: status
-            )
-            recon[:added] << key
+            if existing&.locked
+              # v0.73 (the durability hole): a model emitting an explicit
+              # op:"ADD" against a locked claim would mint a live SIBLING
+              # beside it — the phantom returns, and live_claim_for over two
+              # live rows goes nondeterministic. A locked claim must never
+              # acquire a live sibling, whatever op the model chose — this
+              # guards adjudication blanks AND correct_claim! anchors alike
+              # (the UPDATE and DELETE branches already refuse; ADD was the
+              # one door left open).
+              recon[:noop] << key
+            else
+              create_claim(
+                key: key, value: value, confidence: confidence, visit: visit,
+                attributed_to: attributed_to, tier: tier, status: status
+              )
+              recon[:added] << key
+            end
 
           when "UPDATE"
             if existing.nil?
@@ -978,6 +1008,24 @@ module Enliterator
 
       def live_claim_for(key)
         tendable.enliterator_claims.live.find_by(key: key, context_id: context&.id)
+      end
+
+      # v0.73: required terms minus the ADJUDICATED ones — keys where a live
+      # LOCKED BLANK claim stands (a curator ruled the key empty). ONE batched
+      # indexed read (the v0.24 [key, context_id] index), never a query per
+      # key; locked in SQL, blank in Ruby (jsonb blankness has three shapes).
+      # nil in, nil out; `.presence` so full adjudication yields nil, not [].
+      def effective_required(required, context)
+        return required if required.blank?
+
+        keys = Array(required).map(&:to_s)
+        adjudicated = tendable.enliterator_claims.live
+                              .where(key: keys, context_id: context&.id, locked: true)
+                              .select { |c| Enliterator::Claim.blank_value?(c.value) }
+                              .map(&:key)
+        return required if adjudicated.empty?
+
+        Array(required).reject { |k| adjudicated.include?(k.to_s) }.presence
       end
 
       # The prior AUTHORITATIVE visits this pass read for context (same facet, the

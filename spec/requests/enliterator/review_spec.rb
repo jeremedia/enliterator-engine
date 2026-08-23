@@ -112,6 +112,63 @@ RSpec.describe "Enliterator review (quality review)", type: :request do
     expect(response.body).to include("source changed since examination")
   end
 
+  describe "v0.73 — the retract lane (adjudicated absence)" do
+    it "retract supersedes to a locked blank, closes lacunae adjudicated, records the human audit" do
+      c = claim!(key: "advisor", value: "Nobody Real")
+      lac = Enliterator::Lacuna.open_or_refresh(tendable: widget, facet: "summary",
+                                                key: "advisor", diagnosis: "silent", note: "n")
+      audit = examined!(c)
+
+      post "/enliterator/review/verdict",
+           params: { audit_id: audit.id, decision: "retract", note: "phantom advisor" }
+      follow_redirect!
+      expect(response.body).to include("adjudicated absent")
+
+      blank = widget.enliterator_claims.live.find_by(key: "advisor")
+      expect(Enliterator::Claim.blank_value?(blank.value)).to be(true)
+      expect(blank.locked).to be(true)
+      expect(blank.attributed_to).to eq("human:phantom advisor")
+      expect(c.reload.superseded_by_id).to eq(blank.id)
+      expect(lac.reload.closed_reason).to eq("adjudicated")
+
+      human = Enliterator::Audit.human.last
+      expect(human.verdict).to eq("unsupported")
+      expect(human.corrected_claim_id).to eq(blank.id)
+    end
+
+    it "renders the Retract lane only for live claims, beside Correct" do
+      examined!(claim!(key: "advisor", value: "Ghost"))
+      get "/enliterator/review"
+      expect(response.body).to include('value="retract"')
+      expect(response.body).to include("Retract — should not exist")
+    end
+
+    it "an AdjudicationConflict (another curator ruled a VALUE) is an alert, not a stack trace" do
+      c = claim!(key: "advisor", value: "Ghost")
+      audit = examined!(c)
+      # A duplicate live sibling that is a locked VALUE — reachable in the wild
+      # (pre-v0.73 explicit-ADD minted siblings unconditionally).
+      widget.enliterator_claims.create!(key: "advisor", value: "Dr. Real",
+                                        status: "verified", locked: true)
+
+      post "/enliterator/review/verdict", params: { audit_id: audit.id, decision: "retract" }
+      follow_redirect!
+      expect(response.body).to include("Cannot retract")
+      expect(response.body).to include("Dr. Real")
+      expect(c.reload.superseded_by_id).to be_nil   # nothing quietly won
+    end
+
+    it "a stale claim with no live successor for the key refuses loudly" do
+      c = claim!(key: "advisor", value: "Ghost")
+      audit = examined!(c)
+      c.update!(status: "superseded")
+
+      post "/enliterator/review/verdict", params: { audit_id: audit.id, decision: "retract" }
+      follow_redirect!
+      expect(response.body).to include("no live claim remains")
+    end
+  end
+
   describe "v0.62 — the focus view (one claim per screen, full source beside it)" do
     it "renders a focus template + hidden open affordance per queue item, and the shell" do
       audit = examined!(claim!)

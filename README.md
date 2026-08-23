@@ -682,6 +682,26 @@ per-facet weighted/live rates with `coverage` (how much of the facet the
 weighted number actually represents). After a remediation the live rate moves
 and the pooled rate honestly does not — that contrast is the finding.
 
+### Adjudicated absence (v0.73 — retraction that holds)
+
+Tombstoning a wrong claim is temporary: the next tend re-derives it and the
+phantom returns. v0.73 gives curators the ruling that *holds*:
+
+- **`record.adjudicate_absent!(key:, context:, note:)`** — mints a locked
+  blank claim ("this key holds nothing, durably"), supersedes **every** live
+  claim for the key (duplicate siblings included), and closes open lacunae
+  with reason `adjudicated` — answered, not missing.
+- The tending loop honors it everywhere: no escalation chasing a value that
+  doesn't exist, no `REQUIRED` instruction forcing the reader, no reopened
+  lacuna, `verified` mintable again. And the reconciler now refuses an
+  explicit `op:"ADD"` against *any* locked claim — a curator's ruling never
+  acquires a live sibling.
+- **`/review` gains the fourth lane**: *Retract — should not exist*, beside
+  Confirm / Overrule / Correct. A conflicting locked **value** (another
+  curator ruled differently) is a loud alert, never a quiet win.
+- The ruling binds the catalog, not the world: `correct_claim!` can later
+  supply a real value over the blank — refusal stays smaller than revolution.
+
 ## Facet Contracts & Suggestions
 
 A facet with no output contract lets the model freelance terms — `author`

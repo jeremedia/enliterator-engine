@@ -33,7 +33,10 @@ module Enliterator
     # exists — the RDA conventional state); undiagnosed = gap certain, cause not
     # assessed (the engine's no-info default; the model never returns it itself).
     DIAGNOSES = %w[defective_surrogate silent not_identified undiagnosed].freeze
-    CLOSED_REASONS = %w[supplied dismissed not_identified_confirmed].freeze
+    # v0.73 adds `adjudicated`: a curator ruled the key EMPTY (locked blank).
+    # Distinct from `supplied` — after adjudication the gap is not a
+    # known-unknown any more; the answer is "nothing", and that is knowledge.
+    CLOSED_REASONS = %w[supplied dismissed not_identified_confirmed adjudicated].freeze
 
     # status is a plain string column with a scope (NOT an AR enum — an enum would
     # generate an `open`/`open!` that shadows the class method and the scope).

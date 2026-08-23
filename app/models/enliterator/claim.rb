@@ -22,6 +22,13 @@ module Enliterator
     # supersede! would corrupt the chain.
     class AlreadySuperseded < StandardError; end
 
+    # v0.73: raised when adjudicating a key ABSENT would supersede a locked
+    # NON-BLANK claim — a curator already ruled a VALUE for this key, and
+    # ruling absence over it is a contradiction between curators that must
+    # fail loudly, never quietly win. The surface renders it as an alert
+    # naming the conflicting value, not a stack trace.
+    class AdjudicationConflict < StandardError; end
+
     # v0.72: THE definition of an empty claim value — one predicate shared by
     # the reader loop (v0.46 blank handling), the examiner (the absence
     # verdict), and the measurement stack (abstention metrics). Two definitions

@@ -139,6 +139,69 @@ module Enliterator
       fresh
     end
 
+    # Adjudicate a key ABSENT (v0.73, the /review retract lane's write path):
+    # a curator's ruling that this key is EMPTY, and stays empty. Mints a
+    # locked BLANK claim — the one primitive the loop can never re-assert
+    # over (UPDATE/DELETE/ADD all NOOP against locked) — and the visitor's
+    # effective_required filter lifts the required-term obligation for it:
+    # no escalation chasing a value that does not exist, no perpetual open
+    # lacuna, `verified` mintable again.
+    #
+    # The verb's authority is the KEY-SCOPE, not the passed claim: duplicate
+    # live siblings for one (key, context) exist in the wild (pre-v0.73
+    # explicit-ADD minted them unconditionally), and superseding only the
+    # passed claim would leave a sibling live — still in the catalog, and
+    # flipping adjudicated_absent? nondeterministic. So EVERY live claim for
+    # the pair is superseded to the fresh blank. A locked NON-blank in the
+    # set is another curator's VALUE ruling — Claim::AdjudicationConflict,
+    # loudly, never a quiet win. A standing locked blank is reused as the
+    # anchor (double adjudication is a NO-OP: absence re-ruled is the same
+    # ruling; superseding it with an identical one manufactures provenance
+    # noise). Ordering matters: the live set is COLLECTED before the fresh
+    # blank is minted, or the fresh claim — itself live under the same pair —
+    # self-supersedes the adjudication it just created.
+    #
+    # Closes every open lacuna for (key, context) with reason "adjudicated"
+    # (distinct from "supplied": the gap is no longer a known-unknown — the
+    # answer is "nothing", and that is knowledge). Returns the locked blank
+    # in every branch (the controller's corrected_claim linkage).
+    def adjudicate_absent!(claim = nil, key:, context: nil, note: nil)
+      raise ArgumentError, "claim belongs to a different record" if claim && claim.tendable != self
+
+      key_s    = key.to_s
+      ctx_id   = context&.id
+      siblings = enliterator_claims.live.where(key: key_s, context_id: ctx_id).to_a
+
+      if claim && (claim.superseded_by_id.present? || claim.status == "superseded") && siblings.empty?
+        raise Enliterator::Claim::AlreadySuperseded,
+              "claim ##{claim.id} (#{claim.key}) was superseded and no live claim remains for the key"
+      end
+
+      if (conflict = siblings.find { |s| s.locked && !Enliterator::Claim.blank_value?(s.value) })
+        raise Enliterator::Claim::AdjudicationConflict,
+              "a curator already ruled a VALUE for #{key_s} (locked claim ##{conflict.id}: #{conflict.value.inspect}) — adjudicating absence over it is a contradiction"
+      end
+
+      anchor = siblings.find { |s| s.locked && Enliterator::Claim.blank_value?(s.value) }
+      others = siblings - [ anchor ].compact
+
+      fresh = anchor || enliterator_claims.create!(
+        key:           key_s,
+        context_id:    ctx_id,
+        value:         "",
+        locked:        true,
+        status:        "verified",
+        visit:         nil,
+        attributed_to: note.present? ? "human:#{note}" : "human",
+        derived_from:  claim ? [ { "type" => "claim", "id" => claim.id } ] : nil
+      )
+      others.each { |s| s.supersede!(fresh) }
+
+      enliterator_lacunae.open.where(key: key_s, context_id: ctx_id)
+                         .each { |l| l.close!(reason: "adjudicated") }
+      fresh
+    end
+
     # Retract a host-asserted claim (v0.17): tombstone the live claim for
     # `key` in the given scope — `status: "superseded"` with no successor,
     # exactly the loop's own DELETE shape, so trajectory/state reconstruction
@@ -146,6 +209,11 @@ module Enliterator
     # survey that asserts source_status when a record fails must be able to
     # withdraw the note when the record recovers. No-op (nil) when no live
     # claim exists.
+    #
+    # NOT the curator path: this is the UNPROTECTED tombstone — a re-tend
+    # re-asserts the claim straight over it (PROBE A, v0.72 campaign). For a
+    # curator's "this should not exist", use adjudicate_absent! — the locked
+    # blank is the ruling that HOLDS.
     def retract_claim!(key:, context: nil)
       claim = enliterator_claims.live.find_by(key: key, context_id: context&.id)
       return nil if claim.nil?

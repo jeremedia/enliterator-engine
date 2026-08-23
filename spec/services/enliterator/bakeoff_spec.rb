@@ -182,6 +182,18 @@ RSpec.describe Enliterator::Bakeoff do
       _, arm = run_with([ { "key" => "authored_by", "value" => "A" } ])
       expect(arm.seen_required).to eq([ "authored_by" ])
     end
+
+    # v0.73: the arm measures the task production runs. A key adjudicated
+    # absent on THIS record (live locked blank) carries no obligation — no
+    # reader can produce a value that does not exist, and production no longer
+    # imposes the term there. Without this, an adjudicated record permanently
+    # fails bake-off coverage.
+    it "drops an adjudicated key from this record's obligations — and from the reader's instruction" do
+      widget.adjudicate_absent!(key: "authored_by")
+      out, arm = run_with([ { "key" => "note", "value" => "x" } ])
+      expect(out.coverage).to be_nil            # the record's only obligation was adjudicated away
+      expect(arm.seen_required).to be_nil       # and the reader was never told to force it
+    end
   end
 
   describe "resilience" do

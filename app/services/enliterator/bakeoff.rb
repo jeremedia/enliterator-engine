@@ -111,8 +111,13 @@ module Enliterator
         source = record.enliterator_text(facet: @facet).to_s
         next if source.strip.empty?
 
+        # v0.73: the arm measures the task production runs — a key adjudicated
+        # absent on THIS record carries no obligation (no reader can produce a
+        # value that does not exist; production no longer imposes the term).
+        record_required = effective_required_for(record)
+
         begin
-          response = read(adapter, record, source)
+          response = read(adapter, record, source, record_required)
           tokens  += token_total(response)
           model  ||= (response.respond_to?(:model) ? response.model.presence : nil) ||
                      (adapter.respond_to?(:model_id) ? adapter.model_id : tier)
@@ -141,8 +146,9 @@ module Enliterator
             end
           end
 
-          # Recall, per record: did this reader produce what the facet obliges?
-          @required.each do |term|
+          # Recall, per record: did this reader produce what the facet obliges
+          # OF THIS RECORD (v0.73: adjudicated keys carry no obligation)?
+          record_required.each do |term|
             req_seen += 1
             req_met  += 1 if filled[term]
           end
@@ -186,15 +192,32 @@ module Enliterator
       rendered.is_a?(Hash) ? rendered[:verdict] : nil
     end
 
-    def read(adapter, record, source)
+    def read(adapter, record, source, record_required)
       kwargs = { text: source, facet: @facet, state: {}, neighbors: [] }
       kwargs[:tags]     = [ "enliterator", "bakeoff" ] if accepts?(adapter, :tags)
       contract = Enliterator::Vocabulary.for(@facet, context: @context)
       kwargs[:contract] = contract if contract.present? && accepts?(adapter, :contract)
       # The required-terms instruction is part of the job. Measuring coverage
       # without it would score readers on an obligation they were never given.
-      kwargs[:required] = @required if @required.present? && accepts?(adapter, :required)
+      # v0.73: per-record — adjudicated keys are not part of this record's job.
+      kwargs[:required] = record_required if record_required.present? && accepts?(adapter, :required)
       adapter.tend(**kwargs)
+    end
+
+    # v0.73: the record's standing obligations — @required minus keys a curator
+    # adjudicated ABSENT on this record (a live locked BLANK claim). Honest
+    # accounting: Bakeoff by doctrine reads NOTHING live, and this adds ONE
+    # per-record live-claim query. The doctrine is AMENDED, not violated —
+    # live claims are consulted solely to determine OBLIGATIONS, never fed to
+    # the reader as context; the isolation that makes an audition an audition
+    # is about what the reader SEES, not what the scorer knows.
+    def effective_required_for(record)
+      return @required if @required.empty?
+      adjudicated = record.enliterator_claims.live
+                          .where(key: @required, context_id: @context&.id, locked: true)
+                          .select { |c| Enliterator::Claim.blank_value?(c.value) }
+                          .map(&:key)
+      @required - adjudicated
     end
 
     def accepts?(adapter, name)

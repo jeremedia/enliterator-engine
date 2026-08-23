@@ -59,6 +59,24 @@ module Enliterator
           redirect_to stay,
             alert: "\"#{claim.key}\" was re-tended after examination — review its successor instead."
         end
+      when "retract"
+        # v0.73: the claim should not exist — adjudicate the key ABSENT. Mints
+        # a locked BLANK (the ruling that HOLDS: the loop can never re-assert
+        # over it, and the required-term obligation lifts), supersedes EVERY
+        # live claim for the key, closes lacunae `adjudicated`. The human
+        # audit records the verdict with the blank as corrected_claim.
+        begin
+          fresh = claim.tendable.adjudicate_absent!(claim, key: claim.key, context: claim.context, note: note)
+          record_human!(claim, "unsupported", note, corrected_claim: fresh)
+          redirect_to advanced,
+            notice: "Retracted \"#{claim.key}\" — the key is adjudicated absent (locked blank); future tends will not re-assert it."
+        rescue Enliterator::Claim::AlreadySuperseded
+          redirect_to stay,
+            alert: "\"#{claim.key}\" was re-tended after examination and no live claim remains — review its successor instead."
+        rescue Enliterator::Claim::AdjudicationConflict => e
+          redirect_to stay,
+            alert: "Cannot retract \"#{claim.key}\": #{e.message}"
+        end
       else
         redirect_to stay, alert: "Unknown decision: #{params[:decision].inspect}."
       end
