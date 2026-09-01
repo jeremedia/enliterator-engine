@@ -91,8 +91,9 @@ module Enliterator
           state     = tendable.literacy_state(facet: facet, context: context)
           neighbors = nearest_neighbors(tendable, limit: 5)
 
+          text = tendable.enliterator_text(facet: facet)   # v0.75: hoisted for the digest stamp
           response = adapter.tend(
-            text:      tendable.enliterator_text(facet: facet),
+            text:      text,
             facet:    facet,
             state:     state,
             neighbors: neighbors
@@ -108,7 +109,7 @@ module Enliterator
 
           finalize_succeeded!(
             visit, response, recon, parsed, started,
-            neighbors: neighbors, state: state
+            neighbors: neighbors, state: state, source_text: text
           )
 
           Enliterator::Measures.recompute!(tendable)
@@ -304,6 +305,15 @@ module Enliterator
             elsif existing.locked
               # Curator anchor — never auto-supersede.
               recon[:noop] << key
+            elsif value == existing.value
+              # v0.75: an identical re-emission is a SURVIVAL, not a change —
+              # superseding a claim with itself would refresh its authority
+              # (tier/confidence/date) without new derivation: warrant
+              # laundering. Measured incidence 0.7% (18 of 2,627 supersessions)
+              # — a footnote in volume, principled in kind. The visit's own row
+              # records the re-emission; the standing claim's history stays
+              # immutable (confidence deliberately NOT updated).
+              recon[:noop] << key
             else
               fresh = create_claim(
                 key:           key,
@@ -444,10 +454,17 @@ module Enliterator
 
           neighbors = nearest_neighbors(tendable, limit: 5)
           tags      = spend_tags(tier: tier, step: step)
+          # v0.75: hoisted so the finalize can stamp the warrant paper — the
+          # digest of the FULL text THIS visit's reader was given. Deliberately
+          # fetched inside the begin (a raising host enliterator_text still
+          # gets its failure recorded on the visit row, rule 3), so the stamp
+          # lands at finalize, not creation; a failed visit keeps digest nil
+          # (unknown), which is the honest reading.
+          text = tendable.enliterator_text(facet: facet)
 
           response = tend_with_optional_kwargs(
             adapter,
-            text:      tendable.enliterator_text(facet: facet),
+            text:      text,
             facet:    facet,
             state:     state,
             neighbors: neighbors,
@@ -464,7 +481,7 @@ module Enliterator
           # escalate flag (if any) so Policy#escalate? can read it back.
           finished    = Time.current
           duration_ms = ((finished - started) * 1000).round
-          visit.update!(
+          finalize_attrs = {
             status:         "succeeded",
             raw_response:   raw_with_escalate(response, parsed),
             confidence:     parsed["confidence"],
@@ -473,7 +490,9 @@ module Enliterator
             duration_ms:    duration_ms,
             model:          resolved_model_of(response, visit.model),
             finished_at:    finished
-          )
+          }
+          merge_source_stamp!(finalize_attrs, text)
+          visit.update!(**finalize_attrs)
           log_event("visit", visit_id: visit.id, facet: facet, tier: tier, step: step,
                              confidence: visit.confidence, applied: visit.applied,
                              tokens: token_total(visit.tokens), duration_ms: duration_ms,
@@ -755,6 +774,24 @@ module Enliterator
         @visit_has_re_derived = Enliterator::Visit.column_names.include?("re_derived")
       end
 
+      # v0.75: same guard discipline for the warrant-paper columns — the engine
+      # ships as a bundler local override, so this code can run BEFORE the
+      # host's migration; until migrated, visits simply carry no digest
+      # (warrant_stale? reads that as UNKNOWN).
+      def visit_has_source_digest_column?
+        return @visit_has_source_digest if defined?(@visit_has_source_digest)
+        @visit_has_source_digest = Enliterator::Visit.column_names.include?("source_digest")
+      end
+
+      # The warrant paper: MD5 over the FULL text this visit's reader was given
+      # (the audit convention — ceilings are recorded separately, examiner.rb).
+      def merge_source_stamp!(attrs, text)
+        return unless text && visit_has_source_digest_column?
+        s = text.to_s
+        attrs[:source_digest] = Digest::MD5.hexdigest(s)
+        attrs[:source_chars]  = s.length
+      end
+
       # LiteLLM spend tags for one gateway request. The join key to LiteLLM's
       # authoritative dollars; also the shape Spend.by_facet approximates locally.
       def spend_tags(tier:, step:)
@@ -873,11 +910,11 @@ module Enliterator
 
       # ---- shared visit finalization (back-compat path) --------------------
 
-      def finalize_succeeded!(visit, response, recon, parsed, started, neighbors:, state:)
+      def finalize_succeeded!(visit, response, recon, parsed, started, neighbors:, state:, source_text: nil)
         finished    = Time.current
         duration_ms = ((finished - started) * 1000).round
 
-        visit.update!(
+        attrs = {
           status:         "succeeded",
           raw_response:   response.respond_to?(:raw) ? (response.raw || {}) : {},
           reconciliation: recon,
@@ -887,7 +924,9 @@ module Enliterator
           duration_ms:    duration_ms,
           model:          resolved_model_of(response, visit.model),
           finished_at:    finished
-        )
+        }
+        merge_source_stamp!(attrs, source_text)
+        visit.update!(**attrs)
         log_event("visit", visit_id: visit.id, facet: facet, tier: visit.tier, step: 0,
                            confidence: visit.confidence, applied: visit.applied,
                            ops: recon_ops(recon), tokens: token_total(visit.tokens),

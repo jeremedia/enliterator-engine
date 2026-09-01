@@ -727,6 +727,31 @@ instrument cannot silently diverge on what a term means. A `required` term
 cannot carry a precondition (contradictory instructions — rejected at
 registration, backstopped at resolution).
 
+### Warrant in time (v0.75 — the checking-act, dated)
+
+Probable cause has a shelf life: search warrants void unexecuted. Every visit
+now files its **warrant paper** — the digest (and length) of the exact text
+its reader was given — so any claim can answer *has the terrain moved since
+anything checked me?*
+
+- **`claim.warrant_stale?`** — three honest states: `true` (the source changed
+  since the last check — mint or audit), `false` (still current), `nil`
+  (**unknown** — the claim predates the instrument; never dressed up as
+  either). Derived, never stored; an instrument, never an auto-revoker.
+- **The audit sampler examines where the terrain moved**: within each
+  facet×tier cell, stale-known claims are drawn first. Zero extra reads —
+  the comparison is stored-digest vs stored-digest.
+- **Per-key `density`** (filled live claims / tended records) lands on the
+  Synopsis and beside the bake-off's COVERAGE — cold-read recall vs the
+  standing store on one screen. A key whose density trails its cold coverage
+  is a key the compounding path is starving.
+- An identical re-emission now reconciles as a **noop, not a supersession** —
+  a claim is never replaced by itself, so survival can't refresh authority.
+
+Adoption pairs with `config.audit_warrant = true`: model-confident claims mint
+`asserted`, reserving `verified` for a human standing behind the claim — the
+oath, distinguished from testimony.
+
 ## Facet Contracts & Suggestions
 
 A facet with no output contract lets the model freelance terms — `author`

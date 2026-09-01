@@ -161,7 +161,7 @@ module Enliterator
     # accuracy), unlocked (locked claims are curator rulings, not the model's).
     # Facet lives on the minting visit, so the walk joins through it.
     def base_scope
-      s = Enliterator::Claim.live.where(locked: false).where.not(visit_id: nil)
+      s = Enliterator::Claim.examinable
             .joins("JOIN enliterator_visits sv ON sv.id = enliterator_claims.visit_id")
             .where("sv.facet = ?", @facet)
       s = s.where(context_id: @context.id) if @context

@@ -121,7 +121,8 @@ module Enliterator
         tended_count: tended_count(facet, context),
         vocabulary:   contract.map do |key, desc|
           # `approved: true` ⇒ a curator-adopted key that's live but not yet codified.
-          key_summary(key, context: context, description: desc, sample_cap: sample_cap, value_chars: value_chars)
+          key_summary(key, context: context, description: desc, sample_cap: sample_cap,
+                      value_chars: value_chars, tended: tended_count(facet, context))
             .merge(approved: !code_keys.include?(key))
         end
       }
@@ -136,7 +137,15 @@ module Enliterator
       scope.distinct.pluck(:tendable_type, :tendable_id).size
     end
 
-    def key_summary(key, context: nil, description: nil, sample_cap:, value_chars:)
+    # v0.75: `tended:` (the facet's tended_count) unlocks the DENSITY pair —
+    # `filled` (live claims whose value is non-blank) and `density`
+    # (filled / tended records). Density is the cheap standing proxy for the
+    # gap half of the echo (live recall .495 vs cold .889): a key whose density
+    # trails its cold-read coverage is a key the compounding path is starving.
+    # Density is NOT recall — a filled claim can be wrong; the cold bake-off is
+    # the calibrated read. nil `tended:` ⇒ keys absent ⇒ existing callers
+    # byte-identical (connection_portrait passes none).
+    def key_summary(key, context: nil, description: nil, sample_cap:, value_chars:, tended: nil)
       live = Enliterator::Claim.live.where(key: key)
       live = live.where(context_id: context.scope_ids) if context
       summary = {
@@ -144,6 +153,15 @@ module Enliterator
         live_claims: live.count,
         samples:     live.limit(sample_cap).pluck(:value).map { |v| truncate_value(v, value_chars) }
       }
+      if tended
+        # SQL approximation of Claim.blank_value? — the indexable proxy
+        # (whitespace-only strings pass; the Ruby predicate is the truth).
+        filled = live.where.not(value: nil)
+                     .where(%q(value NOT IN ('""'::jsonb, '[]'::jsonb, '{}'::jsonb, 'null'::jsonb)))
+                     .count
+        summary[:filled]  = filled
+        summary[:density] = tended.positive? ? (filled.to_f / tended).round(3) : nil
+      end
       summary[:description] = description if description
       summary
     end

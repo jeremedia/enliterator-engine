@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_23_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_01_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -693,6 +693,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_23_170000) do
     t.boolean "re_derived"
     t.string "reason"
     t.jsonb "reconciliation", default: {}
+    t.integer "source_chars"
+    t.string "source_digest"
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
     t.string "tendable_id", null: false

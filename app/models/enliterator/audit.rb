@@ -39,6 +39,23 @@ module Enliterator
 
     MIN_AGREEMENT_OVERLAPS = 10
 
+    # v0.75: the within-cell sampling order — see the comment at the use site.
+    # Compares the claim's mint digest to the record's LATEST digest (the same
+    # semantics as Claim#warrant_stale?'s stored fallback) — an EXISTS over ANY
+    # newer differing digest would misfire on records whose visit history
+    # carries mixed digests (spec-caught). COALESCE: either side NULL ⇒ unknown
+    # ⇒ false ⇒ sorts with the non-stale (never conflate unknown with stale).
+    STALE_FIRST_ORDER = <<~SQL.freeze
+      (COALESCE((
+        SELECT nv.source_digest FROM enliterator_visits nv
+        WHERE nv.tendable_type = enliterator_claims.tendable_type
+          AND nv.tendable_id   = enliterator_claims.tendable_id
+          AND nv.facet = sv.facet AND nv.status = 'succeeded'
+          AND nv.source_digest IS NOT NULL
+        ORDER BY nv.started_at DESC LIMIT 1
+      ) <> sv.source_digest, false)) DESC, random()
+    SQL
+
     # v0.72.3 — the structural n-floor for the NEW rate surfaces. The failure
     # it prevents was live: per-key rates at n=24 displayed with three decimal
     # places and read as facet-level signal where a census found a 10-point gap
@@ -84,7 +101,15 @@ module Enliterator
                     .joins("JOIN enliterator_visits sv ON sv.id = enliterator_claims.visit_id")
                     .where("sv.facet = ?", facet)
                     .where("COALESCE(enliterator_claims.tier, 'unknown') = ?", tier)
-          scope.order(Arel.sql("random()")).limit(k).includes(:visit, :context, :tendable).to_a
+          # v0.75: stale-known candidates FIRST within the cell, then random —
+          # the magistrate examines where the terrain has moved since the last
+          # check. Candidates are never-audited by construction, so last-check
+          # = mint digest; the whole comparison is store-vs-store (zero text
+          # reads), and with no digests yet the EXISTS is uniformly false ⇒
+          # pure random, the v0.18 distribution (inert until the substrate
+          # accumulates). Guaranteed cell coverage untouched — this orders
+          # WITHIN cells only.
+          scope.order(Arel.sql(STALE_FIRST_ORDER)).limit(k).includes(:visit, :context, :tendable).to_a
         end
         { claims: claims, allocation: alloc.transform_keys { |f, t| "#{f}/#{t}" } }
       end
@@ -92,7 +117,8 @@ module Enliterator
       def candidate_scope
         # Never-EXAMINED means no instrument audit — an agent flag must not
         # remove a claim from the examiner's sampling pool (v0.26).
-        Enliterator::Claim.live.where(locked: false).where.not(visit_id: nil)
+        # v0.75: composed from Claim.examinable, the one definition.
+        Enliterator::Claim.examinable
                           .where.not(id: Enliterator::Audit.instrument.select(:claim_id))
       end
 
@@ -282,7 +308,7 @@ module Enliterator
       # philosophy as the sampler: live, visit-bearing, unlocked (locked claims
       # are curator rulings, not the model's output).
       def cell_populations
-        Enliterator::Claim.live.where(locked: false).where.not(visit_id: nil)
+        Enliterator::Claim.examinable
                           .joins("JOIN enliterator_visits sv ON sv.id = enliterator_claims.visit_id")
                           .group(Arel.sql("sv.facet"), Arel.sql("COALESCE(enliterator_claims.tier, 'unknown')"))
                           .count

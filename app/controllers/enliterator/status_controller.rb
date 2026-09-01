@@ -68,6 +68,17 @@ module Enliterator
       # Claims/visits carry their context so the view can label each lens.
       @type   = params[:type]
       @claims = @record.enliterator_claims.live.includes(:context).order(:key)
+      # v0.75: warrant staleness per claim, gated with the warrant chip it sits
+      # beside. Current digests computed ONCE per distinct facet on this page
+      # (the review-controller idiom — the record is already in hand); the
+      # batch helper keeps it to two queries for the claim set. nil = UNKNOWN
+      # (pre-v0.75 mint) renders nothing.
+      if Enliterator.configuration.audit_warrant
+        digests = @claims.filter_map { |c| c.visit&.facet }.uniq.to_h { |f|
+          [ [ @type, @record.id.to_s, f ], Digest::MD5.hexdigest(@record.enliterator_text(facet: f).to_s) ]
+        }
+        @claim_staleness = Enliterator::Claim.warrant_staleness_for(@claims, current_digests: digests)
+      end
       # v0.46: the record's open known-unknowns (the negative space of its claims).
       # The panel renders only when present, so an unadopted host stays byte-identical.
       @lacunae = @record.enliterator_lacunae.open.includes(:context).order(:facet, :key)

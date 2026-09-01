@@ -626,7 +626,7 @@ namespace :enliterator do
     puts "  heartbeat: budget #{fmt_n.call(c[:heartbeat_budget_tokens])} · change_share #{c[:heartbeat_change_share]} · " \
          "neighbor_threshold #{c[:heartbeat_neighbor_threshold]} · stale_after #{c[:stale_after_seconds] / 86_400}d · audit_sample #{c[:heartbeat_audit_sample]}"
     puts "  tending_facets: #{c[:tending_facets].join(', ')}   apply_approved_keys: #{c[:apply_approved_keys]}   " \
-         "record_lacunae: #{onoff.call(c[:record_lacunae])}   read_time_warrant: #{onoff.call(c[:read_time_warrant])}"
+         "record_lacunae: #{onoff.call(c[:record_lacunae])}   read_time_warrant: #{onoff.call(c[:read_time_warrant])}   audit_warrant: #{onoff.call(c[:audit_warrant])}"
     puts "  considerer: autonomy #{c[:considerer_autonomy]} · min_conf #{c[:considerer_min_confidence]}   escalation_threshold #{c[:escalation_threshold]}"
     puts "  gateway: timeout #{c[:gateway_timeout]}s · max_retries #{c[:gateway_max_retries]}   atlas_node_cap #{fmt_n.call(c[:atlas_node_cap])}   " \
          "name_authority_keys: #{c[:name_authority_keys].presence&.join(', ') || '—'}"
@@ -848,6 +848,26 @@ namespace :enliterator do
       puts "  It is the only recall signal available: PRECISION rewards a reader for saying less,"
       puts "  so read the two columns together — a high rate with low coverage is a quiet reader,"
       puts "  not a good one."
+
+      # v0.75: the LIVE STORE beside the cold read — density is the standing
+      # proxy for the gap half of the echo. A key whose density trails its cold
+      # coverage is a key the compounding path is starving.
+      tended = Enliterator::Visit.where(facet: facet, status: "succeeded", applied: true)
+      tended = tended.where(context_id: context.scope_ids) if context
+      tended_n = tended.distinct.pluck(:tendable_type, :tendable_id).size
+      if tended_n.positive?
+        puts
+        puts "  live store, for comparison (filled live claims / #{tended_n} tended records):"
+        required.each do |key|
+          live = Enliterator::Claim.live.where(key: key)
+          live = live.where(context_id: context.scope_ids) if context
+          filled = live.where.not(value: nil)
+                       .where("value NOT IN ('\"\"'::jsonb, '[]'::jsonb, '{}'::jsonb, 'null'::jsonb)").count
+          puts format("    %-28s filled=%-6d density=%.3f", key, filled, filled.to_f / tended_n)
+        end
+        puts "  COVERAGE is the COLD read; density is the STANDING store — the gap between them"
+        puts "  localizes the echo's recall deficit per key (density is not recall: filled can be wrong)."
+      end
     end
     puts
     outcomes.each do |o|
