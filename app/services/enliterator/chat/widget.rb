@@ -67,8 +67,17 @@ module Enliterator
         c = symize(claim)
         verdict = c[:audit_verdict] ? %( <span class="enl-claim__verdict">#{h(c[:audit_verdict])}</span>) : ""
         conf = c[:confidence] ? %( <span class="enl-claim__conf">#{h(c[:confidence])}</span>) : ""
+        # v0.76: the PATRON-facing surface catches up to the license reads the
+        # agent-facing card has carried since v0.60/v0.75 — warrant, staleness,
+        # taint render as chips whenever the card data carries them (the keys
+        # are absent on unadopting hosts, so this markup simply never emits:
+        # federation-off and flag-off stay byte-identical).
+        license = +""
+        license << %( <span class="enl-claim__verdict">#{h(c[:warrant])}</span>) if c[:warrant]
+        license << %( <span class="enl-claim__verdict">stale</span>)   if c[:warrant_stale]
+        license << %( <span class="enl-claim__verdict">tainted</span>) if c[:tainted]
         %(<div class="enl-claim"><span class="enl-claim__key">#{h(c[:key])}</span>: ) +
-          %(<span class="enl-claim__value">#{h(c[:value])}</span>#{conf}#{verdict}</div>)
+          %(<span class="enl-claim__value">#{h(c[:value])}</span>#{conf}#{license}#{verdict}</div>)
       end
 
       # --- provenance --------------------------------------------------------

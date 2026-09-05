@@ -50,17 +50,31 @@ module Enliterator
     # inherited intrinsic claims from this lens's own. With no context the read
     # is unfiltered — byte-identical to v0.12 (and the root/aggregate view).
     def literacy_state(facet: nil, context: nil)
-      claims = enliterator_claims.live
+      claims = literacy_claims(context: context)
       visits = enliterator_visits.applied.where(facet: facet)
-      if context
-        claims = claims.where(context_id: context.scope_ids).includes(:context)
-        visits = visits.where(context_id: context.scope_ids)
-      end
+      visits = visits.where(context_id: context.scope_ids) if context
       {
         claims:        claims.map { |c| context ? c.to_state.merge(context: c.context&.key || "root") : c.to_state },
         recent_visits: visits.order(created_at: :desc).limit(5).map(&:to_state),
         measures:        enliterator_measures.each_with_object({}) { |f, h| h[f.name] = f.score }
       }
+    end
+
+    # v0.76: THE claim scope literacy_state reads — extracted so the ids
+    # substrate below can never drift from what the reader was actually shown.
+    def literacy_claims(context: nil)
+      claims = enliterator_claims.live
+      claims = claims.where(context_id: context.scope_ids).includes(:context) if context
+      claims
+    end
+
+    # v0.76: the IDS of exactly the claims a visit's state carried — the
+    # implicit derivation channel's substrate (input_refs.state_claim_ids).
+    # to_state stays id-less by design (prompt-facing); the ids travel on the
+    # VISIT record instead, so "claim X was in the state that produced Y"
+    # becomes reconstructable from here forward.
+    def literacy_claim_ids(context: nil)
+      literacy_claims(context: context).pluck(:id)
     end
 
     def tend!(facet:, context: nil, **opts)
@@ -185,6 +199,12 @@ module Enliterator
       anchor = siblings.find { |s| s.locked && Enliterator::Claim.blank_value?(s.value) }
       others = siblings - [ anchor ].compact
 
+      # v0.76 fan fix: derived_from records EVERY claim this adjudication
+      # supersedes (lineage refs, role-less), not just the passed one — the
+      # provenance must match the fan `supersede!` actually performs. Pure-
+      # lacuna case writes [] (the column default; nil was an inconsistency).
+      lineage = (siblings + (claim ? [ claim ] : [])).uniq(&:id)
+                  .map { |s| { "type" => "claim", "id" => s.id } }
       fresh = anchor || enliterator_claims.create!(
         key:           key_s,
         context_id:    ctx_id,
@@ -193,7 +213,7 @@ module Enliterator
         status:        "verified",
         visit:         nil,
         attributed_to: note.present? ? "human:#{note}" : "human",
-        derived_from:  claim ? [ { "type" => "claim", "id" => claim.id } ] : nil
+        derived_from:  lineage
       )
       others.each { |s| s.supersede!(fresh) }
 

@@ -81,7 +81,14 @@ module Enliterator
       # v0.64: `value_chars` caps the claim value (nil ⇒ FULL). Defaults to VALUE_MAX
       # so a card in a many-claim list (record_entry) stays bounded and byte-identical;
       # single-claim tools pass nil to surface the untruncated value.
-      def claim_card(claim, verdict: nil, value_chars: VALUE_MAX)
+      # v0.76: `warrant:`/`warrant_stale:`/`tainted:` may arrive PRECOMPUTED
+      # from a batching caller (record_entry) — nil falls back to the per-claim
+      # read, so the single-claim path (provenance) is unchanged. This closed
+      # the v0.75 N+1: warrant + staleness were computed per card in a 60-card
+      # listing, one audits query each.
+      def claim_card(claim, verdict: nil, value_chars: VALUE_MAX,
+                     warrant: nil, warrant_stale: :compute, tainted: :compute)
+        gated = Enliterator.configuration.audit_warrant
         {
           id:            claim.id,
           key:           claim.key,
@@ -95,11 +102,15 @@ module Enliterator
           context:       claim.context&.key || "root",
           # v0.60: the honest epistemic state for an agent reader. Gated + .compact ⇒
           # absent (byte-identical card) when config.audit_warrant is off.
-          warrant:       (claim.warrant if Enliterator.configuration.audit_warrant),
+          warrant:       (gated ? (warrant || claim.warrant) : nil),
           # v0.75: has the terrain moved since this claim was last checked?
           # true/false when knowable, ABSENT when unknown (pre-v0.75 mints) or
           # the flag is off — same gate, same .compact discipline.
-          warrant_stale: (claim.warrant_stale? if Enliterator.configuration.audit_warrant),
+          warrant_stale: (gated ? (warrant_stale == :compute ? claim.warrant_stale? : warrant_stale) : nil),
+          # v0.76: fruit of the poisonous tree — a basis ancestor was ruled
+          # defective and this claim has not cited its way out. true is the
+          # signal; false/unknown are ABSENT (compact discipline).
+          tainted:       (gated ? (((tainted == :compute ? claim.tainted? : tainted) || nil)) : nil),
           audit_verdict: verdict
         }.compact
       end

@@ -24,6 +24,14 @@ module Enliterator
         @audit_rollups   = Enliterator::Audit.accuracy_rollups(@audit_accuracy)
         @audit_agreement = Enliterator::Audit.anchor_agreement
         @audit_corrected = Enliterator::Audit.corrected_count
+        # v0.76: live claims bearing UNLICENSED LOAD — a basis ancestor was
+        # ruled defective and the claim has not cited its way out. Population
+        # is basis-edge-bearing claims only (deep-read synthesis), small by
+        # construction; jsonb containment, no index until it grows.
+        if Enliterator.configuration.audit_warrant
+          basis_bearing = Enliterator::Claim.live.where("derived_from @> ?", '[{"role":"basis"}]').to_a
+          @tainted_live = Enliterator::Claim.taint_for(basis_bearing).count { |_, v| v }
+        end
         @examiner_down   = @last_heartbeat&.audits&.key?("skipped_null_adapter")
       end
 
@@ -78,6 +86,9 @@ module Enliterator
           [ [ @type, @record.id.to_s, f ], Digest::MD5.hexdigest(@record.enliterator_text(facet: f).to_s) ]
         }
         @claim_staleness = Enliterator::Claim.warrant_staleness_for(@claims, current_digests: digests)
+        # v0.76: derivation taint per claim — a basis ancestor ruled defective,
+        # not cited out. Same gate, batch walk (bounded queries per hop).
+        @claim_taint = Enliterator::Claim.taint_for(@claims)
       end
       # v0.46: the record's open known-unknowns (the negative space of its claims).
       # The panel renders only when present, so an unadopted host stays byte-identical.

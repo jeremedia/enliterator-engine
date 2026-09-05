@@ -36,6 +36,13 @@ module Enliterator
           claims = claims.where(context_id: ctx.scope_ids) if ctx
           claims = claims.to_a
           verdicts = latest_verdicts(claims)
+          # v0.76: batch the license reads once for the whole listing (the
+          # per-card fallbacks stay for single-claim callers).
+          if Enliterator.configuration.audit_warrant
+            warrant_pairs = Enliterator::Audit.effective_verdict_pairs(claims.map(&:id))
+            staleness     = Enliterator::Claim.warrant_staleness_for(claims)
+            taint         = Enliterator::Claim.taint_for(claims)
+          end
 
           visits = record.enliterator_visits.where(status: "succeeded", applied: true)
 
@@ -75,7 +82,31 @@ module Enliterator
                   visit_facets[c.visit_id] ||
                     (Enliterator::Charter.charter_key?(c.key) ? "charter" : "asserted")
                 }
-                .transform_values { |cs| cs.map { |c| claim_card(c, verdict: verdicts[c.id], value_chars: value_chars) } }
+                .transform_values { |cs|
+                  cs.map { |c|
+                    if Enliterator.configuration.audit_warrant
+                      claim_card(c, verdict: verdicts[c.id], value_chars: value_chars,
+                                 warrant: warrant_for(c, warrant_pairs),
+                                 warrant_stale: staleness[c.id], tainted: taint[c.id])
+                    else
+                      claim_card(c, verdict: verdicts[c.id], value_chars: value_chars)
+                    end
+                  }
+                }
+        end
+
+        # v0.76: Claim#warrant recomputed from the BATCHED effective pairs —
+        # the same derivation, without the per-claim audits query.
+        def warrant_for(claim, pairs)
+          return "superseded" if claim.status == "superseded"
+          if (av = pairs[claim.id])
+            src, verdict = av
+            return "human_verified"     if src == "human" && verdict == "supported"
+            return "examiner_supported" if verdict == "supported"
+            return "contradicted"       if verdict == "unsupported" || verdict == "contradicted"
+          end
+          return "human_verified" if claim.locked && claim.attributed_to.to_s.start_with?("human")
+          claim.status
         end
 
         # Latest verdict per claim for DISPLAY: human > examiner > agent (an

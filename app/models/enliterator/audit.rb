@@ -291,13 +291,17 @@ module Enliterator
       # Claim#warrant and Atlas#audit_verdicts read it. (The private, claim-object-keyed
       # `effective_verdicts` remains the accuracy path — it needs the claim + visit it
       # preloads; both encode the SAME precedence.)
-      def effective_verdict_pairs(claim_ids)
+      def effective_verdict_pairs(claim_ids, with_time: false)
         ids = Array(claim_ids).compact
         return {} if ids.empty?
 
         instrument.where(claim_id: ids).order(:created_at).each_with_object({}) do |a, h|
           next if h[a.claim_id]&.first == "human" && a.source == "examiner"
-          h[a.claim_id] = [ a.source, a.verdict ]
+          # v0.76: `with_time: true` appends the verdict's created_at — the
+          # taint walk needs WHEN a basis ancestor was ruled defective (and
+          # when a derived claim was last independently supported) to apply
+          # the cure. Same precedence, one place; existing callers unchanged.
+          h[a.claim_id] = with_time ? [ a.source, a.verdict, a.created_at ] : [ a.source, a.verdict ]
         end
       end
 

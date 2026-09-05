@@ -31,7 +31,7 @@ module Enliterator
       attr_reader :tendable, :facet, :context, :embedder
 
       def initialize(tendable, facet:, context: nil, llm: nil, embedder: Enliterator.embedder,
-                     heartbeat: nil, reason: nil)
+                     heartbeat: nil, reason: nil, basis: nil)
         @tendable     = tendable
         @facet       = facet.to_s
         # v0.13: the collection context this pass tends WITHIN (an
@@ -47,6 +47,13 @@ module Enliterator
         @reason       = reason
         @injected_llm = llm           # non-nil => v0.1 back-compat path
         @embedder     = embedder
+        # v0.76: the BASIS — claim ids this tend's input was built FROM (the
+        # deep-read synthesis passes the part claims live at synthesis time).
+        # Every claim this visitor mints carries them as role:"basis"
+        # derived_from refs: the taint-carrying edge, distinct from the
+        # role-less LINEAGE refs (supersession — the successor is the cure,
+        # not the victim, and is never walked for taint). nil ⇒ byte-identical.
+        @basis        = Array(basis).presence
       end
 
       # The LLM adapter for the back-compat path (kept as a public reader so
@@ -89,6 +96,7 @@ module Enliterator
 
         begin
           state     = tendable.literacy_state(facet: facet, context: context)
+          @state_claim_ids = tendable.literacy_claim_ids(context: context)   # v0.76
           neighbors = nearest_neighbors(tendable, limit: 5)
 
           text = tendable.enliterator_text(facet: facet)   # v0.75: hoisted for the digest stamp
@@ -448,6 +456,9 @@ module Enliterator
 
         begin
           state = tendable.literacy_state(facet: facet, context: context)
+          # v0.76: the ids of exactly the claims that state carries — stamped
+          # on the visit (input_refs.state_claim_ids), never into the prompt.
+          @state_claim_ids = tendable.literacy_claim_ids(context: context)
           # Senior REVIEWS junior: hand the lower tier's draft claims up so the
           # prompt presents them explicitly (Base#build_user pulls this key out).
           state = state.merge("proposed_by_lower_tier" => proposed_by_lower) if proposed_by_lower
@@ -950,6 +961,10 @@ module Enliterator
           neighbor_ids:    neighbors.map { |n| neighbor_id(n) }.compact,
           claim_keys:      Array(state[:claims]).map { |c| c[:key] }.compact
         }
+        # v0.76: the implicit derivation channel's substrate — which CLAIMS
+        # (ids, not just keys) were in the state this visit read. Stamped
+        # cheap now, walked by a later version (the v0.75 digest lesson).
+        refs[:state_claim_ids] = @state_claim_ids if @state_claim_ids
         # v0.67.1: present only when a context cap actually skipped a tier, so a
         # host that declares none keeps the pre-v0.67 provenance shape exactly.
         refs[:context_cap] = @context_cap_note if @context_cap_note
@@ -1128,8 +1143,14 @@ module Enliterator
           visit:         visit,
           attributed_to: attributed_to,
           tier:          tier,
-          derived_from:  derived_from
+          derived_from:  Array(derived_from) + basis_refs
         )
+      end
+
+      # v0.76: the taint-carrying edge entries appended to every claim this
+      # visitor mints (empty for ordinary tends — byte-identical derived_from).
+      def basis_refs
+        @basis_refs ||= Array(@basis).map { |id| { "type" => "claim", "id" => id, "role" => "basis" } }
       end
 
       # An Embedding row's stable identity for input_refs provenance.

@@ -39,7 +39,7 @@
             <% end %>
           </td>
           <td><%= c.confidence %></td>
-          <td><span class="chip"><%= c.status %></span><% if Enliterator.configuration.audit_warrant %> <span class="chip"><%= c.warrant %></span><% if @claim_staleness&.[](c.id) %> <span class="chip" title="the source text changed since this claim was last checked (mint or audit) — probable cause has a shelf life">stale</span><% end %><% end %></td>
+          <td><span class="chip"><%= c.status %></span><% if Enliterator.configuration.audit_warrant %> <span class="chip"><%= c.warrant %></span><% if @claim_staleness&.[](c.id) %> <span class="chip" title="the source text changed since this claim was last checked (mint or audit) — probable cause has a shelf life">stale</span><% end %><% if @claim_taint&.[](c.id) %> <span class="chip" title="a claim this one was synthesized FROM was ruled defective, and this claim has not been independently re-supported since — fruit of the poisonous tree">tainted</span><% end %><% end %></td>
           <td><%= "🔒" if c.locked %></td>
         </tr>
       <% end %>

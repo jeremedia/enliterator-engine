@@ -194,7 +194,8 @@
       <% if @audit_agreement[:examiner_supported].to_i.positive? %>
         · humans overruled examiner-supported <%= @audit_agreement[:overruled_supported] %> of <%= @audit_agreement[:examiner_supported] %>
       <% end %>
-      · <%= @audit_corrected %> claim(s) corrected
+      · <%= @audit_corrected %> claim(s) corrected<% if @tainted_live.to_i.positive? %>
+      · <strong><%= @tainted_live %></strong> live claim(s) tainted — a synthesis basis was ruled defective (unlicensed load)<% end %>
     </div>
   </div>
 <% end %>

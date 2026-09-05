@@ -138,6 +138,119 @@ module Enliterator
       checked != current
     end
 
+    # v0.76 — DERIVATION TAINT: fruit of the poisonous tree, read at serve time.
+    # Walks this claim's BASIS ancestors (derived_from entries with
+    # role:"basis" — the taint-carrying edge minted by deep-read synthesis) and
+    # returns true when any ancestor within TAINT_DEPTH hops is POISONED:
+    # its effective verdict is defective (human outranks examiner), or it was
+    # superseded by a human anchor (correction and adjudication share that
+    # shape — locked + human-attributed successor). Plain model supersession
+    # is NEVER poison: role-less LINEAGE edges are never walked — the
+    # successor is the cure, not the victim.
+    #
+    # CURE (independent source): the claim cited its way out — its OWN
+    # effective verdict is `supported` and NEWER than the latest poisoning
+    # event among its ancestors. Taint MARKS, never deletes; derived at read,
+    # never stored (a derived diagnosis can't itself go stale).
+    #
+    # false means NO KNOWN taint — absence of basis edges is not innocence
+    # (pre-v0.76 synthesis claims carry no edges); the instrument grows as
+    # edges accumulate, the v0.75 honesty pattern.
+    TAINT_DEPTH = 3
+
+    def tainted?
+      self.class.taint_for([ self ])[id]
+    end
+
+    # Batch taint for claim-listing pages (the warrant_staleness_for pattern):
+    # bounded queries per HOP over the whole set, never per claim. Returns
+    # {claim_id => true|false}.
+    def self.taint_for(claims)
+      claims = Array(claims)
+      return {} if claims.empty?
+
+      out      = claims.to_h { |c| [ c.id, false ] }
+      frontier = {}                                  # origin id => ancestor ids this hop
+      seen     = Hash.new { |h, k| h[k] = Set.new }  # per-origin cycle guard
+      poisons  = Hash.new { |h, k| h[k] = [] }       # origin id => poison times
+
+      claims.each do |c|
+        ids = basis_ids_of(c)
+        frontier[c.id] = ids if ids.any?
+      end
+      return out if frontier.empty?
+
+      TAINT_DEPTH.times do
+        ancestor_ids = frontier.values.flatten.uniq
+        break if ancestor_ids.empty?
+
+        ancestors  = where(id: ancestor_ids).index_by(&:id)
+        poison_map = poison_times_for(ancestors.values)
+
+        next_frontier = {}
+        frontier.each do |origin, ids|
+          ids.each do |aid|
+            next if seen[origin].include?(aid)
+            seen[origin] << aid
+            poisons[origin] << poison_map[aid] if poison_map[aid]
+            anc = ancestors[aid]
+            nxt = anc ? basis_ids_of(anc) : []
+            (next_frontier[origin] ||= []).concat(nxt) if nxt.any?
+          end
+        end
+        frontier = next_frontier
+        break if frontier.empty?
+      end
+
+      poisoned = poisons.select { |_, times| times.any? }
+      return out if poisoned.empty?
+
+      # The cure: an origin's own supported verdict, newer than its LATEST
+      # poisoning event, clears it (it grounded independently after the
+      # basis went bad).
+      own = Enliterator::Audit.effective_verdict_pairs(poisoned.keys, with_time: true)
+      poisoned.each do |origin, times|
+        _src, verdict, at = own[origin]
+        cured = verdict == "supported" && at && at > times.max
+        out[origin] = true unless cured
+      end
+      out
+    end
+
+    # The taint-carrying edges only — role:"basis" refs. Role-less entries
+    # are lineage (supersession/correction) and are structurally excluded.
+    def self.basis_ids_of(claim)
+      Array(claim.derived_from).filter_map do |ref|
+        ref["id"] if ref.is_a?(Hash) && ref["type"] == "claim" && ref["role"] == "basis"
+      end
+    end
+
+    # {claim_id => poison time} over a batch of ancestor claims. Two poison
+    # shapes: a DEFECTIVE effective verdict (the instrument ruled it wrong),
+    # or supersession by a human anchor — correct_claim! and adjudicate_absent!
+    # both mint locked + human-attributed successors, and either implies the
+    # ancestor was refused by a curator even where no audit row exists.
+    def self.poison_times_for(ancestor_claims)
+      return {} if ancestor_claims.empty?
+
+      poison   = {}
+      verdicts = Enliterator::Audit.effective_verdict_pairs(ancestor_claims.map(&:id), with_time: true)
+      verdicts.each do |cid, (_src, verdict, at)|
+        poison[cid] = at if Enliterator::Audit::DEFECTIVE.include?(verdict)
+      end
+
+      succ_ids = ancestor_claims.filter_map(&:superseded_by_id)
+      if succ_ids.any?
+        successors = where(id: succ_ids).index_by(&:id)
+        ancestor_claims.each do |anc|
+          s = successors[anc.superseded_by_id]
+          next unless s && s.locked && s.attributed_to.to_s.start_with?("human")
+          poison[anc.id] = [ poison[anc.id], s.created_at ].compact.max
+        end
+      end
+      poison
+    end
+
     # v0.75 batch helper for claim-listing pages — one audits query + one visits
     # query for N claims (latest_audit_verdict's per-claim shape must not be
     # repeated here). `current_digests` maps [tendable_type, tendable_id, facet]

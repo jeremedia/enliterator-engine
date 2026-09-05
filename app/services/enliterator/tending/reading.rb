@@ -84,10 +84,17 @@ module Enliterator
           embedded += 1 if ensure_part_embedding(part)
         end
 
+        # v0.76: the BASIS — the part claims live right now are what the
+        # notebook (the host's to_enliterator_text) is built from; every claim
+        # the synthesis mints records them as role:"basis" derived_from refs.
+        # The explicit part→synthesis edge the taint walk reads. Computed once;
+        # the same notebook feeds every synthesis facet.
+        basis_ids = synthesis_basis_ids(parts)
+
         @synthesizes.each do |facet|
           visits << @record.tend!(facet: facet, context: @context, llm: @llm,
                                   embedder: @embedder, heartbeat: @heartbeat,
-                                  reason: @reason)
+                                  reason: @reason, basis: basis_ids)
           synthesized += 1
         rescue StandardError => e
           failed += 1
@@ -110,6 +117,17 @@ module Enliterator
       end
 
       private
+
+      # v0.76: live claims on this record's parts — context-scoped exactly as
+      # Part.notebook_for scopes. nil when parts have no claims yet (the kwarg
+      # is omitted downstream; first-reading synthesis has no basis to record).
+      def synthesis_basis_ids(parts)
+        return nil if parts.empty?
+        claims = Enliterator::Claim.live.where(tendable_type: "Enliterator::Part",
+                                               tendable_id: parts.map { |p| p.id.to_s })
+        claims = claims.where(context_id: @context.scope_ids) if @context
+        claims.pluck(:id).presence
+      end
 
       def sections_for(record)
         return [] unless record.respond_to?(:to_enliterator_parts)

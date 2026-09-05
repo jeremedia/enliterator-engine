@@ -752,6 +752,25 @@ Adoption pairs with `config.audit_warrant = true`: model-confident claims mint
 `asserted`, reserving `verified` for a human standing behind the claim — the
 oath, distinguished from testimony.
 
+### Derivation taint (v0.76 — fruit of the poisonous tree)
+
+A deep-read synthesis now records exactly which part-notes it was built from
+(`derived_from` refs with `role: "basis"` — distinct from role-less *lineage*
+refs, where the successor is the cure, not the victim). At serve time, any
+claim is checked against its foundations:
+
+- **`claim.tainted?`** — true when a basis ancestor within 3 hops was ruled
+  defective (instrument verdict, human correction, or adjudication — plain
+  model supersession is never poison) and the claim hasn't **cited its way
+  out** (its own supported verdict, newer than the poisoning).
+- Marked, never deleted; derived at read, never stored. `tainted: true`
+  surfaces on MCP cards, the record page, and — at last — the **reference
+  desk**, which now shows patrons the same license marks (warrant, staleness,
+  taint) the agent surface carried.
+- Visits also stamp `state_claim_ids` — which claims (ids) were in the state
+  each reading saw — so the implicit derivation channel is reconstructable
+  from here forward.
+
 ## Facet Contracts & Suggestions
 
 A facet with no output contract lets the model freelance terms — `author`
