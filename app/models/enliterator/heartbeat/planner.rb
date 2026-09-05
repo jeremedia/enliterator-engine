@@ -12,6 +12,8 @@ module Enliterator
     #   frontier (everything the change envelope doesn't use spills here —
     #     first attention is where claims/dollar is ~10×)
     #   sweep (stale_after, DEMOTED to a safety net — leftovers only)
+    #   spillback (v0.77): with NO frontier left anywhere, the change share
+    #     protects nothing — the change envelope becomes the whole budget
     #
     # Every trigger is anchored to the lane's MAX(started_at) of succeeded
     # applied visits — NOT finished_at: text and vocabulary are read at visit
@@ -43,7 +45,7 @@ module Enliterator
 
       def plan
         items      = []
-        change_cap = (@budget * @config.heartbeat_change_share.to_f).floor
+        change_cap = effective_change_cap
 
         # v0.17: untendable records (condition rollup score 0.0) are excluded
         # from EVERY queue below via cond_pred. One honest global count here —
@@ -69,6 +71,21 @@ module Enliterator
           frontier_remaining: frontier_remaining,
           horizon_tokens:     horizon_tokens(frontier_remaining)
         )
+      end
+
+      # v0.77: SPILLBACK. The change share (20% by default) exists to protect
+      # FIRST attention — the untended frontier, where claims-per-token is
+      # ~10× — from being starved by change waves. When no lane has any
+      # frontier left, the share protects nothing, so the whole budget reaches
+      # the change envelope (source_change → neighborhood → vocabulary, order
+      # unchanged). A single untended record anywhere keeps the nominal cap —
+      # the pre-v0.77 plan, byte-for-byte. (The mirror of spillover: unused
+      # change budget has always flowed forward to the frontier.)
+      def effective_change_cap
+        @change_cap ||= begin
+          nominal = (@budget * @config.heartbeat_change_share.to_f).floor
+          frontier_clear? ? @budget : nominal
+        end
       end
 
       # v-next: expose the warning accumulator so the directed-pulse resolver can
@@ -345,7 +362,9 @@ module Enliterator
             taken += 1
           end
           if wave > taken
-            cycles = (((wave - taken) * est) / [ @budget * @config.heartbeat_change_share.to_f, 1 ].max).ceil
+            # v0.77: priced at the EFFECTIVE cap — with the frontier clear the wave
+            # drains at full budget width, and the arithmetic must say so.
+            cycles = (((wave - taken) * est) / [ effective_change_cap, 1 ].max).ceil
             @warnings << "vocabulary: #{lane.label} wave has #{wave - taken} record(s) remaining ≈ #{cycles} cycle(s) at the current change share"
           end
         end
@@ -472,6 +491,12 @@ module Enliterator
             LIMIT ? OFFSET ?
           SQL
         end
+      end
+
+      # v0.77: no lane has untended shelf. Counts are memoized per lane, so the
+      # frontier pass that follows pays nothing extra for this read.
+      def frontier_clear?
+        all_lanes.none? { |lane| frontier_count(lane).positive? }
       end
 
       def frontier_count(lane)

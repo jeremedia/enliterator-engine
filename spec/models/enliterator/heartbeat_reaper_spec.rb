@@ -74,6 +74,68 @@ RSpec.describe "Enliterator::Heartbeat failure states (v0.23)" do
     end
   end
 
+  # v0.77 — the visit-level reaper. A heartbeat-less tend (a rake, a runner,
+  # a pulse's manual sibling) whose process dies leaves its Visit in `running`
+  # forever: no heartbeat row to reap it through, no pulse of its own. Spine
+  # carried five such rows for ten weeks. Same rule as the cycle reaper —
+  # no sign of life past REAP_AFTER — applied to the visit ledger.
+  describe "Enliterator::Visit.reap_orphans! (v0.77)" do
+    def running!(started:, heartbeat: nil)
+      w = Widget.create!(title: "w#{rand(1e9)}", body: "b")
+      v = w.enliterator_visits.create!(facet: "summary", status: "running", applied: true,
+                                       heartbeat: heartbeat, started_at: started)
+      v.update_columns(created_at: started, updated_at: started)
+      v
+    end
+
+    it "stamps a heartbeat-less running visit with no sign of life past REAP_AFTER: failed, finished_at = last life, the reason on the row" do
+      v = running!(started: 1.hour.ago)
+
+      reaped = Enliterator::Visit.reap_orphans!
+      expect(reaped.map(&:id)).to eq([ v.id ])
+
+      v.reload
+      expect(v.status).to eq("failed")
+      expect(v.finished_at).to be_within(1.second).of(v.started_at)
+      expect(v.error).to include("orphaned").and include("reaped")
+    end
+
+    it "leaves a young running visit alone, and a running visit under a LIVE cycle alone (the cycle's pulse vouches for it)" do
+      young = running!(started: 2.minutes.ago)
+      live  = orphan!(phase: "work", life_ago: 1.minute)
+      under = running!(started: 1.hour.ago, heartbeat: live)
+
+      expect(Enliterator::Visit.reap_orphans!).to eq([])
+      expect(young.reload.status).to eq("running")
+      expect(under.reload.status).to eq("running")
+    end
+
+    it "reaps a running visit under a FINISHED cycle (its process is gone by definition)" do
+      done = Enliterator::Heartbeat.create!(mode: "sync", budget_tokens: 10, planned: {},
+                                            started_at: 2.days.ago, finished_at: 2.days.ago + 60)
+      v = running!(started: 1.hour.ago, heartbeat: done)
+
+      expect(Enliterator::Visit.reap_orphans!.map(&:id)).to eq([ v.id ])
+      expect(v.reload.status).to eq("failed")
+    end
+
+    it "rides the cycle reaper: Heartbeat.reap_orphans! buries orphaned visits too, and still returns only heartbeat rows" do
+      row = orphan!(phase: "work", life_ago: 20.minutes)
+      v   = running!(started: 1.hour.ago, heartbeat: row)   # the dead cycle's own in-flight visit
+      x   = running!(started: 1.hour.ago)                   # a heartbeat-less one
+
+      reaped = Enliterator::Heartbeat.reap_orphans!
+      expect(reaped.map(&:id)).to eq([ row.id ])
+      expect(v.reload.status).to eq("failed")
+      expect(x.reload.status).to eq("failed")
+    end
+
+    it "writes nothing when nothing is orphaned" do
+      running!(started: 2.minutes.ago)
+      expect { Enliterator::Visit.reap_orphans! }.not_to change { Enliterator::Visit.order(:id).pluck(:status, :updated_at) }
+    end
+  end
+
   describe "the zombie stand-down" do
     it "a reaped row's own thread raises StoodDown at its next loop check and stamps nothing new" do
       row = Enliterator::Heartbeat.create!(mode: "sync", budget_tokens: 1_000,

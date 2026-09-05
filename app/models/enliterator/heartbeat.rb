@@ -130,8 +130,13 @@ module Enliterator
     # (a dead row must not block the next beat) and the monitor page (the UI
     # heals on view).
     def self.reap_orphans!
-      unfinished.where("COALESCE(pulse_at, updated_at, started_at) < ?", REAP_AFTER.ago)
-                .order(:id).map(&:reap!)
+      rows = unfinished.where("COALESCE(pulse_at, updated_at, started_at) < ?", REAP_AFTER.ago)
+                       .order(:id).map(&:reap!)
+      # v0.77: bury orphaned VISITS on the same pass — the dead cycle's own
+      # in-flight rows (now under a finished cycle) and any heartbeat-less
+      # tend whose process died. The return value stays the reaped cycles.
+      Enliterator::Visit.reap_orphans!
+      rows
     end
 
     # Unfinished with no sign of life past the threshold — reapable. The

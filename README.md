@@ -505,6 +505,16 @@ dies (server restart mid-cycle) is **reaped** — finished_at set to its last
 sign of life, the death phase named, `executed` reconstructed from the visit
 record — and a zombie thread of a reaped cycle stands down instead of
 double-spending. Gateway calls are bounded (`gateway_timeout`, default 180s).
+The same pass buries orphaned **visits** (v0.77): a running visit with no sign
+of life past the reaper's window — a killed manual tend with no cycle row, or
+a dead cycle's own in-flight row — is stamped failed with the reason, so the
+ledger never carries a phantom "in flight".
+
+Once the frontier is **clear** — no untended record in any lane — the change
+share hands itself back (v0.77): the whole budget reaches source-change,
+neighborhood, and vocabulary re-reads, because the share existed to protect
+first attention and there is none left to protect. Any untended shelf anywhere
+keeps the split exactly as before.
 
 ### Portability (v0.22 — move the enliteration, don't re-buy it)
 

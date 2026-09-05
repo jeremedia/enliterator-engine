@@ -355,6 +355,67 @@ RSpec.describe "Enliterator::Heartbeat.plan (v0.15)" do
     end
   end
 
+  # v0.77 — spillback. The change envelope's share exists to protect FIRST
+  # attention (the frontier) from change waves. When there is no frontier
+  # left to protect, the share protects nothing — so the whole budget reaches
+  # the change envelope. Any lane with untended shelf keeps today's split
+  # byte-for-byte (the mirror of "spillover", above).
+  describe "spillback (v0.77 — a clear frontier hands its share back to the change envelope)" do
+    # The proposer is one of the tended records — a fresh proposer widget would
+    # itself be untended shelf and un-clear the frontier under test.
+    def approve!(facet:, context:, at:, tendable:)
+      s = Enliterator::Suggestion.create!(tendable: tendable, facet: facet, context: context,
+                                          proposed_key: "k#{rand(1e9)}", status: "approved")
+      s.update_columns(updated_at: at)
+      s
+    end
+
+    # Every lane tended (root summary AND crs policy_analysis), all inside the
+    # neighborhood cooldown, an approval after the visits ⇒ the vocabulary wave
+    # is the ONLY signal, and the frontier is CLEAR.
+    def clear_frontier_with_wave!(n)
+      ws = n.times.map { |i| widget!("w#{i}", context: crs) }
+      ws.each_with_index do |w, i|
+        visit!(w, facet: "summary", at: (2.days + i.minutes).ago, tokens: { "total" => 100 })
+        visit!(w, facet: "policy_analysis", context: crs, at: (2.days + i.minutes).ago, tokens: { "total" => 100 })
+      end
+      approve!(facet: "policy_analysis", context: crs, at: 1.day.ago, tendable: ws.first)
+      ws
+    end
+
+    it "with the frontier CLEAR the change cap is the whole budget and the wave drains at full width" do
+      clear_frontier_with_wave!(6)
+
+      plan = Enliterator::Heartbeat.plan(budget: 1_000)
+      expect(plan.frontier_total).to eq(0)
+      expect(plan.change_cap).to eq(1_000)
+      expect(items_for(plan, reason: "vocabulary").size).to eq(6)   # not 2 (= 20% of 1_000 ÷ 100)
+      expect(plan.items.map(&:reason).uniq).to eq([ "vocabulary" ])
+      expect(plan.warnings.join).not_to match(/wave has/)
+    end
+
+    it "with ANY untended shelf the 20% share stands — byte-identical to the pre-v0.77 plan" do
+      clear_frontier_with_wave!(6)
+      widget!("fresh", context: crs)   # one untended record: the frontier is not clear
+
+      plan = Enliterator::Heartbeat.plan(budget: 1_000)
+      expect(plan.frontier_total).to be > 0
+      expect(plan.change_cap).to eq(200)
+      expect(items_for(plan, reason: "vocabulary").size).to eq(2)
+      expect(plan.warnings.join).to match(/wave has 4 record\(s\) remaining ≈ 2 cycle\(s\)/)
+    end
+
+    it "the wave's drain arithmetic prices cycles at the EFFECTIVE cap, not the nominal share" do
+      clear_frontier_with_wave!(12)
+
+      # 600 tokens = 6 items/cycle at full width; 6 remain ⇒ 1 more cycle
+      # (the nominal 20% share would have said 5).
+      plan = Enliterator::Heartbeat.plan(budget: 600)
+      expect(items_for(plan, reason: "vocabulary").size).to eq(6)
+      expect(plan.warnings.join).to match(/wave has 6 record\(s\) remaining ≈ 1 cycle\(s\)/)
+    end
+  end
+
   it "is a PURE READ — planning writes nothing" do
     w = widget!("w", context: crs)
     visit!(w, facet: "policy_analysis", context: crs, at: 40.days.ago)
