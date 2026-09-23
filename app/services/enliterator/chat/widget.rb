@@ -55,7 +55,10 @@ module Enliterator
         # record). `entry` is the tool's own click-through path. The visible
         # render is unchanged — these are inert attributes.
         data = enl_data_attrs(type: r[:type], id: r[:id], label: r[:label], entry: r[:entry])
-        facets = (r[:claims_by_facet] || {}).map do |facet, claims|
+        # v0.77.1: the tool has emitted `claims:` (facet ⇒ cards) since v0.26; this
+        # read `claims_by_facet:`, so every live record card rendered without its
+        # claims. The old key stays as a fallback for pre-fix fixtures/replays.
+        facets = (r[:claims] || r[:claims_by_facet] || {}).map do |facet, claims|
           rows = Array(claims).map { |c| claim_row(c) }.join
           %(<div class="enl-widget__facet"><div class="enl-widget__facet-name">#{h(facet)}</div>#{rows}</div>)
         end.join

@@ -38,10 +38,12 @@ module Enliterator
           verdicts = latest_verdicts(claims)
           # v0.76: batch the license reads once for the whole listing (the
           # per-card fallbacks stay for single-claim callers).
-          if Enliterator.configuration.audit_warrant
-            warrant_pairs = Enliterator::Audit.effective_verdict_pairs(claims.map(&:id))
-            staleness     = Enliterator::Claim.warrant_staleness_for(claims)
-            taint         = Enliterator::Claim.taint_for(claims)
+          warrant = if Enliterator.configuration.audit_warrant
+            {
+              pairs:     Enliterator::Audit.effective_verdict_pairs(claims.map(&:id)),
+              staleness: Enliterator::Claim.warrant_staleness_for(claims),
+              taint:     Enliterator::Claim.taint_for(claims)
+            }
           end
 
           visits = record.enliterator_visits.where(status: "succeeded", applied: true)
@@ -51,7 +53,7 @@ module Enliterator
             label:    label_for(record),
             entry:    entry_path(type, id),
             contexts: record.enliterator_contexts.order(:name).pluck(:key),
-            claims:   claims_by_facet(claims.first(CLAIMS_CAP), verdicts, cap),
+            claims:   claims_by_facet(claims.first(CLAIMS_CAP), verdicts, cap, warrant: warrant),
             claims_truncated: claims.size > CLAIMS_CAP || nil,
             tending: {
               visits:    visits.count,
@@ -75,7 +77,9 @@ module Enliterator
         # facet; their visits do). Host-seeded claims (no visit) group under
         # "asserted" — except the collection's told identity (v0.57), which
         # groups under "charter" so the record's own entry names it honestly.
-        def claims_by_facet(claims, verdicts, value_chars = Tool::VALUE_MAX)
+        # `warrant` is the v0.76 batch ({pairs:, staleness:, taint:}) computed once
+        # in #call when config.audit_warrant is on; nil otherwise.
+        def claims_by_facet(claims, verdicts, value_chars = Tool::VALUE_MAX, warrant: nil)
           visit_facets = Enliterator::Visit.where(id: claims.filter_map(&:visit_id))
                                            .pluck(:id, :facet).to_h
           claims.group_by { |c|
@@ -84,10 +88,10 @@ module Enliterator
                 }
                 .transform_values { |cs|
                   cs.map { |c|
-                    if Enliterator.configuration.audit_warrant
+                    if warrant
                       claim_card(c, verdict: verdicts[c.id], value_chars: value_chars,
-                                 warrant: warrant_for(c, warrant_pairs),
-                                 warrant_stale: staleness[c.id], tainted: taint[c.id])
+                                 warrant: warrant_for(c, warrant[:pairs]),
+                                 warrant_stale: warrant[:staleness][c.id], tainted: warrant[:taint][c.id])
                     else
                       claim_card(c, verdict: verdicts[c.id], value_chars: value_chars)
                     end

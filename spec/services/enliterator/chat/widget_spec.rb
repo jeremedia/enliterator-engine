@@ -7,7 +7,7 @@ RSpec.describe Enliterator::Chat::Widget do
   it "renders record_entry as a card: label, claims grouped by facet, provenance fields" do
     result = {
       label: "A Thesis on Detention",
-      claims_by_facet: { "significance" => [
+      claims: { "significance" => [
         { id: 5, key: "contribution", value: "Argues X", confidence: 0.8, tier: "bedrock-sonnet",
           status: "live", audit_verdict: "supported" }
       ] },
@@ -23,7 +23,7 @@ RSpec.describe Enliterator::Chat::Widget do
   end
 
   it "HTML-escapes claim values (no injection through tool data)" do
-    result = { label: "T", claims_by_facet: { "f" => [ { key: "k", value: "<img src=x onerror=alert(1)>" } ] } }
+    result = { label: "T", claims: { "f" => [ { key: "k", value: "<img src=x onerror=alert(1)>" } ] } }
     html = described_class.render("record_entry", result)
     expect(html).to include("&lt;img")
     expect(html).not_to include("<img src=x")

@@ -781,6 +781,14 @@ claim is checked against its foundations:
   each reading saw — so the implicit derivation channel is reconstructable
   from here forward.
 
+> **v0.77.1 fix.** From v0.76 until v0.77.1, `record_entry` raised on every call
+> when `audit_warrant` was on (the batched license reads were built in one method
+> and read in another), so a warrant-adopting host's desk saw
+> `couldn't consult record_entry` and fell back to other tools. Hosts pinned to
+> v0.76 or v0.77 with `audit_warrant = true` should bump. The same release makes
+> the chat record card show its claims again (the widget had read a key the tool
+> stopped emitting in v0.26).
+
 ## Facet Contracts & Suggestions
 
 A facet with no output contract lets the model freelance terms — `author`

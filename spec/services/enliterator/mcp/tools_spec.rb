@@ -117,6 +117,37 @@ RSpec.describe "Enliterator MCP tools", type: :request do
       expect(entry[:parts].first).to include(heading: "Intro", claim_count: 0)
     end
 
+    # v0.76 regression: the batched warrant/staleness/taint reads were locals of
+    # #call but read inside #claims_by_facet — every record_entry with the audit
+    # warrant on raised NameError (seen live as "couldn't consult record_entry").
+    it "carries warrant, staleness and taint on each card when audit_warrant is on" do
+      w = enliterate!("Continuity", summary: "How clerks keep elections running.", advisor: "Dr. Voss")
+      claim = w.enliterator_claims.find_by(key: "advisor")
+      Enliterator::Audit.create!(claim: claim, source: "examiner", auditor: "t", verdict: "supported", rationale: "r")
+
+      begin
+        Enliterator.configuration.audit_warrant = true
+        entry = call_tool("record_entry", type: "Widget", id: w.id.to_s)
+      ensure
+        Enliterator.configuration.audit_warrant = nil
+      end
+
+      advisor = entry[:claims]["summary"].find { |c| c[:key] == "advisor" }
+      expect(advisor).to include(:warrant)
+      expect(advisor[:warrant]).to be_a(String)
+    end
+
+    # v0.77.1: the widget read `claims_by_facet:` while the tool emits `claims:` —
+    # the record card rendered with no claims and the fixture-only widget spec hid
+    # it. Pin the two to each other with a REAL payload.
+    it "renders its real payload through the chat widget with the claims visible" do
+      w = enliterate!("Continuity", summary: "How clerks keep elections running.", advisor: "Dr. Voss")
+      entry = call_tool("record_entry", type: "Widget", id: w.id.to_s)
+      html = Enliterator::Chat::Widget.render("record_entry", entry)
+      expect(html).to include("Dr. Voss")
+      expect(html).to include("enl-claim__key")
+    end
+
     it "an analytical entry (Part) has an entry too" do
       w = enliterate!("Host")
       part = Enliterator::Part.refresh_for!(w, [ { heading: "Method", text: "case study" } ]).first
