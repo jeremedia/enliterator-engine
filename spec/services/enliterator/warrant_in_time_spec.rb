@@ -110,6 +110,9 @@ RSpec.describe "v0.75 warrant in time" do
 
       queries = 0
       sub = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        # Schema loads (column lookups on first model touch) are not the helper's
+        # queries — counting them made this pass or fail with suite ORDER.
+        next if payload[:name] == "SCHEMA"
         queries += 1 if payload[:sql] =~ /SELECT/i && payload[:sql] =~ /enliterator_(audits|visits)/
       end
       batch = Enliterator::Claim.warrant_staleness_for(claims)
