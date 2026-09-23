@@ -24,7 +24,7 @@ module Enliterator
           synopsis = Enliterator::Synopsis.build(context: ctx)
           condition = Enliterator::Condition.report
 
-          {
+          payload = {
             # v0.57: the charter LEADS — the collection says what it IS before
             # what it counts. Key ABSENT when the host declares no collection
             # tendable (spec-pinned; the pre-charter payload is byte-identical).
@@ -43,6 +43,9 @@ module Enliterator
             # admitted deliberately — live_supported_rate (nil under the
             # n-floor), insufficient (pooled decided < 30), abstained (audits
             # of empty claims — absence-supported verdicts inside the rate).
+            # v0.79: under chat_attribution the rows stay one `accuracy` call away —
+            # delivered on the FIRST call of every turn, they became patron-facing
+            # boilerplate ("the audited support rate … is 94.3%").
             accuracy: Enliterator::Audit.accuracy_cached.map { |r|
               r.slice(:facet, :tier, :audited, :supported_rate, :contradicted,
                       :live_supported_rate, :insufficient, :abstained)
@@ -54,6 +57,11 @@ module Enliterator
               human_view:      "/enliterator/status"
             }
           }
+          # v0.79: under chat_attribution the accuracy rows stay one `accuracy` call
+          # away — shipped on the FIRST call of every turn, they became patron-facing
+          # boilerplate ("the audited support rate … is 94.3%"). Flag-off: unchanged.
+          payload.delete(:accuracy) if Enliterator.configuration.chat_attribution
+          payload
         end
 
         private

@@ -153,6 +153,8 @@ module Enliterator
       # --- quote -------------------------------------------------------------
       def render_quote(result)
         r = symize(result)
+        # v0.79: chat_attribution names the passage `source_passage`.
+        r[:passage] ||= r[:source_passage]
         if r[:located] == false
           %(<div class="enl-widget enl-widget--quote enl-widget--quote-unlocated">) +
             %(<div class="enl-quote__flag">passage not located — showing head of source</div>) +

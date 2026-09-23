@@ -111,8 +111,21 @@ module Enliterator
           # defective and this claim has not cited its way out. true is the
           # signal; false/unknown are ABSENT (compact discipline).
           tainted:       (gated ? (((tainted == :compute ? claim.tainted? : tainted) || nil)) : nil),
+          # v0.79: what KIND of text this value is, so the desk cannot mistake a
+          # cataloger's synthesis for the author's words. ABSENT flag-off.
+          nature:        (Enliterator.configuration.chat_attribution ? claim_nature(claim) : nil),
           audit_verdict: verdict
         }.compact
+      end
+
+      # v0.79: engine-read (visit-bearing) ⇒ the catalog's claim; the told charter;
+      # a human's assertion; otherwise a host-seeded assertion.
+      def claim_nature(claim)
+        if claim.visit_id then "catalog_claim"
+        elsif Enliterator::Charter.charter_key?(claim.key) then "charter"
+        elsif claim.attributed_to.to_s.start_with?("human") then "curator_assertion"
+        else "host_assertion"
+        end
       end
 
       def entry_path(type, id) = "/enliterator/status/#{type}/#{id}"

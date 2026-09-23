@@ -14,6 +14,18 @@ module Enliterator
 
         schema({})
 
+        # v0.79: the listing reads this at call time, so the flag governs what the
+        # agent is told. Flag-off: the v0.26 text, byte-identical.
+        ATTRIBUTED_DESCRIPTION =
+          "The audited accuracy of the claim store: per facet/tier supported rates and the " \
+          "examiner-vs-human agreement. Use these numbers to judge how firmly to assert " \
+          "claims of each facet. Report them to a patron only when they ask how reliable " \
+          "something is, and then say what the figure measures.".freeze
+
+        def self.description
+          Enliterator.configuration.chat_attribution ? ATTRIBUTED_DESCRIPTION : super
+        end
+
         def call
           {
             by_facet_and_tier: Enliterator::Audit.accuracy_cached,

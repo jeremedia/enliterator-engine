@@ -255,6 +255,20 @@ module Enliterator
     # chat_federation (only the Loop runs when that is on).
     attr_accessor :chat_sources
 
+    # v0.79: attribution discipline at the desk. nil/false ⇒ byte-identical (no
+    # directive, tool payloads and descriptions unchanged). true ⇒ (1) the Loop
+    # appends Chat::Attribution::DIRECTIVE after the persona: claim values are the
+    # catalog's description, not the author's words; only a verbatim source passage
+    # may be quoted; no added nuance; accuracy figures only when reliability is asked
+    # about; (2) claim cards carry `nature:` (catalog_claim / charter / curator_assertion
+    # / host_assertion); (3) `quote` returns `catalog_claim` + `source_passage` +
+    # `verbatim:` so the two texts cannot blend; (4) the `accuracy` tool stops telling
+    # the agent to "say them out loud"; (5) `collection_overview` omits its accuracy
+    # rows (one `accuracy` call away). Found by the 2026-09-21 desk A/B: the desk
+    # restated verified claims as the author's words and fabricated 2.5x more than a
+    # raw-search agent on the same model.
+    attr_accessor :chat_attribution
+
     # ---- Stage 1: read-time warrant accrual ------------------------------
 
     # Gate for stage 1 of two-stage authority control. nil/false ⇒ readers see only the ESTABLISHED vocabulary
@@ -425,6 +439,7 @@ module Enliterator
       @chat_editor = nil
       @chat_retention = nil
       @chat_sources = nil
+      @chat_attribution = nil
       @error_detail = nil
       @allow_null_llm = false
       @conversation_tier = nil

@@ -61,8 +61,12 @@ module Enliterator
     # pre-v0.36). The charter (v0.57) rides INDEPENDENT of chat_register: the
     # collection's identity is grounding fact, not voice — a host with no
     # register but a told charter still speaks its name.
+    # v0.79: the attribution directive rides AFTER the persona (it disciplines how
+    # the persona's instructions are carried out) and BEFORE the follow-up
+    # directive, which must stay last — its sentinel closes the answer.
     def compose_system(persona_text)
       [ register_text, charter_text, persona_text,
+        (Enliterator::Chat::Attribution::DIRECTIVE if Enliterator.configuration.chat_attribution),
         (Enliterator::Chat::Followups::DIRECTIVE if Enliterator.configuration.chat_followups) ]
         .compact.join("\n\n")
     end

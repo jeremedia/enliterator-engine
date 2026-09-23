@@ -39,6 +39,26 @@ module Enliterator
           digest = Digest::MD5.hexdigest(source)
           stamped = Enliterator::Audit.where(claim_id: claim.id).order(:created_at)
                                       .pick(:source_digest)
+          # v0.79: under chat_attribution the two texts are NAMED for what they are
+          # — the catalog's claim vs the document's own words — so an agent cannot
+          # blend them into one "quotation". `verbatim` is true only when the span
+          # was located; an unlocated head-of-source is still the document's text
+          # but is NOT evidence for this claim. Flag-off: the pre-v0.79 shape.
+          if Enliterator.configuration.chat_attribution
+            return {
+              catalog_claim: { id: claim.id, key: claim.key, value: render_value(claim.value, cap: nil),
+                               nature: claim_nature(claim) },
+              source_passage: excerpt,
+              verbatim: located,
+              located: located,
+              at_chars: start,
+              source_chars: source.length,
+              source_digest: digest,
+              source_drifted: (stamped && stamped != digest) || nil,
+              next: { provenance: "the claim's full chain" }
+            }.compact
+          end
+
           {
             claim: { id: claim.id, key: claim.key, value: render_value(claim.value, cap: nil) },
             located: located,

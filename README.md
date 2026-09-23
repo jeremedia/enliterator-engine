@@ -297,6 +297,16 @@ review queue. The agent is another patron and another set of eyes — never a ha
 edits the record: agent flags change no accuracy number (instrument-scoped, spec-pinned).
 Every response is bounded (caps + truncation flags) and self-describing (`next:` hints).
 
+**Attribution discipline** (v0.79, `config.chat_attribution = true`, off by default). A claim
+value is the catalog's description of a record, not the author's words, and a desk that forgets
+this puts words in authors' mouths. With the flag on: claim cards carry `nature:`
+(`catalog_claim` / `charter` / `curator_assertion` / `host_assertion`); `quote` returns
+`catalog_claim` and `source_passage` under separate names with `verbatim:`; the desk's system
+prompt gains a directive to attribute claims to the catalog, quote only verbatim passages, add
+nothing a claim does not state, and mention audit figures only when the patron asks how reliable
+something is; `accuracy` stops asking to be said "out loud"; and `collection_overview` leaves the
+accuracy rows to the `accuracy` tool. Off, every payload and prompt is byte-identical.
+
 **Host tools** (v0.69). A host application can contribute tools of its own —
 `Enliterator::Mcp.register(YourTool)`, reset with `reset_host_tools!`, registered from your
 `to_prepare` beside `Chat.register` — so the desk can act on the host's data as well as read
