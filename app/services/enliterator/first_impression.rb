@@ -107,8 +107,8 @@ module Enliterator
     def sample_records(context, n, seed)
       scope = Enliterator::Claim.live.understanding
       if context
-        scope = scope.where(context_id: context.scope_ids).where(
-          Enliterator::ContextMembership.member_exists(
+        scope = scope.where(context_id: context.read_scope_ids).where(
+          Enliterator::ContextMembership.member_exists_in_subtree(
             context,
             type_sql: "enliterator_claims.tendable_type",
             id_sql:   "enliterator_claims.tendable_id"

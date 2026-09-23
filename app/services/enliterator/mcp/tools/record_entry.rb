@@ -33,7 +33,7 @@ module Enliterator
           cap = value_chars.nil? ? Tool::VALUE_MAX : (value_chars.to_i.positive? ? value_chars.to_i : nil)
 
           claims = record.enliterator_claims.live.includes(:context).order(:key)
-          claims = claims.where(context_id: ctx.scope_ids) if ctx
+          claims = claims.where(context_id: ctx.read_scope_ids) if ctx
           claims = claims.to_a
           verdicts = latest_verdicts(claims)
           # v0.76: batch the license reads once for the whole listing (the

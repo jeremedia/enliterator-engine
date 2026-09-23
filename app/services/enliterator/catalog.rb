@@ -137,9 +137,9 @@ module Enliterator
     def scoped_understanding
       s = Enliterator::Claim.live.understanding
       if @context
-        s = s.where(context_id: @context.scope_ids)
+        s = s.where(context_id: @context.read_scope_ids)
              .where(
-               Enliterator::ContextMembership.member_exists(
+               Enliterator::ContextMembership.member_exists_in_subtree(
                  @context,
                  type_sql: "enliterator_claims.tendable_type",
                  id_sql:   "enliterator_claims.tendable_id"
@@ -253,9 +253,9 @@ module Enliterator
     def recently_tended
       v = Enliterator::Visit.where(status: "succeeded", applied: true)
       if @context
-        v = v.where(context_id: @context.scope_ids)
+        v = v.where(context_id: @context.read_scope_ids)
              .where(
-               Enliterator::ContextMembership.member_exists(
+               Enliterator::ContextMembership.member_exists_in_subtree(
                  @context,
                  type_sql: "enliterator_visits.tendable_type",
                  id_sql:   "enliterator_visits.tendable_id"
@@ -295,7 +295,7 @@ module Enliterator
 
         cs = Enliterator::Claim.live.understanding
                                .where(tendable_type: type, tendable_id: ids)
-        cs = cs.where(context_id: @context.scope_ids) if @context
+        cs = cs.where(context_id: @context.read_scope_ids) if @context
         cs.each { |c| claims_by[[ type, c.tendable_id ]] << c }
 
         Enliterator::Visit

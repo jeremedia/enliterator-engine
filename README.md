@@ -219,6 +219,11 @@ mount Enliterator::Engine => "/enliterator"
   is seeded — flat installs are unchanged). Declare per-context facets with the policy's
   `context "key" do … end` blocks; seed `Enliterator::Context` (ancestry) + memberships
   (`record.place_in_context!`); tend with `enliterator:tend_context CONTEXT=key`.
+  **A parent reads its subtree** (v0.78): viewing, searching or asking at a context that has
+  children reaches every descendant's members and every descendant's claims, so a federation
+  anchor that holds nothing directly is no longer empty. Tending, planning, the directed pulse and
+  topology still act on a context's OWN holdings; siblings still never see each other; a leaf
+  reads exactly as before.
 - `/enliterator/settings` — the configuration surface (v0.11): a read-only window onto the org chart
   (facets → tiers, the climb, required keys), the effective vocabulary per facet (code + accrued
   `live` keys), routing/capability, the considerer's autonomy, and tending behavior. Reflects the

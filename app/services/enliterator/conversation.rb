@@ -99,7 +99,7 @@ module Enliterator
         rec = emb.embeddable
         next if rec.nil?
         claims = rec.enliterator_claims.live
-        claims = claims.where(context_id: @context.scope_ids) if @context
+        claims = claims.where(context_id: @context.read_scope_ids) if @context
         {
           type:     rec.class.name,
           id:       rec.id,

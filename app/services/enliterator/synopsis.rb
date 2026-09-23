@@ -133,7 +133,7 @@ module Enliterator
     # context's path; unfiltered at root (the union view).
     def tended_count(facet, context = nil)
       scope = Enliterator::Visit.where(facet: facet, status: "succeeded", applied: true)
-      scope = scope.where(context_id: context.scope_ids) if context
+      scope = scope.where(context_id: context.read_scope_ids) if context
       scope.distinct.pluck(:tendable_type, :tendable_id).size
     end
 
@@ -147,7 +147,7 @@ module Enliterator
     # byte-identical (connection_portrait passes none).
     def key_summary(key, context: nil, description: nil, sample_cap:, value_chars:, tended: nil)
       live = Enliterator::Claim.live.where(key: key)
-      live = live.where(context_id: context.scope_ids) if context
+      live = live.where(context_id: context.read_scope_ids) if context
       summary = {
         key:         key,
         live_claims: live.count,

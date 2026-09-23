@@ -20,7 +20,10 @@ module Enliterator
         def call(context: nil)
           ctx   = resolve_context(context)
           scope = Enliterator::Lacuna.open
-          scope = scope.where(context_id: ctx.id) if ctx
+          # v0.78: a parent reports its subtree's gaps (a federation anchor holds
+          # none of its own, and answered "no known gaps" while its children held
+          # them). subtree_ids == [id] for a leaf ⇒ `context_id = id`, unchanged.
+          scope = scope.where(context_id: ctx.subtree_ids) if ctx
 
           total = scope.count
           {

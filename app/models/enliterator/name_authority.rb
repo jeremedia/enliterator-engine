@@ -37,9 +37,16 @@ module Enliterator
     end
 
     # Records in scope for a context: the context's path (root included), or just
-    # root when no context. Mirrors Context#scope_ids (= [nil, *path_ids]).
+    # root when no context. v0.78: resolution is a READ (Catalog/Atlas headings),
+    # so it follows Context#read_scope_ids — a parent view must merge the name
+    # variants its children's authorities cover, or the advisor claims it can now
+    # see would fragment across spellings again. Leaf: == scope_ids (unchanged).
+    # The reconciler WRITES through its own scope (NameReconciler#scope_ids).
     def self.in_scope(context)
-      ids = context.respond_to?(:scope_ids) ? context.scope_ids : [ context&.id ]
+      ids = if context.respond_to?(:read_scope_ids) then context.read_scope_ids
+            elsif context.respond_to?(:scope_ids) then context.scope_ids
+            else [ context&.id ]
+            end
       where(context_id: ids)
     end
   end

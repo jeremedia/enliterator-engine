@@ -164,7 +164,7 @@ module Enliterator
 
       claims = Enliterator::Claim.live.understanding
                  .where(tendable_type: type.to_s, tendable_id: id.to_s)
-      claims = claims.where(context_id: context.scope_ids) if context
+      claims = claims.where(context_id: context.read_scope_ids) if context
       verdicts = audit_verdicts(claims.to_a)
 
       claim_rows = claims.order(:key).map do |c|
@@ -522,7 +522,7 @@ module Enliterator
 
     def understanding_scope(context)
       scope = Enliterator::Claim.live.understanding
-      scope = scope.where(context_id: context.scope_ids) if context
+      scope = scope.where(context_id: context.read_scope_ids) if context
       scope
     end
 

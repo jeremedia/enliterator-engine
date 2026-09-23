@@ -19,5 +19,25 @@ module Enliterator
         .where("enliterator_context_memberships.member_type = #{type_sql}")
         .where("enliterator_context_memberships.member_id = #{id_sql}")
     end
+
+    # v0.78: the READ form — "a member of +context+ or of any context beneath
+    # it". A parent that holds no records directly (HSDL's `hsdl` anchor) read
+    # as empty through member_exists; its members are its subtree's. EXISTS
+    # dedups a record seated in two children. For a leaf, subtree_ids == [id]
+    # and Rails renders `context_id = id` — the SQL is byte-identical to
+    # member_exists. Tending, planning, pulse and topology keep member_exists:
+    # a context tends, plans and owns only its OWN holdings.
+    def self.member_exists_in_subtree(context, type_sql:, id_sql:)
+      where(context_id: context.subtree_ids)
+        .where("enliterator_context_memberships.member_type = #{type_sql}")
+        .where("enliterator_context_memberships.member_id = #{id_sql}")
+    end
+
+    # Distinct records seated anywhere in +context+'s subtree (a record in two
+    # children counts once) — the honest "N member records" for a read view.
+    def self.subtree_member_count(context)
+      pairs = where(context_id: context.subtree_ids).select(:member_type, :member_id).distinct
+      unscoped.from(pairs, :pairs).count
+    end
   end
 end

@@ -76,8 +76,13 @@ module Enliterator
 
         def context_tree
           Enliterator::Context.order(:id).map do |c|
+            # v0.78: `members` is what a search scoped to this context reaches —
+            # distinct records across its subtree (a parent anchor reported 0 and
+            # read as empty to an agent choosing where to search). `direct_members`
+            # keeps the context's own holdings. Leaf: the two are equal.
             { key: c.key, name: c.name, parent: c.parent&.key,
-              members: c.memberships.count }
+              members: Enliterator::ContextMembership.subtree_member_count(c),
+              direct_members: c.memberships.count }
           end
         end
       end

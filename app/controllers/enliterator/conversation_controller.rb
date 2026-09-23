@@ -10,7 +10,9 @@ module Enliterator
       # The scope banner: the context cookie persists across visits, so the page
       # must SAY what it's scoped to — a chat silently pinned to an 82-record
       # sub-collection is indistinguishable from a broken one.
-      @scope_count = current_context&.memberships&.count
+      # v0.78: the count must describe the pool retrieval actually searches — a
+      # parent's subtree, distinct (Embedding.in_context). Leaf: unchanged.
+      @scope_count = current_context && Enliterator::ContextMembership.subtree_member_count(current_context)
       # v0.39: replay client — set the id/token to replay when requested + retention on.
       if params[:replay].present? && Enliterator.configuration.chat_retention
         @replay_id = params[:replay]

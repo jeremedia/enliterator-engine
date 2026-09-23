@@ -34,7 +34,7 @@ module Enliterator
     def state_at(record, time, context: nil)
       t = time.respond_to?(:created_at) ? time.created_at : time
       scope = record.enliterator_claims.where("enliterator_claims.created_at <= ?", t)
-      scope = scope.where(context_id: context.scope_ids) if context
+      scope = scope.where(context_id: context.read_scope_ids) if context
       claims = scope.includes(:visit).to_a
       by_id  = claims.index_by(&:id)
 
@@ -65,7 +65,7 @@ module Enliterator
     def for(record, facet: nil, context: nil, last: 6)
       visits = record.enliterator_visits.applied.where(status: "succeeded").order(:created_at)
       visits = visits.where(facet: facet) if facet
-      visits = visits.where(context_id: context.scope_ids) if context
+      visits = visits.where(context_id: context.read_scope_ids) if context
 
       visits.group_by(&:facet).filter_map do |facet_name, vs|
         vs = vs.last(last)
