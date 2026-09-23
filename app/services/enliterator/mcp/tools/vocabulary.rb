@@ -22,19 +22,37 @@ module Enliterator
           path   = ctx&.path_keys
           policy = Enliterator.staffing
 
-          facets = policy.facets_for(path)
-          facets = facets.select { |f, _| f == facet.to_s } if facet.present?
-          raise ArgumentError, "unknown facet #{facet.inspect} in this scope" if facets.empty?
+          # [facet, declared_in, the context whose scope resolves it]
+          entries = policy.facets_for(path).map { |name, declared_in| [ name, declared_in, ctx ] }
+          # v0.78.1: a parent's READ view includes its descendants' claims (v0.78),
+          # so an agent at the parent meets facets a child declares (HSDL: the
+          # thesis `significance` facet at `hsdl`) and asks what their terms mean.
+          # List each descendant-declared facet too, resolved in THAT descendant's
+          # scope and labelled by where it is declared. A leaf has no descendants —
+          # byte-identical. Governance itself (Vocabulary.for) stays path-scoped.
+          if ctx
+            seen = entries.map(&:first)
+            ctx.descendants.order(:id).each do |d|
+              policy.facets_declared_in(d.key).each do |name|
+                next if seen.include?(name)
+                entries << [ name, d.key, d ]
+                seen << name
+              end
+            end
+          end
+          entries = entries.select { |name, _, _| name == facet.to_s } if facet.present?
+          raise ArgumentError, "unknown facet #{facet.inspect} in this scope" if entries.empty?
 
           {
             context: ctx&.key || "root",
-            facets: facets.map { |name, declared_in|
-              terms = Enliterator::Vocabulary.for(name, context: ctx)
+            facets: entries.map { |name, declared_in, scope|
+              scope_path = scope&.path_keys
+              terms = Enliterator::Vocabulary.for(name, context: scope)
               {
                 facet:       name,
                 declared_in: declared_in,
-                tier:        policy.tier_for(name, path: path),
-                required:    policy.required_terms(name, path: path),
+                tier:        policy.tier_for(name, path: scope_path),
+                required:    policy.required_terms(name, path: scope_path),
                 scheduled:   policy.scheduled?(name, declared_in == "root" ? nil : declared_in),
                 terms:       terms # nil = unconstrained (open facet)
               }.compact

@@ -136,6 +136,34 @@ RSpec.describe "Context read scope (v0.78)" do
     end
   end
 
+  describe "the vocabulary tool at a parent (v0.78.1)" do
+    # (rails_helper resets configuration before each example, so no restore.)
+    before do
+      Enliterator.configuration.staffing = Enliterator::Staffing::Policy.new do
+        facet :summary, tier: "cheap", terms: { summary: "An abstract." }
+        context "theses" do
+          facet :significance, tier: "cheap", terms: { key_findings: "What the work found." }
+        end
+        ladder [ "cheap" ]
+      end
+    end
+
+    it "lists a child-declared facet, resolved in the child's scope and labelled by it" do
+      v = call_tool("vocabulary", context: "fed")
+      sig = v[:facets].find { |f| f[:facet] == "significance" }
+      expect(sig).to include(declared_in: "theses")
+      expect(sig[:terms]).to include("key_findings")
+      expect(call_tool("vocabulary", facet: "significance", context: "fed")[:facets].size).to eq(1)
+    end
+
+    it "a sibling still does not see it, and a leaf's listing is its own path" do
+      expect { call_tool("vocabulary", facet: "significance", context: "reports") }
+        .to raise_error(ArgumentError, /unknown facet/)
+      expect(call_tool("vocabulary", context: "theses")[:facets].map { |f| f[:facet] })
+        .to contain_exactly("summary", "significance")
+    end
+  end
+
   # The planner, pulse, topology and tending-neighbor specs pin direct semantics and
   # must pass UNCHANGED (heartbeat_plan_spec, heartbeat_pulse*_spec, topology_sync_spec,
   # tending/context_scoped_spec). This file only pins the scope a tend reads.
