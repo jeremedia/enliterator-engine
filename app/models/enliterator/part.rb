@@ -78,6 +78,10 @@ module Enliterator
     # `to_enliterator_text` returns for work-level facets once notes exist,
     # which means the audit examiner verifies synthesis claims against the
     # SAME notebook (a derivation audit — named in SPEC, not pretended away).
+    # v0.82: the notebook's opening line, a constant so SourceBasis can find
+    # where the catalog's own notes begin inside a host's tending text.
+    NOTEBOOK_HEADER = "READING NOTES (per section, from the collection's own analysis):".freeze
+
     def self.notebook_for(record, context: nil, value_cap: 400)
       parts = where(record: record).order(:ordinal).includes(:enliterator_claims)
       blocks = parts.filter_map do |part|
@@ -92,7 +96,7 @@ module Enliterator
         "## #{part.title}\n#{lines.join("\n")}"
       end
       return "" if blocks.empty?
-      "READING NOTES (per section, from the collection's own analysis):\n\n#{blocks.join("\n\n")}"
+      "#{NOTEBOOK_HEADER}\n\n#{blocks.join("\n\n")}"
     end
   end
 end

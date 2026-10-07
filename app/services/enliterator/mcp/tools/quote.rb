@@ -32,9 +32,13 @@ module Enliterator
           raise "the source text is empty — the record may be untendable (see collection_overview's condition)" if source.strip.empty?
 
           value   = claim.value.is_a?(String) ? claim.value : claim.value.to_json
-          located, start = locate(source, value)
+          located, start, hit = locate(source, value)
           start ||= 0
           excerpt = source[start, window]
+          # v0.82: WHOSE words the span is — a located span in the catalog's own
+          # reading notes or an AI summary is not the author's text.
+          basis   = Enliterator::SourceBasis.at(record, facet: claim.visit&.facet, source: source, at: hit)
+          model_written = Enliterator::SourceBasis.model_written?(basis)
 
           digest = Digest::MD5.hexdigest(source)
           stamped = Enliterator::Audit.where(claim_id: claim.id).order(:created_at)
@@ -49,8 +53,12 @@ module Enliterator
               catalog_claim: { id: claim.id, key: claim.key, value: render_value(claim.value, cap: nil),
                                nature: claim_nature(claim) },
               source_passage: excerpt,
-              verbatim: located,
+              # v0.82: verbatim = located AND not model-written. A span found in
+              # the reading notes or an AI summary is the catalog's words.
+              verbatim: located && !model_written,
               located: located,
+              basis: basis,
+              model_written: model_written,
               at_chars: start,
               source_chars: source.length,
               source_digest: digest,
@@ -63,6 +71,8 @@ module Enliterator
             claim: { id: claim.id, key: claim.key, value: render_value(claim.value, cap: nil) },
             located: located,
             passage: excerpt,
+            basis: basis,
+            model_written: model_written,
             at_chars: start,
             source_chars: source.length,
             source_digest: digest,
@@ -76,19 +86,22 @@ module Enliterator
         # Exact value match first; else slide over the source finding the
         # window containing the most of the claim's distinctive tokens; a run
         # under RUN_MIN distinct tokens is not a location, it's a guess.
+        # v0.82: returns [located, window_start, hit] — `hit` is where the
+        # span itself begins, which SourceBasis needs (the window starts 80
+        # chars earlier and can straddle a segment boundary).
         def locate(source, value)
           idx = source.index(value)
-          return [ true, [ idx - 80, 0 ].max ] if idx
+          return [ true, [ idx - 80, 0 ].max, idx ] if idx
 
           tokens = value.scan(/[A-Za-z0-9][A-Za-z0-9'-]{3,}/).uniq.first(24)
-          return [ false, nil ] if tokens.size < RUN_MIN
+          return [ false, nil, nil ] if tokens.size < RUN_MIN
 
           positions = tokens.filter_map { |t| source.index(/\b#{Regexp.escape(t)}\b/i) }
-          return [ false, nil ] if positions.size < RUN_MIN
+          return [ false, nil, nil ] if positions.size < RUN_MIN
 
           # The densest cluster of token hits names the span.
           anchor = positions.sort.each_cons(RUN_MIN).min_by { |w| w.last - w.first }&.first
-          anchor ? [ true, [ anchor - 80, 0 ].max ] : [ false, nil ]
+          anchor ? [ true, [ anchor - 80, 0 ].max, anchor ] : [ false, nil, nil ]
         end
       end
     end

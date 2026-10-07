@@ -307,6 +307,13 @@ nothing a claim does not state, and mention audit figures only when the patron a
 something is; `accuracy` stops asking to be said "out loud"; and `collection_overview` leaves the
 accuracy rows to the `accuracy` tool. Off, every payload and prompt is byte-identical.
 
+**Source basis** (v0.82). `quote` reports where its passage sits: `basis:` is `document_section`
+(a deep-read Part), a host-declared segment basis, `reading_notes` (the engine's own deep-read
+notebook), or `undeclared`, plus `model_written:`; under `chat_attribution`, `verbatim` is false
+for model-written text. Hosts declare composition with an optional
+`enliterator_text_segments(facet:)` → `[{text:, basis:}]` whose texts joined by `"\n\n"` equal
+`enliterator_text(facet:)` (a declaration that does not reproduce it is ignored and logged).
+
 **Host tools** (v0.69). A host application can contribute tools of its own —
 `Enliterator::Mcp.register(YourTool)`, reset with `reset_host_tools!`, registered from your
 `to_prepare` beside `Chat.register` — so the desk can act on the host's data as well as read
