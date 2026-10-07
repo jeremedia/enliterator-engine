@@ -104,6 +104,26 @@ RSpec.describe "v0.84 source layout" do
       expect(out[:passage]).to eq("A machine summary: the count was redundant.")
     end
 
+    it "a word-overlap span is scored within ONE text — the abstract, not title words plus abstract words" do
+      host = Class.new(Widget) do
+        def self.name = "Widget"
+        def enliterator_text_segments(facet:)
+          [ { text: title, basis: "catalog_record" }, { text: body, basis: "document_text" } ]
+        end
+        def to_enliterator_text = enliterator_text_segments(facet: nil).map { |s| s[:text] }.join("\n\n")
+      end
+      rec = host.create!(title: "Drone Incursions Over Airports",
+                         body: "Policy options include tightening flight authorization and notice requirements, " \
+                               "expanding detection at airports, and clarifying interception authority.")
+      visit = rec.enliterator_visits.create!(facet: "summary", status: "succeeded", applied: true, tier: "cheap")
+      claim = rec.enliterator_claims.create!(key: "policy_options", status: "draft", confidence: 0.8, visit: visit,
+                                             value: "Tighten flight authorization and notice requirements; expand detection.")
+      allow_any_instance_of(Enliterator::Claim).to receive(:tendable).and_return(host.find(rec.id))
+      out = call_tool("quote", claim_id: claim.id)
+      expect(out).to include(located: true, located_by: "word_overlap", basis: "document_text")
+      expect(out[:passage]).to include("flight authorization")
+    end
+
     it "an undeclared host gets neither key (the v0.82 shape)" do
       w = Widget.create!(title: "Plain", body: "the count was redundant")
       tend!(w)

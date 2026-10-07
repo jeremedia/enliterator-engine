@@ -225,6 +225,35 @@ RSpec.describe "Enliterator MCP tools", type: :request do
       expect(lost[:located]).to be(false)
       expect(lost[:passage]).to be_present   # the honest head, labeled
     end
+
+    # v0.86.2: three stray words are not a location. A limitations claim once
+    # "located" in the record's title and came back as a verbatim citation.
+    it "names how it located a span, and refuses a weak word cluster" do
+      body = "Preparing for the Emergency: A Framework for Evaluating Emergency Preparedness " \
+             "Alternatives at Higher Education Institutions. The thesis surveys campus plans."
+      w = enliterate!("Q2", body: body,
+                      exact:  "A Framework for Evaluating Emergency Preparedness",
+                      limits: "The study is limited to ten higher education institutions; the framework's " \
+                              "generalizability across institutions of different sizes, types, and " \
+                              "geographic contexts remains untested and requires further validation.",
+                      cited:  [ "Nothing Here", "campus plans" ])
+
+      expect(call_tool("quote", claim_id: w.enliterator_claims.find_by(key: "exact").id)[:located_by]).to eq("exact_text")
+      weak = call_tool("quote", claim_id: w.enliterator_claims.find_by(key: "limits").id)
+      expect(weak[:located]).to be(false)                 # 4 of ~20 words, all from the title
+      expect(weak.keys).not_to include(:located_by)
+      el = call_tool("quote", claim_id: w.enliterator_claims.find_by(key: "cited").id)
+      expect(el).to include(located: true, located_by: "exact_element")
+    end
+
+    it "an array's elements locate one by one, and numbers carry identity" do
+      w = enliterate!("Executive Order 13450: Improving Government Program Performance",
+                      body: "This order improves government program performance.",
+                      related: [ "Executive Order 13467: Reforming Processes Related to Suitability for Government Employment",
+                                 "Executive Order 13392: Improving Agency Disclosure of Information" ])
+      out = call_tool("quote", claim_id: w.enliterator_claims.find_by(key: "related").id)
+      expect(out[:located]).to be(false)   # pooled words would have "found" them in the record's own title
+    end
   end
 
   describe "value truncation (v0.64 — untruncated claim values)" do
