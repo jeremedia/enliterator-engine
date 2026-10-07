@@ -797,10 +797,28 @@ module Enliterator
       # The warrant paper: MD5 over the FULL text this visit's reader was given
       # (the audit convention — ceilings are recorded separately, examiner.rb).
       def merge_source_stamp!(attrs, text)
-        return unless text && visit_has_source_digest_column?
+        return unless text
         s = text.to_s
+        merge_source_layout!(attrs, s)
+        return unless visit_has_source_digest_column?
         attrs[:source_digest] = Digest::MD5.hexdigest(s)
         attrs[:source_chars]  = s.length
+      end
+
+      # v0.84: the BASIS paper beside the digest — what kind of text sat where
+      # in what this visit read (catalog record, document text, AI summary,
+      # the engine's reading notes). Dated at mint, so a later reader never has
+      # to infer it from the text as it stands now. Stamped only when it says
+      # more than "undeclared" (a host that declares nothing and has no
+      # notebook keeps the pre-v0.84 input_refs exactly); Part visits are
+      # document_section by type and need no stamp.
+      def merge_source_layout!(attrs, s)
+        return if tendable.is_a?(Enliterator::Part) || !attrs[:input_refs].is_a?(Hash)
+
+        layout = Enliterator::SourceBasis.layout(tendable, facet: facet, source: s)
+        return unless Enliterator::SourceBasis.informative?(layout)
+
+        attrs[:input_refs] = attrs[:input_refs].merge(source_layout: layout)
       end
 
       # LiteLLM spend tags for one gateway request. The join key to LiteLLM's

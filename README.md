@@ -320,6 +320,11 @@ subject click-through, the embedding pool, connections, collection_overview coun
 deny-by-default for unnamed types, a withheld record indistinguishable from a missing one. MCP tools declare `honors_member_scope!`;
 `Mcp.dispatch` refuses any other tool inside a scope (`ScopeNotHonored`). No block, no change.
 
+**The basis paper** (v0.84). Beside the v0.75 digest, a visit stamps `input_refs.source_layout`
+(`[{basis, start, chars}]`) — the composition of the text its reader was given — when it says more
+than "undeclared" (a host declaration, or the engine's reading notes present). `quote` adds
+`segments:` and `body_at:` (where the document's own text begins after title and description).
+
 **Host tools** (v0.69). A host application can contribute tools of its own —
 `Enliterator::Mcp.register(YourTool)`, reset with `reset_host_tools!`, registered from your
 `to_prepare` beside `Chat.register` — so the desk can act on the host's data as well as read

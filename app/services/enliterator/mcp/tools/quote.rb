@@ -38,8 +38,14 @@ module Enliterator
           excerpt = source[start, window]
           # v0.82: WHOSE words the span is — a located span in the catalog's own
           # reading notes or an AI summary is not the author's text.
+          layout  = Enliterator::SourceBasis.layout(record, facet: claim.visit&.facet, source: source)
           basis   = Enliterator::SourceBasis.at(record, facet: claim.visit&.facet, source: source, at: hit)
           model_written = Enliterator::SourceBasis.model_written?(basis)
+          # v0.84: the composition itself, so a consumer can attribute any span
+          # exactly — and where the document's own text begins (after title and
+          # description). Both absent when the host has declared nothing.
+          segments = Enliterator::SourceBasis.informative?(layout) && !record.is_a?(Enliterator::Part) ? layout : nil
+          body_at  = Enliterator::SourceBasis.body_at(layout) unless record.is_a?(Enliterator::Part)
 
           digest = Digest::MD5.hexdigest(source)
           stamped = Enliterator::Audit.where(claim_id: claim.id).order(:created_at)
@@ -60,6 +66,8 @@ module Enliterator
               located: located,
               basis: basis,
               model_written: model_written,
+              segments: segments,
+              body_at: body_at,
               at_chars: start,
               source_chars: source.length,
               source_digest: digest,
@@ -74,6 +82,8 @@ module Enliterator
             passage: excerpt,
             basis: basis,
             model_written: model_written,
+            segments: segments,
+            body_at: body_at,
             at_chars: start,
             source_chars: source.length,
             source_digest: digest,

@@ -32,26 +32,47 @@ module Enliterator
     MODEL_WRITTEN = %w[reading_notes ai_summary].freeze
     SEPARATOR    = "\n\n"
 
-    # The basis at character `at` of `source` (the text `record` was tended
-    # from along `facet`). `at` nil (span not located) answers the basis of the
-    # head of the source.
-    def at(record, facet:, source:, at: nil)
-      return "document_section" if record.is_a?(Enliterator::Part)
+    # The composition of `source` (the text `record` was tended from along
+    # `facet`): [{ basis:, start:, chars: }] in order. A separator belongs to
+    # the segment before it. Undeclared hosts get one undeclared segment,
+    # split where the engine's own notebook begins.
+    def layout(record, facet:, source:)
+      return [ { basis: "document_section", start: 0, chars: source.length } ] if record.is_a?(Enliterator::Part)
 
-      pos = at.to_i
       if (segments = declared_segments(record, facet: facet, source: source))
         offset = 0
-        segments.each do |seg|
-          len = seg[:text].length
-          return seg[:basis] if pos < offset + len + SEPARATOR.length
-          offset += len + SEPARATOR.length
+        return segments.map do |seg|
+          entry = { basis: seg[:basis], start: offset, chars: seg[:text].length }
+          offset += seg[:text].length + SEPARATOR.length
+          entry
         end
-        return segments.last[:basis]
       end
 
       header = source.index(Enliterator::Part::NOTEBOOK_HEADER)
-      return "reading_notes" if header && pos >= header
-      "undeclared"
+      return [ { basis: "undeclared", start: 0, chars: source.length } ] unless header
+
+      [ { basis: "undeclared", start: 0, chars: header },
+        { basis: "reading_notes", start: header, chars: source.length - header } ]
+    end
+
+    # The basis at character `at` of `source`. `at` nil (span not located)
+    # answers the basis of the head of the source.
+    def at(record, facet:, source:, at: nil)
+      pos = at.to_i
+      layout(record, facet: facet, source: source).reverse.find { |seg| seg[:start] <= pos }[:basis]
+    end
+
+    # v0.84: does this layout say anything a bare digest does not? (Only
+    # "undeclared" ⇒ no: nothing worth stamping on a visit.)
+    def informative?(layout) = Array(layout).any? { |seg| seg[:basis] != "undeclared" }
+
+    # v0.84: where the document's own text begins — the first segment after the
+    # catalog record (title, description). nil when the host has not declared
+    # its composition (the engine cannot know where a title ends).
+    def body_at(layout)
+      declared = Array(layout).reject { |seg| %w[undeclared reading_notes].include?(seg[:basis]) }
+      return nil if declared.empty?
+      Array(layout).find { |seg| seg[:basis] != "catalog_record" }&.dig(:start)
     end
 
     def model_written?(basis) = MODEL_WRITTEN.include?(basis.to_s)
