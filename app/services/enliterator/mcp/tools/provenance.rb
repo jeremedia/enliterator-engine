@@ -48,8 +48,19 @@ module Enliterator
           Enliterator::Audit.where(claim_id: claim.id).order(:created_at).map do |a|
             { source: a.source, auditor: a.auditor, verdict: a.verdict,
               rationale: render_value(a.rationale, cap: 300), at: a.created_at,
-              source_truncated: a.source_truncated || nil }.compact
+              source_truncated: a.source_truncated || nil,
+              **audit_evidence(a) }.compact
           end
+        end
+
+        # v0.87: the quoted evidence, whether the engine found it in the source,
+        # and the kind of text it sits in. Absent for audits rendered without
+        # the evidence requirement (nil ⇒ "not asked", never "none found").
+        def audit_evidence(a)
+          return {} unless a.has_attribute?(:evidence_found) && !a.evidence_found.nil?
+
+          { evidence: a.evidence.presence && render_value(a.evidence, cap: 400),
+            evidence_found: a.evidence_found, evidence_basis: a.evidence_basis }
         end
       end
     end

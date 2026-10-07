@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_01_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -396,6 +396,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_01_120000) do
     t.bigint "corrected_claim_id"
     t.jsonb "corrected_value", default: {}
     t.datetime "created_at", null: false
+    t.text "evidence"
+    t.string "evidence_basis"
+    t.boolean "evidence_found"
     t.bigint "heartbeat_id"
     t.text "rationale"
     t.string "source", null: false

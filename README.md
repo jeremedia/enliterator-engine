@@ -782,6 +782,15 @@ instrument cannot silently diverge on what a term means. A `required` term
 cannot carry a precondition (contradictory instructions — rejected at
 registration, backstopped at resolution).
 
+### Verdicts carry their evidence (v0.87)
+
+`config.audit_evidence = true` makes the examiner quote the source passage that decides each verdict.
+The engine checks the quote against the source it examined (ellipsis-tolerant) and stores
+`evidence`, `evidence_found` and `evidence_basis` (which kind of text the quote sits in — the author's
+text, the catalog record, the engine's reading notes, an AI summary) on the Audit; `provenance` serves
+them. No verdict is rewritten. Off (default), the instrument is byte-identical. Turning it on changes
+the instrument, so audited rates before and after are separate series.
+
 ### Warrant in time (v0.75 — the checking-act, dated)
 
 Probable cause has a shelf life: search warrants void unexecuted. Every visit

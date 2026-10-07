@@ -169,6 +169,13 @@ module Enliterator
     # "unsupported" for deep-grounded claims. Truncation is stamped on the row.
     attr_accessor :audit_source_chars
 
+    # v0.87: when set, the examiner must quote the source passage that decides
+    # its verdict; the engine checks the quote against the source and records
+    # it on the Audit (evidence / evidence_found / evidence_basis). nil (default)
+    # ⇒ the pre-v0.87 prompt and schema, byte-identical. Turning it on changes
+    # the instrument: rates before and after are not one series.
+    attr_accessor :audit_evidence
+
     # ---- v0.21 The Atlas ---------------------------------------------------
 
     # Node ceiling for the atlas graph. Over it, the most-connected nodes are

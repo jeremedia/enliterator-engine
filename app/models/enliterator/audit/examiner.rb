@@ -30,6 +30,27 @@ module Enliterator
         "required" => %w[verdict rationale confidence]
       }.freeze
 
+      # v0.87 (`config.audit_evidence`): the verdict must quote its evidence.
+      EVIDENCE_SCHEMA = SCHEMA.deep_dup.tap { |s|
+        s["properties"]["evidence"] = {
+          "type" => "string",
+          "description" => "The exact passage from the source, copied verbatim (one or two sentences; " \
+                           "mark omissions with …), that decides the verdict. Empty for unsupported or unverifiable."
+        }
+      }.freeze
+
+      EVIDENCE_INSTRUCTION = <<~EV.strip.freeze
+        GROUND YOUR VERDICT: copy into `evidence` the exact source passage (verbatim, one or two
+        sentences; mark omissions with …) that decides it. Supported or contradicted REQUIRES such a
+        passage; if you cannot quote one, the verdict is unsupported (the source is silent) or
+        unverifiable.
+      EV
+
+      # A quote counts as found when every fragment of it (split on ellipses)
+      # of at least this many characters appears in the source, case- and
+      # punctuation-insensitive. Shorter fragments are connective tissue.
+      EVIDENCE_FRAGMENT_MIN = 20
+
       def initialize(llm: nil, tier: nil)
         @llm  = llm
         @tier = tier
@@ -58,7 +79,9 @@ module Enliterator
                                truncated: truncated)
         return rendered if rendered.is_a?(Symbol)
 
+        evidence_attrs = evidence_attributes(rendered, record: record, facet: facet, source: full)
         Enliterator::Audit.create!(
+          **evidence_attrs,
           claim:            claim,
           verdict:          rendered[:verdict],
           rationale:        rendered[:rationale],
@@ -116,7 +139,7 @@ module Enliterator
         decide_args = {
           messages:  messages_for(facet: facet, key: key, value: value, context: context,
                                   source: source, absence: absence, truncated: truncated),
-          schema:    SCHEMA,
+          schema:    evidence? ? EVIDENCE_SCHEMA : SCHEMA,
           tool_name: TOOL_NAME,
           tags:      [ "enliterator", "audit-examiner" ]
         }
@@ -134,10 +157,70 @@ module Enliterator
           confidence:      (result["confidence"] || result[:confidence]).to_f,
           tier:            effective_tier,
           model:           meta[:model].presence || (adapter.respond_to?(:model_id) ? adapter.model_id : "unknown")
-        }
+        }.merge(evidence? ? { evidence: (result["evidence"] || result[:evidence]).to_s.strip } : {})
+      end
+
+      # v0.87: is the evidence requirement on? (Read per call — the flag is
+      # host config, and the instrument's prompt must follow it exactly.)
+      def evidence? = Enliterator.configuration.audit_evidence.present?
+
+      # Where in `source` the quote sits, or nil. Every ellipsis-separated
+      # fragment of ≥ EVIDENCE_FRAGMENT_MIN chars must appear, in order;
+      # comparison ignores case, punctuation and whitespace runs.
+      def locate_evidence(evidence, source)
+        frags = evidence.to_s.split(/\.{3}|…/).map { |f| normalize(f) }.reject { |f| f.length < EVIDENCE_FRAGMENT_MIN }
+        return nil if frags.empty?
+
+        hay, map = normalize_with_map(source)
+        from = 0
+        first = nil
+        frags.each do |f|
+          i = hay.index(f, from) or return nil
+          first ||= i
+          from = i + f.length
+        end
+        map[first]
       end
 
       private
+
+      # The audit columns for the rendered evidence: the quote, whether it was
+      # found in the source examined, and the basis of the text it sits in.
+      # {} when the requirement is off or the host hasn't migrated (v0.87
+      # columns absent) — the pre-v0.87 row exactly.
+      def evidence_attributes(rendered, record:, facet:, source:)
+        return {} unless rendered.key?(:evidence) && Enliterator::Audit.column_names.include?("evidence")
+
+        quote = rendered[:evidence]
+        at = quote.present? ? locate_evidence(quote, source) : nil
+        {
+          evidence:       quote.presence,
+          evidence_found: at ? true : false,
+          evidence_basis: at ? Enliterator::SourceBasis.at(record, facet: facet, source: source, at: at) : nil
+        }
+      end
+
+      def normalize(text) = text.to_s.downcase.gsub(/[^a-z0-9]+/, " ").strip
+
+      # The normalized source plus, for each normalized index, the index in the
+      # original — so a hit maps back to an offset SourceBasis can place.
+      def normalize_with_map(source)
+        out = +""
+        map = []
+        pending_space = false
+        source.to_s.each_char.with_index do |ch, i|
+          if ch.match?(/[A-Za-z0-9]/)
+            if pending_space && !out.empty?
+              out << " "; map << i
+            end
+            pending_space = false
+            out << ch.downcase; map << i
+          else
+            pending_space = true
+          end
+        end
+        [ out, map ]
+      end
 
       def resolve_llm
         return @llm if @llm
@@ -189,7 +272,7 @@ module Enliterator
       end
 
       def standard_system
-        <<~SYS.strip
+        base = <<~SYS.strip
           You are the QUALITY REVIEWER of a library catalog's claim store. Verify ONE
           claim against the source document, and render exactly one verdict:
             - supported: the source provides evidence for the claim's substance.
@@ -202,6 +285,7 @@ module Enliterator
           Judge ONLY against the source text provided. Cite the source in your
           rationale. When contradicted, give the value the source actually supports.
         SYS
+        evidence? ? "#{base}\n#{EVIDENCE_INSTRUCTION}" : base
       end
 
       # The three coherent verdicts on a claim of absence. `supported` is
