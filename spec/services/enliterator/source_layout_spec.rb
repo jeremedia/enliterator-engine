@@ -94,6 +94,16 @@ RSpec.describe "v0.84 source layout" do
       expect(out[:segments].map { |s| s[:basis] }).to eq(%w[catalog_record catalog_record ai_summary])
     end
 
+    it "the excerpt never crosses out of the segment its span sits in" do
+      host  = declaring_host.create!(title: "Thesis", body: "A machine summary: the count was redundant.")
+      tend!(host)
+      claim = host.enliterator_claims.live.find_by(key: "summary")
+      allow_any_instance_of(Enliterator::Claim).to receive(:tendable).and_return(declaring_host.find(host.id))
+      out = call_tool("quote", claim_id: claim.id)
+      expect(out[:at_chars]).to eq(22)                       # clipped to the AI-summary segment's start
+      expect(out[:passage]).to eq("A machine summary: the count was redundant.")
+    end
+
     it "an undeclared host gets neither key (the v0.82 shape)" do
       w = Widget.create!(title: "Plain", body: "the count was redundant")
       tend!(w)

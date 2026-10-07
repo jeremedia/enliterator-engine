@@ -35,10 +35,17 @@ module Enliterator
           value   = claim.value.is_a?(String) ? claim.value : claim.value.to_json
           located, start, hit = locate(source, value)
           start ||= 0
-          excerpt = source[start, window]
           # v0.82: WHOSE words the span is — a located span in the catalog's own
           # reading notes or an AI summary is not the author's text.
           layout  = Enliterator::SourceBasis.layout(record, facet: claim.visit&.facet, source: source)
+          # v0.86.1: the excerpt stays inside the segment the span sits in. The
+          # window opens 80 chars before the hit and could run from an abstract
+          # into the reading notes under ONE basis label (HSDL found it live).
+          # A single-segment source is unchanged.
+          seg     = layout.reverse.find { |sg| sg[:start] <= (hit || 0) }
+          seg_end = seg[:start] + seg[:chars]
+          start   = [ start, seg[:start] ].max
+          excerpt = source[start, [ window, seg_end - start ].min]
           basis   = Enliterator::SourceBasis.at(record, facet: claim.visit&.facet, source: source, at: hit)
           model_written = Enliterator::SourceBasis.model_written?(basis)
           # v0.84: the composition itself, so a consumer can attribute any span
