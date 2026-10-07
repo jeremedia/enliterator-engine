@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -387,6 +387,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_190000) do
     t.index ["provenance_and_rights_id"], name: "index_emanations_on_provenance_and_rights_id"
     t.index ["temporal_scope"], name: "index_emanations_on_temporal_scope"
     t.index ["valid_time_start", "valid_time_end"], name: "index_emanations_on_valid_time_start_and_valid_time_end"
+  end
+
+  create_table "enliterator_audit_repeats", force: :cascade do |t|
+    t.boolean "agrees", null: false
+    t.bigint "audit_id", null: false
+    t.string "auditor"
+    t.datetime "created_at", null: false
+    t.boolean "evidence_mode", null: false
+    t.string "facet", null: false
+    t.bigint "heartbeat_id"
+    t.string "verdict", null: false
+    t.index ["audit_id"], name: "index_enliterator_audit_repeats_on_audit_id"
+    t.index ["facet", "created_at"], name: "index_enliterator_audit_repeats_on_facet_and_created_at"
+    t.index ["heartbeat_id"], name: "index_enliterator_audit_repeats_on_heartbeat_id"
   end
 
   create_table "enliterator_audits", force: :cascade do |t|
@@ -1923,6 +1937,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_190000) do
   add_foreign_key "emanation_relationals", "emanations"
   add_foreign_key "emanation_relationals", "relationals"
   add_foreign_key "emanations", "provenance_and_rights", column: "provenance_and_rights_id"
+  add_foreign_key "enliterator_audit_repeats", "enliterator_audits", column: "audit_id", on_delete: :cascade
+  add_foreign_key "enliterator_audit_repeats", "enliterator_heartbeats", column: "heartbeat_id", on_delete: :nullify
   add_foreign_key "enliterator_audits", "enliterator_claims", column: "claim_id", on_delete: :cascade
   add_foreign_key "enliterator_audits", "enliterator_claims", column: "corrected_claim_id", on_delete: :nullify
   add_foreign_key "enliterator_audits", "enliterator_heartbeats", column: "heartbeat_id", on_delete: :nullify

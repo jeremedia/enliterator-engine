@@ -791,6 +791,14 @@ text, the catalog record, the engine's reading notes, an AI summary) on the Audi
 them. No verdict is rewritten. Off (default), the instrument is byte-identical. Turning it on changes
 the instrument, so audited rates before and after are separate series.
 
+### Instrument agreement (v0.88)
+
+`config.audit_repeat_sample = N` has each heartbeat re-examine N already-audited claims whose source is
+unchanged, under the same examiner tier and evidence mode, and record whether the verdict repeats
+(`Enliterator::AuditRepeat`, never an Audit). `AuditRepeat.agreement` gives the per-facet rate; the
+`accuracy` MCP tool and the Status page show it once repeats exist. `rake enliterator:audit_repeat N=`
+runs it on demand. Default 0: no repeats.
+
 ### Warrant in time (v0.75 — the checking-act, dated)
 
 Probable cause has a shelf life: search warrants void unexecuted. Every visit

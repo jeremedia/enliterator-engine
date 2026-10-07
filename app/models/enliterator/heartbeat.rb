@@ -213,6 +213,7 @@ module Enliterator
         pulse!("considerer")  ; consider!(run_warnings) unless skip_consider
         pulse!("conservator") ; conserve! unless skip_consider
         pulse!("audit")       ; audit_phase!(run_warnings)
+        repeat_phase!(run_warnings)      # v0.88: gated + pulses internally — 0 ⇒ trace byte-identical
         warm_phase!(run_warnings)        # v0.86: gated + pulses internally — unconfigured ⇒ trace byte-identical
         pulse!("finalize")
         drain_deficit_check!(run_warnings) if mode == "enqueue"
@@ -596,6 +597,22 @@ module Enliterator
     # cycle continues; a per-claim failure is counted and the claim re-enters
     # the pool next cycle. A Null adapter is a VISIBLE skip — a standing
     # instrument must never go quiet (the v0.5 lesson).
+    # v0.88: re-examine a few already-audited claims to measure the examiner's
+    # agreement with itself. Never fatal; recorded under audits["repeat"].
+    def repeat_phase!(run_warnings)
+      n = Enliterator.configuration.audit_repeat_sample.to_i
+      return if n <= 0
+
+      pulse!("audit-repeat")
+      stats = Enliterator::AuditRepeat.run!(n, heartbeat: self)
+      update!(audits: (audits || {}).merge("repeat" => stats.stringify_keys))
+      log("audit repeat: #{stats.map { |k, v| "#{k}=#{v}" }.join(' ')}")
+    rescue => e
+      raise if e.is_a?(StoodDown)
+      run_warnings << "audit repeat phase failed: #{e.class}: #{e.message}"
+      log(run_warnings.last)
+    end
+
     # v0.86: rebuild the configured Atlas edge indexes so the first reader
     # after a cycle finds them warm. Never fatal — a failed warm is a warning.
     def warm_phase!(run_warnings)

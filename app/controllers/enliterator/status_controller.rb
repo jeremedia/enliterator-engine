@@ -23,6 +23,8 @@ module Enliterator
         # truth beside the pooled process record (computed from the same rows).
         @audit_rollups   = Enliterator::Audit.accuracy_rollups(@audit_accuracy)
         @audit_agreement = Enliterator::Audit.anchor_agreement
+        # v0.88: the examiner's agreement with itself — {} until repeats exist.
+        @instrument_agreement = Enliterator::AuditRepeat.agreement
         @audit_corrected = Enliterator::Audit.corrected_count
         # v0.76: live claims bearing UNLICENSED LOAD — a basis ancestor was
         # ruled defective and the claim has not cited its way out. Population

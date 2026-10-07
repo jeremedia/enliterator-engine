@@ -176,6 +176,11 @@ module Enliterator
     # the instrument: rates before and after are not one series.
     attr_accessor :audit_evidence
 
+    # v0.88: how many already-audited claims each heartbeat re-examines to
+    # measure the examiner's agreement with itself (AuditRepeat). 0 (default)
+    # ⇒ no repeats, byte-identical.
+    attr_accessor :audit_repeat_sample
+
     # ---- v0.21 The Atlas ---------------------------------------------------
 
     # Node ceiling for the atlas graph. Over it, the most-connected nodes are
@@ -485,6 +490,7 @@ module Enliterator
       @heartbeat_audit_sample = 0
       @audit_tier = nil
       @audit_source_chars = 24_000
+      @audit_repeat_sample = 0
       @atlas_node_cap = 1_500
       @gateway_timeout = 180
       @gateway_max_retries = 1

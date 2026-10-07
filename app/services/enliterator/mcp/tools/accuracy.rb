@@ -30,6 +30,9 @@ module Enliterator
           {
             by_facet_and_tier: Enliterator::Audit.accuracy_cached,
             anchor_agreement:  Enliterator::Audit.anchor_agreement.except(:matrix),
+            # v0.88: the examiner's agreement with itself, per facet — present
+            # only once repeats exist (the instrument's reliability beside its rates).
+            **instrument_agreement,
             verdict_meanings: {
               supported:    "the source provides evidence for the claim",
               unsupported:  "the source is silent on it",
@@ -39,6 +42,20 @@ module Enliterator
             next: { flag_claim: "file a suspect claim for human review",
                     human_view: "/enliterator/review" }
           }
+        end
+
+        private
+
+        def instrument_agreement
+          rows = Enliterator::AuditRepeat.agreement
+          return {} if rows.empty?
+
+          { instrument_agreement: {
+              by_facet: rows,
+              meaning: "how often the examiner, asked again about the same unchanged source under the " \
+                       "same configuration, gives the same verdict — the instrument's reliability, not the " \
+                       "claims' accuracy"
+          } }
         end
       end
     end

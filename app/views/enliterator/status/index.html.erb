@@ -197,6 +197,17 @@
       · <%= @audit_corrected %> claim(s) corrected<% if @tainted_live.to_i.positive? %>
       · <strong><%= @tainted_live %></strong> live claim(s) tainted — a synthesis basis was ruled defective (unlicensed load)<% end %>
     </div>
+    <% if @instrument_agreement.present? %>
+      <div class="muted samples" style="margin-top:.25rem"
+           title="Asked again about the same unchanged source, under the same configuration, how often the examiner gives the same verdict — the instrument's reliability, not the claims' accuracy.">
+        examiner self-agreement:
+        <%= safe_join(@instrument_agreement.map { |facet, a|
+              "#{facet} #{(a[:rate] * 100).round}% of #{a[:repeats]}#{a[:insufficient] ? '*' : ''}" }, " · ") %>
+        <% if @instrument_agreement.values.any? { |a| a[:insufficient] } %>
+          <span>(* fewer than <%= Enliterator::AuditRepeat::MIN_REPEATS %> repeats)</span>
+        <% end %>
+      </div>
+    <% end %>
   </div>
 <% end %>
 

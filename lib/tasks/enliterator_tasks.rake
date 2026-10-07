@@ -297,6 +297,19 @@ namespace :enliterator do
   #
   #   N=25 bin/rails enliterator:audit
   desc "Examine a stratified sample of claims against their sources (quality review). N=count"
+  # v0.88: measure the examiner's agreement with itself — re-examine N
+  # already-audited claims whose source is unchanged, under the current
+  # configuration. Writes AuditRepeat rows (never audits). N= (default 20)
+  desc "Re-examine audited claims to measure examiner self-agreement. N="
+  task audit_repeat: :environment do
+    n = (ENV["N"] || 20).to_i
+    stats = Enliterator::AuditRepeat.run!(n)
+    puts "[enliterator:audit_repeat] #{stats.map { |k, v| "#{k}=#{v}" }.join(' ')}"
+    Enliterator::AuditRepeat.agreement.each do |facet, a|
+      puts "  #{facet.ljust(20)} #{(a[:rate] * 100).round(1)}% of #{a[:repeats]}#{a[:insufficient] ? ' (insufficient)' : ''}"
+    end
+  end
+
   task audit: :environment do
     logger = Enliterator.logger
     log = ->(msg) { logger ? logger.info("[enliterator:audit] #{msg}") : puts(msg) }
