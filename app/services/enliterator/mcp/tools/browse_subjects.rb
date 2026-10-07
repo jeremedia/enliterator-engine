@@ -5,6 +5,7 @@ module Enliterator
       # counts congruent to their click-throughs (the v0.24 rule): every
       # [key, term, n] here returns exactly n records from subject_search.
       class BrowseSubjects < Tool
+        honors_member_scope!   # v0.83
         name_and_description "browse_subjects",
           "The subject-heading browse index: which claim keys act as headings and their top " \
           "values with record counts. The structural answer to 'what does this collection " \

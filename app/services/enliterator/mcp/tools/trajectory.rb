@@ -9,6 +9,8 @@ module Enliterator
         STEPS_CAP = 8
         DIFF_CAP  = 200
 
+        honors_member_scope!   # v0.83
+
         name_and_description "trajectory",
           "A record's understanding over time: per facet, each visit's operations " \
           "(added/updated/kept) and what changed, including deep-read supersessions. " \

@@ -45,8 +45,11 @@ module Enliterator
     # republishes when a cycle lands, never goes stale-forever). Type-agnostic:
     # per-type counts live inside it; only the grid is type-filtered.
     def overview
+      # v0.83: the audience digest joins the key — two audiences never share a
+      # cached count (nil with no scope ⇒ the pre-v0.83 key, byte-identical).
       key = [ "enliterator/catalog", @context&.key || "root",
-              "hb#{Enliterator::Heartbeat.maximum(:id) || 0}" ].join("/")
+              "hb#{Enliterator::Heartbeat.maximum(:id) || 0}",
+              Enliterator::MemberScope.digest ].compact.join("/")
       Rails.cache.fetch(key, expires_in: TTL) { assemble_overview }
     end
 
@@ -146,7 +149,10 @@ module Enliterator
                ).arel.exists
              )
       end
-      s
+      # v0.83: headings, their counts, the subject click-through and the stats
+      # all read this spine — the audience scope applies here, BEFORE any count.
+      Enliterator::MemberScope.restrict(s, type_sql: "enliterator_claims.tendable_type",
+                                           id_sql:   "enliterator_claims.tendable_id")
     end
 
     def heading_scope(key)
@@ -176,7 +182,9 @@ module Enliterator
       {
         stats: {
           enliterated:     base_pool.count,
-          corpus:          known_tendables.sum(&:count),
+          # v0.83: under an audience scope the corpus is what this reader may
+          # see — the global total would itself disclose withheld records.
+          corpus:          Enliterator::MemberScope.active? ? Enliterator::MemberScope.current.sum(&:count) : known_tendables.sum(&:count),
           live_claims:     scoped_understanding.count,
           vocabulary_keys: scoped_understanding.distinct.count(:key)
         },
@@ -262,6 +270,8 @@ module Enliterator
                ).arel.exists
              )
       end
+      v = Enliterator::MemberScope.restrict(v, type_sql: "enliterator_visits.tendable_type",   # v0.83
+                                               id_sql:   "enliterator_visits.tendable_id")
       rows = v.order(created_at: :desc).limit(RECENT_CAP * 5)
               .pluck(:tendable_type, :tendable_id, :created_at)
       recent = []

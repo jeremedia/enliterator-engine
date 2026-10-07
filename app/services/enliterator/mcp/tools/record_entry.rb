@@ -11,6 +11,8 @@ module Enliterator
         CLAIMS_CAP = 60
         PARTS_CAP  = 80
 
+        honors_member_scope!   # v0.83
+
         name_and_description "record_entry",
           "One record's full entry: live claims grouped by facet, each with provenance " \
           "(confidence, tier, audit verdict, locked, attribution), tending history rollup, " \

@@ -9,6 +9,11 @@ module Enliterator
       class CollectionOverview < Tool
         FACETS_CAP = 20
 
+        # v0.83: honored — counts are taken over the reader's visible records;
+        # the conservation and accuracy rollups (whole-collection staff
+        # instruments) are omitted inside a scope.
+        honors_member_scope!
+
         name_and_description "collection_overview",
           "Orient yourself: the collection's self-portrait — holdings counts, context tree, " \
           "facets with tended counts, conservation summary, and audited accuracy. Call this " \
@@ -20,9 +25,13 @@ module Enliterator
 
         def call(context: nil)
           ctx      = resolve_context(context)
+          scoped   = Enliterator::MemberScope.active?
           overview = Enliterator::Catalog.new(context: ctx).overview
-          synopsis = Enliterator::Synopsis.build(context: ctx)
-          condition = Enliterator::Condition.report
+          # v0.83: the cached portrait counts and samples every record; a scoped
+          # reader gets the sample-free outline counted over what it may see.
+          facets   = scoped ? Enliterator::Synopsis.facet_outline(context: ctx)
+                            : Array(Enliterator::Synopsis.build(context: ctx)[:facets])
+          condition = scoped ? {} : Enliterator::Condition.report
 
           payload = {
             # v0.57: the charter LEADS — the collection says what it IS before
@@ -33,7 +42,7 @@ module Enliterator
             stats:   overview[:stats],
             types:   overview[:types],
             contexts: context_tree,
-            facets: Array(synopsis[:facets]).first(FACETS_CAP).map { |f|
+            facets: facets.first(FACETS_CAP).map { |f|
               { facet: f[:facet], tier: f[:tier], tended_count: f[:tended_count],
                 terms: Array(f[:vocabulary]).map { |v| v[:key] } }
             },
@@ -61,6 +70,9 @@ module Enliterator
           # away — shipped on the FIRST call of every turn, they became patron-facing
           # boilerplate ("the audited support rate … is 94.3%"). Flag-off: unchanged.
           payload.delete(:accuracy) if Enliterator.configuration.chat_attribution
+          # v0.83: conservation and accuracy are rollups over the WHOLE collection
+          # (residue piles, audited counts) — not this reader's holdings.
+          payload.except!(:condition, :accuracy) if scoped
           payload
         end
 
@@ -90,7 +102,9 @@ module Enliterator
             # keeps the context's own holdings. Leaf: the two are equal.
             { key: c.key, name: c.name, parent: c.parent&.key,
               members: Enliterator::ContextMembership.subtree_member_count(c),
-              direct_members: c.memberships.count }
+              direct_members: Enliterator::MemberScope.restrict(
+                c.memberships, type_sql: "enliterator_context_memberships.member_type",
+                               id_sql: "enliterator_context_memberships.member_id").count }
           end
         end
       end

@@ -37,6 +37,9 @@ module Enliterator
     # children counts once) — the honest "N member records" for a read view.
     def self.subtree_member_count(context)
       pairs = where(context_id: context.subtree_ids).select(:member_type, :member_id).distinct
+      # v0.83: under an audience scope, a context holds only what this reader may see.
+      pairs = Enliterator::MemberScope.restrict(pairs, type_sql: "enliterator_context_memberships.member_type",
+                                                      id_sql: "enliterator_context_memberships.member_id")
       unscoped.from(pairs, :pairs).count
     end
   end

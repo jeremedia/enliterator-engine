@@ -23,6 +23,8 @@ module Enliterator
     module_function
 
     class InvalidArguments < StandardError; end
+    # v0.83: a tool that does not honor the audience scope, called inside one.
+    class ScopeNotHonored < StandardError; end
 
     # The engine's own tools, in listing order. An explicit list, not a
     # descendants scan — see the boot-order note above.
@@ -122,6 +124,11 @@ module Enliterator
     def dispatch(name, args)
       tool = find_tool(name)
       raise InvalidArguments, "unknown tool #{name.inspect}" if tool.nil?
+      if Enliterator::MemberScope.active? && !tool.honors_member_scope?
+        raise ScopeNotHonored, "#{name} does not honor the audience scope and cannot run inside " \
+                               "Enliterator.with_member_scope — its answer would include records " \
+                               "this reader may not see"
+      end
       args = (args || {}).transform_keys(&:to_s)
       validate!(tool.input_schema, args)
       tool.new.call(**args.symbolize_keys)

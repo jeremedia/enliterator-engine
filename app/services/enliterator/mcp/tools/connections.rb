@@ -9,6 +9,8 @@ module Enliterator
         EDGES_CAP    = 40
         NEIGHBOR_CAP = 8
 
+        honors_member_scope!   # v0.83
+
         name_and_description "connections",
           "A record's connections: typed claim edges (advisor, supersedes, cited works — " \
           "each with confidence and any audit verdict) and nearest semantic neighbors. " \
@@ -32,6 +34,11 @@ module Enliterator
 
           edges = atlas[:edges].select { |e| e[:s] == node_id || e[:t] == node_id }
                                .reject { |e| e[:key] == "in-context" }
+          # v0.83: the Atlas is built over the whole collection (cached); under
+          # an audience scope an edge to or from a record this reader may not
+          # see does not exist. Entity edges out of this record are its own
+          # claims and stay.
+          edges = visible_edges(edges, node_id) if Enliterator::MemberScope.active?
           {
             type: type, id: id.to_s, label: label_for(record),
             context: ctx&.key || "root",
@@ -50,6 +57,23 @@ module Enliterator
         end
 
         private
+
+        # One query per record type among the endpoints, not one per edge.
+        def visible_edges(edges, node_id)
+          others = edges.map { |e| e[:s] == node_id ? e[:t] : e[:s] }.select { |n| n.start_with?("r:") }
+          by_type = others.map { |n| n.split(":", 3).drop(1) }.group_by(&:first)
+                          .transform_values { |pairs| pairs.map(&:last) }
+          visible = by_type.flat_map do |type, ids|
+            Enliterator::MemberScope.current.filter_map { |rel| rel if rel.klass.name == type }.flat_map do |rel|
+              pk = rel.klass.primary_key
+              rel.where(pk => ids).pluck(pk).map { |id| "r:#{type}:#{id}" }
+            end
+          end.to_set
+          edges.select do |e|
+            other = e[:s] == node_id ? e[:t] : e[:s]
+            !other.start_with?("r:") || visible.include?(other)
+          end
+        end
 
         def target_ref(node_id, labels)
           if node_id.start_with?("r:")

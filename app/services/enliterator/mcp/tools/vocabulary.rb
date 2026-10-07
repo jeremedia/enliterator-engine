@@ -17,6 +17,10 @@ module Enliterator
           "context" => str("Optional context key (facets and approvals are context-scoped)")
         })
 
+        # v0.83: honored trivially — term definitions are curated, not drawn
+        # from any record, so a scoped reader sees the same vocabulary.
+        honors_member_scope!
+
         def call(facet: nil, context: nil)
           ctx    = resolve_context(context)
           path   = ctx&.path_keys

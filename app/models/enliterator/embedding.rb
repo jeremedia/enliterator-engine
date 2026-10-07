@@ -15,14 +15,22 @@ module Enliterator
     # (leaf SQL unchanged). Tending's neighbor pool does not use this scope —
     # Visitor#nearest_neighbors builds its own direct-membership predicate.
     scope :in_context, ->(context) {
-      next all if context.nil?
-      where(
-        Enliterator::ContextMembership.member_exists_in_subtree(
-          context,
-          type_sql: "enliterator_embeddings.embeddable_type",
-          id_sql:   "enliterator_embeddings.embeddable_id"
-        ).arel.exists
-      )
+      rel = if context.nil?
+        all
+      else
+        where(
+          Enliterator::ContextMembership.member_exists_in_subtree(
+            context,
+            type_sql: "enliterator_embeddings.embeddable_type",
+            id_sql:   "enliterator_embeddings.embeddable_id"
+          ).arel.exists
+        )
+      end
+      # v0.83: the audience scope — only records this reader may see exist in
+      # the pool (grid, semantic search, neighbors, chat retrieval). No scope ⇒
+      # unchanged.
+      Enliterator::MemberScope.restrict(rel, type_sql: "enliterator_embeddings.embeddable_type",
+                                             id_sql:   "enliterator_embeddings.embeddable_id")
     }
 
     # Nearest embeddings to a raw vector, by cosine distance.

@@ -18,6 +18,12 @@ module Enliterator
       class << self
         attr_reader :tool_name, :description, :input_schema
 
+        # v0.83: tools that read only scope-honoring paths declare it; inside an
+        # audience scope Mcp.dispatch refuses every tool that hasn't (fail
+        # closed — a tool added later cannot silently read around the scope).
+        def honors_member_scope! = (@honors_member_scope = true)
+        def honors_member_scope? = !!@honors_member_scope
+
         def name_and_description(name, desc)
           @tool_name   = name
           @description = desc
@@ -54,8 +60,23 @@ module Enliterator
           raise ArgumentError,
                 "unknown record type #{type.inspect} — collection_overview lists the tended types"
         end
-        klass.find_by(klass.primary_key => id) ||
-          raise(ArgumentError, "no #{type} with id #{id.inspect}")
+        record = klass.find_by(klass.primary_key => id)
+        # v0.83: outside the audience scope a record does not exist — the SAME
+        # answer as a missing one, so the error is no existence oracle.
+        if record.nil? || !Enliterator::MemberScope.include?(record)
+          raise ArgumentError, "no #{type} with id #{id.inspect}"
+        end
+        record
+      end
+
+      # v0.83: a claim-addressed tool (quote, provenance) answers only for
+      # claims on visible records — the same "no claim" as a missing one.
+      def visible_claim!(claim_id)
+        claim = Enliterator::Claim.find_by(id: claim_id)
+        if claim.nil? || !Enliterator::MemberScope.include?(claim.tendable)
+          raise ArgumentError, "no claim ##{claim_id}"
+        end
+        claim
       end
 
       def label_for(rec)

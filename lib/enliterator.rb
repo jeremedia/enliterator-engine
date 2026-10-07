@@ -573,6 +573,14 @@ module Enliterator
       klass == Enliterator::Part || tendable_models.include?(klass)
     end
 
+    # v0.83: run the block with only the records in +relations+ visible —
+    # the audience scope (Enliterator::MemberScope). A host serving readers of
+    # different entitlements wraps each tool call; counts, ranking and edges
+    # are computed over the visible set only. No block ⇒ nothing changes.
+    def with_member_scope(relations, &block)
+      Enliterator::MemberScope.with(relations, &block)
+    end
+
     # The host TYPE names declared SYNTHESIZED (see Configuration#synthesized_tendables).
     # A load-independent config name list — nil-safe, string-normalized. The
     # collection tendable (v0.57) is folded in: it is by definition synthesized

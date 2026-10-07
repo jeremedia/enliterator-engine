@@ -7,6 +7,8 @@ module Enliterator
       class Search < Tool
         LIMIT_MAX = 10
 
+        honors_member_scope!   # v0.83
+
         name_and_description "search",
           "Semantic search over the enliterated holdings. Returns the nearest records " \
           "with their understanding (excerpt, claim count, tending depth, cosine distance). " \

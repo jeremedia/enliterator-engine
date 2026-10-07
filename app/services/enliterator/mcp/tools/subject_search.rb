@@ -5,6 +5,7 @@ module Enliterator
       # claim key=value. Same scope and shapes as browse_subjects' tally —
       # the count on the heading equals the total here, guaranteed.
       class SubjectSearch < Tool
+        honors_member_scope!   # v0.83
         name_and_description "subject_search",
           "Records holding a live claim key=value (a subject heading's records). " \
           "Values are byte-exact — use exactly what browse_subjects returned."

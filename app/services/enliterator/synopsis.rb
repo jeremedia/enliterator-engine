@@ -44,6 +44,19 @@ module Enliterator
       end
     end
 
+    # v0.83: the facet outline for an audience scope — tier, terms, and how
+    # many VISIBLE records each facet has tended. Uncached (the scope is per
+    # reader) and sample-free: the portrait's sample values are drawn from
+    # every record and would quote withheld ones.
+    def facet_outline(context: nil)
+      policy = Enliterator.staffing
+      facet_names(policy, context).map do |facet|
+        { facet: facet, tier: policy.tier_for(facet, path: context&.path_keys),
+          tended_count: tended_count(facet, context),
+          vocabulary: (Enliterator::Vocabulary.for(facet, context: context) || {}).keys.map { |k| { key: k } } }
+      end
+    end
+
     # Build the self-portrait (uncached). `sample_cap` / `value_chars` bound the
     # prompt size so to_prompt stays small regardless of corpus size.
     def assemble(host: nil, since: nil, context: nil, sample_cap: 3, value_chars: 80)
@@ -134,6 +147,9 @@ module Enliterator
     def tended_count(facet, context = nil)
       scope = Enliterator::Visit.where(facet: facet, status: "succeeded", applied: true)
       scope = scope.where(context_id: context.read_scope_ids) if context
+      # v0.83: under an audience scope, only records this reader may see count.
+      scope = Enliterator::MemberScope.restrict(scope, type_sql: "enliterator_visits.tendable_type",
+                                                      id_sql: "enliterator_visits.tendable_id")
       scope.distinct.pluck(:tendable_type, :tendable_id).size
     end
 

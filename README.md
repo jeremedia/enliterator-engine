@@ -314,6 +314,12 @@ for model-written text. Hosts declare composition with an optional
 `enliterator_text_segments(facet:)` → `[{text:, basis:}]` whose texts joined by `"\n\n"` equal
 `enliterator_text(facet:)` (a declaration that does not reproduce it is ignored and logged).
 
+**Audience scope** (v0.83). `Enliterator.with_member_scope(Model.visible_relation) { … }` makes
+only those records exist inside the block — applied before counting and ranking (catalog headings,
+subject click-through, the embedding pool, connections, collection_overview counts),
+deny-by-default for unnamed types, a withheld record indistinguishable from a missing one. MCP tools declare `honors_member_scope!`;
+`Mcp.dispatch` refuses any other tool inside a scope (`ScopeNotHonored`). No block, no change.
+
 **Host tools** (v0.69). A host application can contribute tools of its own —
 `Enliterator::Mcp.register(YourTool)`, reset with `reset_host_tools!`, registered from your
 `to_prepare` beside `Chat.register` — so the desk can act on the host's data as well as read

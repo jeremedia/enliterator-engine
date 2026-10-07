@@ -10,6 +10,8 @@ module Enliterator
         CHARS_MAX = 1_200
         RUN_MIN   = 3       # minimum token-run worth calling a located span
 
+        honors_member_scope!   # v0.83
+
         name_and_description "quote",
           "The source passage behind a claim — the exact text the tend read, located " \
           "lexically. Use to put primary material in front of a reader instead of " \
@@ -22,8 +24,7 @@ module Enliterator
         }, required: [ :claim_id ])
 
         def call(claim_id:, chars: 600)
-          claim  = Enliterator::Claim.find_by(id: claim_id) ||
-                   raise(ArgumentError, "no claim ##{claim_id}")
+          claim  = visible_claim!(claim_id)
           record = claim.tendable ||
                    raise(ArgumentError, "claim ##{claim_id}'s record no longer exists")
           window = chars.clamp(120, CHARS_MAX)

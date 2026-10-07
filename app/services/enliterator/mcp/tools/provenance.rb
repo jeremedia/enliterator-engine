@@ -6,6 +6,7 @@ module Enliterator
       # what superseded what, and every audit verdict rendered on it. The
       # answer that makes an agent's citations trustworthy.
       class Provenance < Tool
+        honors_member_scope!   # v0.83
         name_and_description "provenance",
           "A claim's full provenance: the minting visit (tier/model/reason/inputs), " \
           "derivation chain, supersession in both directions, and all audit verdicts " \
@@ -16,8 +17,7 @@ module Enliterator
         }, required: [ :claim_id ])
 
         def call(claim_id:)
-          claim = Enliterator::Claim.find_by(id: claim_id) ||
-                  raise(ArgumentError, "no claim ##{claim_id}")
+          claim = visible_claim!(claim_id)
           visit = claim.visit
           record = claim.tendable
 
