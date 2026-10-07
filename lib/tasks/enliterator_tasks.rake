@@ -490,6 +490,9 @@ namespace :enliterator do
   #   MEASURES=1 bin/rails enliterator:export        # include the condition register
   #   bin/rails enliterator:import FILE=tmp/enliteration.tar
   #   FORCE=1 bin/rails enliterator:import ...       # truncate + replace a non-empty target
+  #   FORCE=1 DISCARD_AUDITS=1 ...                   # ...even when the target holds human audits
+  # v0.81: the Reference Desk's history (chat_*) is target-local — never exported,
+  # never truncated, never loaded.
   desc "Export the enliteration to one archive. FILE= MEASURES=1"
   task export: :environment do
     path = ENV["FILE"].presence || "tmp/enliteration.tar"
@@ -500,11 +503,12 @@ namespace :enliterator do
          "#{(File.size(path) / 1024.0 / 1024).round(1)} MB)"
   end
 
-  desc "Import an enliteration archive. FILE= FORCE=1"
+  desc "Import an enliteration archive. FILE= FORCE=1 [DISCARD_AUDITS=1]"
   task import: :environment do
     path = ENV["FILE"].presence || "tmp/enliteration.tar"
     abort "no archive at #{path} (FILE=...)" unless File.exist?(path)
-    manifest = Enliterator::Portability.import(path, force: ENV["FORCE"].present?)
+    manifest = Enliterator::Portability.import(path, force: ENV["FORCE"].present?,
+                                                           discard_audits: ENV["DISCARD_AUDITS"].present?)
     puts "imported #{manifest['tables'].size} tables from #{manifest['host']} " \
          "(exported #{manifest['generated_at']})"
     unless manifest["tables"].key?("enliterator_measures")

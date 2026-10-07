@@ -39,6 +39,30 @@ module Enliterator
 
     MANIFEST = "manifest.json"
 
+    # v0.81: TARGET-LOCAL tables — what a deployment does with the engine, as
+    # opposed to what the engine learned. The Reference Desk's conversations,
+    # turns, and curator persona edits belong to the deployment that hosted
+    # them; they are never exported, never truncated by a forced import, and
+    # never loaded from an archive (an older archive that carries them has
+    # them skipped by name). The v0.22 importer treated every enliterator_*
+    # table as transferable, so a forced import replaced HSDL prod's desk
+    # history with dev's (HSDL held its sync on it). Self-contained by
+    # schema: chat_turns references chat_conversations only, so leaving the
+    # set out of the TRUNCATE cannot break a foreign key.
+    TARGET_LOCAL = %w[
+      enliterator_chat_conversations
+      enliterator_chat_turns
+      enliterator_chat_personas
+    ].freeze
+
+    # v0.81: raised when a forced import would discard human audit verdicts
+    # filed on the target. Audits ride the claims they judge (ids preserved
+    # from the source), so a target's own human verdicts cannot survive a
+    # replace — merging them is a different operation the engine does not
+    # offer. Refusing by count, with an explicit override, keeps the loss a
+    # decision instead of a side effect.
+    class TargetCurationAtRisk < ArgumentError; end
+
     def export(path, measures: false)
       conn   = ActiveRecord::Base.connection
       tables = exportable_tables(conn, measures: measures)
@@ -49,7 +73,8 @@ module Enliterator
           h[t] = { "rows" => conn.select_value("SELECT COUNT(*) FROM #{t}").to_i,
                    "columns" => conn.columns(t).map(&:name) }
         end,
-        "excluded"     => (measures ? [] : [ "enliterator_measures" ])
+        "excluded"     => (measures ? [] : [ "enliterator_measures" ]),
+        "target_local" => TARGET_LOCAL
       }
 
       File.open(path, "wb") do |file|
@@ -69,21 +94,23 @@ module Enliterator
       manifest
     end
 
-    # Whole-archive import. `force:` truncates every enliterator table first
-    # (ONE multi-table TRUNCATE, no CASCADE — cascading outside the engine's
-    # tables must be impossible).
-    def import(path, force: false)
+    # Whole-archive import. `force:` truncates every TRANSFERABLE enliterator
+    # table first (ONE multi-table TRUNCATE, no CASCADE — cascading outside the
+    # engine's tables must be impossible). v0.81: TARGET_LOCAL tables are never
+    # truncated and never loaded; `discard_audits:` must be passed to replace a
+    # target that holds its own human audit verdicts.
+    def import(path, force: false, discard_audits: false)
       conn     = ActiveRecord::Base.connection
       manifest = read_manifest(path)
       assert_compatible!(conn, manifest)
-      assert_importable!(conn, force: force)
+      assert_importable!(conn, force: force, discard_audits: discard_audits)
 
       # A host app may cap its Rails connections with a statement_timeout
       # (HSDL: 60s on staging/prod). A multi-million-row binary COPY is a
       # single statement and legitimately exceeds any web-tier cap, so the
       # importer owns its timeout envelope for this session.
       without_statement_timeout(conn) do
-        manifest["tables"].keys.sort_by { |t| [ TABLE_ORDER.index(t) || 99, t ] }.each do |t|
+        importable_tables(manifest).each do |t|
           import_table(path, t, columns: manifest.dig("tables", t, "columns"), skip_guard: true)
         end
       end
@@ -107,6 +134,13 @@ module Enliterator
     # schema.rb-built one (the dry run caught this on real data): an explicit
     # column list makes the archive order-independent.
     def import_table(path, table, columns: nil, skip_guard: false)
+      # v0.81: the per-table entry point is guarded too — a host task that
+      # iterates an OLDER archive's manifest must not load another
+      # deployment's desk history. Skipped by name, never silently.
+      if TARGET_LOCAL.include?(table)
+        log "import: #{table} skipped — target-local (this deployment's own desk history stays)"
+        return 0
+      end
       conn = ActiveRecord::Base.connection
       unless skip_guard
         manifest = read_manifest(path)
@@ -179,8 +213,8 @@ module Enliterator
       end
     end
 
-    def assert_importable!(conn, force: false)
-      counts = engine_tables(conn).each_with_object({}) do |t, h|
+    def assert_importable!(conn, force: false, discard_audits: false)
+      counts = transferable_tables(conn).each_with_object({}) do |t, h|
         n = conn.select_value("SELECT COUNT(*) FROM #{t}").to_i
         h[t] = n if n.positive?
       end
@@ -188,16 +222,32 @@ module Enliterator
         raise ArgumentError, "target is not empty (#{counts.map { |t, n| "#{t}: #{n}" }.join(', ')}) — " \
                              "pass force to truncate and replace"
       end
-      if counts.any?
-        log "import: FORCE — truncating #{counts.keys.size} non-empty enliterator table(s)"
-        conn.execute("TRUNCATE #{engine_tables(conn).join(', ')} RESTART IDENTITY")
+      return if counts.empty?
+
+      human = counts.key?("enliterator_audits") ? Enliterator::Audit.human.count : 0
+      if human.positive? && !discard_audits
+        raise TargetCurationAtRisk,
+              "target holds #{human} human audit verdict(s) that a replace would discard — " \
+              "audits ride the claims they judge, so they cannot be kept across a replace. " \
+              "Export them first if they matter, then pass discard_audits (DISCARD_AUDITS=1) to proceed"
       end
+      log "import: FORCE — truncating #{counts.keys.size} non-empty enliterator table(s)" \
+          "#{human.positive? ? " (discarding #{human} human audit verdict(s), as requested)" : ''}; " \
+          "target-local tables kept: #{(TARGET_LOCAL & engine_tables(conn)).join(', ').presence || 'none'}"
+      conn.execute("TRUNCATE #{transferable_tables(conn).join(', ')} RESTART IDENTITY")
+    end
+
+    # v0.81: the manifest's tables in FK-safe load order, minus target-local
+    # ones (an older archive may still carry them). Host tasks that load
+    # table-by-table should iterate THIS rather than the raw manifest.
+    def importable_tables(manifest)
+      (manifest["tables"].keys - TARGET_LOCAL).sort_by { |t| [ TABLE_ORDER.index(t) || 99, t ] }
     end
 
     # ---- internals ---------------------------------------------------------
 
     def exportable_tables(conn, measures:)
-      tables = engine_tables(conn)
+      tables = transferable_tables(conn)
       tables -= [ "enliterator_measures" ] unless measures
       # Known order first; any future engine table not yet listed still ships
       # (appended, logged) rather than silently dropped.
@@ -206,6 +256,12 @@ module Enliterator
 
     def engine_tables(conn)
       conn.tables.grep(/\Aenliterator_/).sort
+    end
+
+    # v0.81: what an archive moves between deployments — every engine table
+    # except the target-local ones.
+    def transferable_tables(conn)
+      engine_tables(conn) - TARGET_LOCAL
     end
 
     def dump_table(conn, table)

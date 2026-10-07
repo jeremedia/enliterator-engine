@@ -541,6 +541,10 @@ embeddings). On the target: `rake enliterator:import FILE=...` (refuses a
 non-empty target; `FORCE=1` replaces), ids preserved, sequences continuing
 after the imported history. The condition register deliberately stays home —
 it must describe the *target's* files; run `enliterator:survey` there.
+Desk history stays home too (v0.81): chat conversations, turns and persona
+versions are the target's own records — never exported, truncated or loaded.
+A target holding human audit verdicts refuses even a forced replace unless
+`DISCARD_AUDITS=1` (they point at claim ids the import replaces).
 Deploying a host app for the first time? The checklist: push/bundle the engine
 version the initializer expects, wrap the mount in auth, set the gateway key,
 adopt a scheduler for the heartbeat, then import the enliteration.
