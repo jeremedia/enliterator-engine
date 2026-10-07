@@ -325,6 +325,12 @@ deny-by-default for unnamed types, a withheld record indistinguishable from a mi
 than "undeclared" (a host declaration, or the engine's reading notes present). `quote` adds
 `segments:` and `body_at:` (where the document's own text begins after title and description).
 
+**One record's edges** (v0.85). `Enliterator::Atlas.edges_for(type:, id:, context:)` returns a
+record's typed edges in and out — the same resolution and edge rule as the drawn Atlas, without its
+node cap — so a record the picture leaves out still answers. Out-edges are read live; in-edges come
+from a small cached index of record→record links keyed on the newest claim.
+`connections` reads it and reports `edges_total`.
+
 **Host tools** (v0.69). A host application can contribute tools of its own —
 `Enliterator::Mcp.register(YourTool)`, reset with `reset_host_tools!`, registered from your
 `to_prepare` beside `Chat.register` — so the desk can act on the host's data as well as read

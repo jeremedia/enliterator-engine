@@ -123,32 +123,123 @@ module Enliterator
 
       # Typed edges from entity-bearing claims (a part's edges source from
       # its PARENT work's node — the roll-up).
-      claims.each do |c|
-        next unless bearing.include?(c.key)
-        source = record_node_id(*record_key_for(c, part_parent))
-        extracted[c.id].each do |term|
-          norm   = term.downcase.strip
-          target = index[norm]
-          next if target == source                       # identity self-reference
-          unless target
-            next unless unresolved[:terms].nil? || unresolved[:terms].include?(norm)
-            target = "e:#{norm}"
-            nodes[target] ||= { id: target, kind: "entity", label: term,
-                                group: c.key, size: 0, at: c.created_at.to_i }
-            nodes[target][:size] += 1
-            nodes[target][:at] = [ nodes[target][:at], c.created_at.to_i ].min
-          end
-          ekey = [ source, target, c.key ]
-          edge = (edges[ekey] ||= { s: source, t: target, key: c.key, w: 0.0,
-                                    at: c.created_at.to_i, tier: c.tier })
-          edge[:w]  = [ edge[:w], c.confidence.to_f ].max
-          edge[:at] = [ edge[:at], c.created_at.to_i ].min
-          edge[:verdict] = verdicts[c.id] if verdicts[c.id]
+      each_typed_edge(claims, bearing, extracted, index, part_parent) do |c, source, target, term, norm|
+        unless target
+          next unless unresolved[:terms].nil? || unresolved[:terms].include?(norm)
+          target = "e:#{norm}"
+          nodes[target] ||= { id: target, kind: "entity", label: term,
+                              group: c.key, size: 0, at: c.created_at.to_i }
+          nodes[target][:size] += 1
+          nodes[target][:at] = [ nodes[target][:at], c.created_at.to_i ].min
         end
+        merge_edge!(edges, c, source, target, verdicts)
       end
 
       atlas = apply_cap(nodes, edges, cap, claims, context, warnings: warnings)
       present_atlas(atlas, mode: selected_mode, focus: focus, opts: opts)
+    end
+
+    # v0.85 — ONE RECORD'S EDGES, UNCAPPED. The drawn Atlas caps nodes
+    # (atlas_node_cap) and thins one-off entity labels before it caps, so a
+    # record past the cap is not drawn and a drawn record can lose edges to
+    # it — fine for a picture, wrong for a question about one record ("what
+    # does this thesis connect to?"). This answers from the same resolution
+    # index and typed-edge rule, with no cap and no thinning. Returns
+    # { node:, edges: [{s,t,key,w,at,tier,verdict}], labels: {node_id =>
+    # label} }, in and out, strongest first. Under an audience scope (v0.83)
+    # edges touching a withheld record are absent — including every edge of a
+    # withheld record itself.
+    #
+    # Out-edges are computed live from the record's own claims (and its
+    # parts'). In-edges can only come from RECORD-resolved terms — a small
+    # set — so only those are precomputed (edge_index); the bulk of a deeply
+    # read collection's edges (index terms, cited works → entities) is never
+    # materialized whole. (Measured on HSDL chds-theses: 600K edges, 100 MB
+    # marshaled, if it were.)
+    def edges_for(type:, id:, context: nil)
+      node  = record_node_id(type, id.to_s)
+      table = edge_index(context: context)
+      edges = out_edges(node, type, id.to_s, context, table) +
+              Array(table[:inbound][node]).reject { |e| e[:s] == node }
+      edges = visible_edges(edges) if Enliterator::MemberScope.active?
+      edges = edges.sort_by { |e| [ -e[:w].to_f, e[:key].to_s, e[:s] == node ? e[:t] : e[:s] ] }
+      labels = table[:labels].dup
+      edges.each { |e| labels[e[:t]] ||= e.delete(:label) if e.key?(:label) }
+      ends  = edges.flat_map { |e| [ e[:s], e[:t] ] }.uniq
+      { node: node, edges: edges.map { |e| e.except(:label) }, labels: ends.to_h { |n| [ n, labels[n] ] } }
+    end
+
+    # What edges need that one record cannot supply: the resolution index,
+    # the entity-bearing keys (a property of the whole population), record
+    # labels, and every RECORD→RECORD edge grouped by target. ~1 MB on HSDL;
+    # a cold build is ~10 s, so it is keyed on the newest claim (a tend or a
+    # supersession mints one) rather than the build's 5-minute TTL — a patron
+    # should not pay the rebuild every five minutes when nothing changed. The
+    # hour is a backstop for changes that mint no claim. Plain hashes only —
+    # a default-proc hash cannot be marshaled into a cache store.
+    EDGE_INDEX_TTL = 1.hour
+
+    def edge_index(context: nil)
+      key = [ "enliterator/atlas-edges", CACHE_VERSION, context&.key || "root",
+              "c#{Enliterator::Claim.maximum(:id) || 0}" ].join("/")
+      Rails.cache.fetch(key, expires_in: EDGE_INDEX_TTL) { assemble_edge_index(context) }
+    end
+
+    def assemble_edge_index(context)
+      claims = understanding_claims(context).to_a
+      return { index: {}, bearing: [], labels: {}, inbound: {} } if claims.empty?
+
+      part_parent = part_parents(claims)
+      by_record   = claims.group_by { |c| record_key_for(c, part_parent) }
+      record_labels = materialize_labels(by_record.keys)
+      index     = resolution_index(claims, by_record, record_labels, part_parent)
+      extracted = extracted_terms_by_claim(claims, context: context)
+      bearing   = entity_bearing_keys_from(claims, extracted)
+      verdicts  = audit_verdicts(claims)
+
+      edges = {}
+      each_typed_edge(claims, bearing, extracted, index, part_parent) do |c, source, target, _term, _norm|
+        merge_edge!(edges, c, source, target, verdicts) if target   # record-resolved only
+      end
+      inbound = {}
+      edges.each_value { |e| (inbound[e[:t]] ||= []) << e }
+      labels = by_record.keys.to_h { |(type, rid)| [ record_node_id(type, rid), record_label(record_labels, type, rid) ] }
+      { index: index, bearing: bearing.to_a, labels: labels, inbound: inbound }
+    end
+
+    # One record's out-edges, live: its own live understanding claims in
+    # scope plus its parts' (the roll-up), through the shared rule.
+    def out_edges(node, type, id, context, table)
+      scope  = understanding_scope(context)
+      part_ids = Enliterator::Part.where(record_type: type, record_id: id).pluck(:id).map(&:to_s)
+      claims = scope.where(tendable_type: type, tendable_id: id)
+                    .or(scope.where(tendable_type: "Enliterator::Part", tendable_id: part_ids)).to_a
+      return [] if claims.empty?
+
+      part_parent = part_ids.to_h { |pid| [ pid, [ type, id ] ] }
+      extracted   = extracted_terms_by_claim(claims, context: context)
+      verdicts    = audit_verdicts(claims)
+      bearing     = table[:bearing].to_set
+      edges = {}
+      each_typed_edge(claims, bearing, extracted, table[:index], part_parent) do |c, source, target, term, norm|
+        edge = merge_edge!(edges, c, source, target || "e:#{norm}", verdicts)
+        edge[:label] ||= term unless target
+      end
+      edges.values
+    end
+
+    # Edges whose record endpoints are all visible to the current reader —
+    # one query per record type, not one per edge.
+    def visible_edges(edges)
+      record_ends = edges.flat_map { |e| [ e[:s], e[:t] ] }.uniq.select { |n| n.start_with?("r:") }
+      visible = record_ends.map { |n| n.split(":", 3).drop(1) }.group_by(&:first).flat_map do |type, pairs|
+        ids = pairs.map(&:last)
+        Enliterator::MemberScope.current.select { |rel| rel.klass.name == type }.flat_map do |rel|
+          pk = rel.klass.primary_key
+          rel.where(pk => ids).pluck(pk).map { |rid| record_node_id(type, rid) }
+        end
+      end.to_set
+      edges.select { |e| [ e[:s], e[:t] ].all? { |n| !n.start_with?("r:") || visible.include?(n) } }
     end
 
     # Inspector data for one node: its live claims with provenance, plus any
@@ -589,6 +680,35 @@ module Enliterator
         add.call(title, record_node_id(type, id))
       end
       index
+    end
+
+    # The typed-edge rule, shared by the drawn Atlas and edges_for so the two
+    # can never disagree about what links to what: every entity-bearing claim
+    # term, sourced from the claim's record (a part's from its parent work),
+    # resolved through the index (target nil = unresolved), self-references
+    # skipped.
+    def each_typed_edge(claims, bearing, extracted, index, part_parent)
+      claims.each do |c|
+        next unless bearing.include?(c.key)
+        source = record_node_id(*record_key_for(c, part_parent))
+        extracted[c.id].each do |term|
+          norm   = term.downcase.strip
+          target = index[norm]
+          next if target == source                       # identity self-reference
+          yield c, source, target, term, norm
+        end
+      end
+    end
+
+    # Dedupe on [s, t, key]; weight = max confidence, at = earliest.
+    def merge_edge!(edges, c, source, target, verdicts)
+      ekey = [ source, target, c.key ]
+      edge = (edges[ekey] ||= { s: source, t: target, key: c.key, w: 0.0,
+                                at: c.created_at.to_i, tier: c.tier })
+      edge[:w]  = [ edge[:w], c.confidence.to_f ].max
+      edge[:at] = [ edge[:at], c.created_at.to_i ].min
+      edge[:verdict] = verdicts[c.id] if verdicts[c.id]
+      edge
     end
 
     # ---- entity extraction -----------------------------------------------

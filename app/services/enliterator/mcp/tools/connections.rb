@@ -1,10 +1,10 @@
 module Enliterator
   module Mcp
     module Tools
-      # What a record links TO: the typed, provenanced edges from the cached
-      # Atlas build (resolved record→record links and named entities — never
-      # a fresh graph assembly, the v0.20 law) plus semantic neighbors from
-      # the retrieval pool.
+      # What a record links TO: the typed, provenanced edges from the Atlas's
+      # cached edge index (resolved record→record links and named entities;
+      # v0.85: uncapped — a record the drawn graph leaves out still answers)
+      # plus semantic neighbors from the retrieval pool.
       class Connections < Tool
         EDGES_CAP    = 40
         NEIGHBOR_CAP = 8
@@ -25,20 +25,17 @@ module Enliterator
         def call(type:, id:, context: nil)
           ctx    = resolve_context(context)
           record = find_record!(type, id)
-          atlas  = Enliterator::Atlas.build(context: ctx)
-          node_id = "r:#{type}:#{id}"
-          labels  = atlas[:nodes].each_with_object({}) { |n, h| h[n[:id]] = n[:label] }
+          # v0.85: one record's edges from the uncapped index, not the drawn
+          # (node-capped) graph; under an audience scope (v0.83) edges touching
+          # a withheld record are already absent.
+          found   = Enliterator::Atlas.edges_for(type: type, id: id, context: ctx)
+          node_id = found[:node]
+          labels  = found[:labels]
           # Resolve the primary embedding ONCE — both the neighbor query and the
           # degraded-state label key off it (avoids a duplicate find_by per call).
           own_embedding = record.enliterator_embeddings.find_by(kind: "primary")
 
-          edges = atlas[:edges].select { |e| e[:s] == node_id || e[:t] == node_id }
-                               .reject { |e| e[:key] == "in-context" }
-          # v0.83: the Atlas is built over the whole collection (cached); under
-          # an audience scope an edge to or from a record this reader may not
-          # see does not exist. Entity edges out of this record are its own
-          # claims and stay.
-          edges = visible_edges(edges, node_id) if Enliterator::MemberScope.active?
+          edges   = found[:edges]
           {
             type: type, id: id.to_s, label: label_for(record),
             context: ctx&.key || "root",
@@ -49,6 +46,7 @@ module Enliterator
                 target: target_ref(other, labels),
                 weight: e[:w], verdict: e[:verdict] }.compact
             },
+            edges_total: edges.size,
             edges_truncated: edges.size > EDGES_CAP || nil,
             neighbors: neighbors_for(record, ctx, own_embedding),
             neighbors_state: neighbors_state(own_embedding),
@@ -57,23 +55,6 @@ module Enliterator
         end
 
         private
-
-        # One query per record type among the endpoints, not one per edge.
-        def visible_edges(edges, node_id)
-          others = edges.map { |e| e[:s] == node_id ? e[:t] : e[:s] }.select { |n| n.start_with?("r:") }
-          by_type = others.map { |n| n.split(":", 3).drop(1) }.group_by(&:first)
-                          .transform_values { |pairs| pairs.map(&:last) }
-          visible = by_type.flat_map do |type, ids|
-            Enliterator::MemberScope.current.filter_map { |rel| rel if rel.klass.name == type }.flat_map do |rel|
-              pk = rel.klass.primary_key
-              rel.where(pk => ids).pluck(pk).map { |id| "r:#{type}:#{id}" }
-            end
-          end.to_set
-          edges.select do |e|
-            other = e[:s] == node_id ? e[:t] : e[:s]
-            !other.start_with?("r:") || visible.include?(other)
-          end
-        end
 
         def target_ref(node_id, labels)
           if node_id.start_with?("r:")

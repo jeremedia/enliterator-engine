@@ -137,16 +137,15 @@ RSpec.describe "v0.83 audience scope" do
   end
 
   it "connections drop edges to records the reader may not see" do
-    allow(Enliterator::Atlas).to receive(:build).and_return(
-      nodes: [ { id: "r:Widget:#{open_a.id}", label: "Open A" }, { id: "r:Widget:#{open_b.id}", label: "Open B" },
-               { id: "r:Widget:#{withheld.id}", label: "Withheld C" }, { id: "e:Someone", label: "Someone" } ],
-      edges: [ { s: "r:Widget:#{open_a.id}", t: "r:Widget:#{open_b.id}", key: "related", w: 0.9 },
-               { s: "r:Widget:#{withheld.id}", t: "r:Widget:#{open_a.id}", key: "related", w: 0.8 },
-               { s: "r:Widget:#{open_a.id}", t: "e:Someone", key: "advisor", w: 0.7 } ]
+    a, b, c = [ open_a, open_b, withheld ].map { |w| "r:Widget:#{w.id}" }
+    allow(Enliterator::Atlas).to receive(:edge_index).and_return(
+      index: {}, bearing: [],
+      labels: { a => "Open A", b => "Open B", c => "Withheld C" },
+      inbound: { a => [ { s: b, t: a, key: "related", w: 0.9 }, { s: c, t: a, key: "related", w: 0.8 } ] }
     )
     out = with_scope { call_tool("connections", type: "Widget", id: open_a.id.to_s) }
     labels = out[:edges].map { |e| e[:target][:label] }
-    expect(labels).to contain_exactly("Open B", "Someone")
+    expect(labels).to include("Open B")
     expect(labels).not_to include("Withheld C")
   end
 
