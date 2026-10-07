@@ -329,7 +329,9 @@ than "undeclared" (a host declaration, or the engine's reading notes present). `
 record's typed edges in and out — the same resolution and edge rule as the drawn Atlas, without its
 node cap — so a record the picture leaves out still answers. Out-edges are read live; in-edges come
 from a small cached index of record→record links keyed on the newest claim.
-`connections` reads it and reports `edges_total`.
+`connections` reads it and reports `edges_total`. Set `config.atlas_warm_contexts`
+(`%w[root chds-theses]`, or `:all`) and a heartbeat cycle or an import rebuilds those indexes when it
+finishes (v0.86); a host importing table by table calls `Enliterator::Atlas.warm!` itself.
 
 **Host tools** (v0.69). A host application can contribute tools of its own —
 `Enliterator::Mcp.register(YourTool)`, reset with `reset_host_tools!`, registered from your

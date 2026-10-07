@@ -185,6 +185,37 @@ module Enliterator
       Rails.cache.fetch(key, expires_in: EDGE_INDEX_TTL) { assemble_edge_index(context) }
     end
 
+    # v0.86: rebuild the configured edge indexes now, so the next reader finds
+    # them warm. Returns { "<key>" => seconds }; a context that fails to warm
+    # is reported (never raised) — warming is a courtesy, not a correctness step.
+    def warm!(contexts = Enliterator.configuration.atlas_warm_contexts)
+      targets = warm_targets(contexts)
+      targets.each_with_object({}) do |ctx, out|
+        key = ctx&.key || "root"
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        begin
+          edge_index(context: ctx)
+          out[key] = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).round(2)
+        rescue => e
+          Enliterator.logger&.warn("[enliterator] atlas warm #{key} failed: #{e.class}: #{e.message}")
+          out[key] = "failed: #{e.class}"
+        end
+      end
+    end
+
+    # nil = root. Unknown keys are logged and skipped.
+    def warm_targets(contexts)
+      return [] if contexts.blank?
+      return [ nil, *Enliterator::Context.order(:id).to_a ] if contexts.to_s == "all"
+
+      Array(contexts).map(&:to_s).uniq.filter_map { |k|
+        next :root if k == "root"
+        Enliterator::Context.find_by(key: k).tap do |c|
+          Enliterator.logger&.warn("[enliterator] atlas warm: unknown context #{k.inspect} — skipped") unless c
+        end
+      }.map { |c| c == :root ? nil : c }
+    end
+
     def assemble_edge_index(context)
       claims = understanding_claims(context).to_a
       return { index: {}, bearing: [], labels: {}, inbound: {} } if claims.empty?

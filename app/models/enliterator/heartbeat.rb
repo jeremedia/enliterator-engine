@@ -213,6 +213,7 @@ module Enliterator
         pulse!("considerer")  ; consider!(run_warnings) unless skip_consider
         pulse!("conservator") ; conserve! unless skip_consider
         pulse!("audit")       ; audit_phase!(run_warnings)
+        warm_phase!(run_warnings)        # v0.86: gated + pulses internally — unconfigured ⇒ trace byte-identical
         pulse!("finalize")
         drain_deficit_check!(run_warnings) if mode == "enqueue"
       rescue StoodDown => e
@@ -595,6 +596,21 @@ module Enliterator
     # cycle continues; a per-claim failure is counted and the claim re-enters
     # the pool next cycle. A Null adapter is a VISIBLE skip — a standing
     # instrument must never go quiet (the v0.5 lesson).
+    # v0.86: rebuild the configured Atlas edge indexes so the first reader
+    # after a cycle finds them warm. Never fatal — a failed warm is a warning.
+    def warm_phase!(run_warnings)
+      return if Enliterator.configuration.atlas_warm_contexts.blank?
+
+      pulse!("warm")
+      Enliterator::Atlas.warm!.each do |key, outcome|
+        if outcome.is_a?(String)
+          run_warnings << "atlas warm #{key}: #{outcome}"
+        else
+          log("atlas warm #{key}: #{outcome}s")
+        end
+      end
+    end
+
     def audit_phase!(run_warnings)
       n = Enliterator.configuration.heartbeat_audit_sample.to_i
       return if n <= 0

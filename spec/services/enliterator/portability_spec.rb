@@ -53,6 +53,14 @@ RSpec.describe Enliterator::Portability do
     expect(Enliterator::Context.find_by(key: "spec-ctx")).to be_present
   end
 
+  it "rebuilds the configured edge indexes once the import is in (v0.86)" do
+    seed!
+    described_class.export(archive)
+    wipe!
+    expect(Enliterator::Atlas).to receive(:warm!).once.and_return({})
+    described_class.import(archive)
+  end
+
   it "sequences continue AFTER the imported history (the next heartbeat numbers after dev's)" do
     seeded = seed!
     described_class.export(archive)

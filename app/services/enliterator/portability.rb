@@ -121,6 +121,8 @@ module Enliterator
       end
       log "import: note — the first heartbeat here may carry a source_change wave (this host's " \
           "records may genuinely differ from the ones the imported visits read)."
+      # v0.86: the import replaced every claim, so the edge indexes are cold.
+      Enliterator::Atlas.warm!.each { |key, outcome| log "import: atlas warm #{key} → #{outcome}" }
       manifest
     end
 

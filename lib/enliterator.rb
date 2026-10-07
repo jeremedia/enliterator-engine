@@ -175,6 +175,13 @@ module Enliterator
     # kept and the meta says so (an honest cap, never a silent one).
     attr_accessor :atlas_node_cap
 
+    # v0.86: which edge indexes (Atlas.edges_for, v0.85) to rebuild when a
+    # heartbeat cycle or an import finishes, so the next reader doesn't pay the
+    # cold build (~10 s on HSDL). Context keys, "root" for the whole
+    # collection, or :all (root + every context). nil (default) ⇒ no warm step
+    # — the cycle trace and import are byte-identical.
+    attr_accessor :atlas_warm_contexts
+
     # ---- v0.23 Bounded gateway calls ----------------------------------------
 
     # Per-request timeout (seconds) and retry count for the gateway + embedder
