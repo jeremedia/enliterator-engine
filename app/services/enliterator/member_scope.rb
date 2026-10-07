@@ -83,13 +83,26 @@ module Enliterator
 
       private
 
+      # Per scoped model: a CORRELATED probe of the host's primary key,
+      #   CASE WHEN type = 'Klass' THEN EXISTS (SELECT 1 FROM klass_table
+      #     WHERE klass_table.pk = CAST(id AS <pk type>) AND <relation's where>)
+      #   ELSE FALSE END
+      # so Postgres checks each candidate row (after whatever else narrowed it)
+      # against the pk index. v0.83 used `id IN (SELECT CAST(pk AS TEXT) …)`,
+      # which materialized the whole visible set per query — on HSDL ~185K
+      # casted ids under every heading pluck, 1–10 s each (v0.83.1). The CASE
+      # is load-bearing: AND does not fix evaluation order in Postgres, and
+      # casting another type's id (a bigint id to uuid) would raise.
       def predicate_sql(type_sql:, id_sql:)
         clauses = current.map do |rel|
           klass = rel.klass
-          ids = rel.unscope(:select, :order).select(
-            Arel.sql("CAST(#{klass.quoted_table_name}.#{klass.connection.quote_column_name(klass.primary_key)} AS TEXT)")
-          )
-          "(#{type_sql} = #{klass.connection.quote(klass.name)} AND #{id_sql} IN (#{ids.to_sql}))"
+          conn  = klass.connection
+          pk    = "#{klass.quoted_table_name}.#{conn.quote_column_name(klass.primary_key)}"
+          sql_type = klass.columns_hash.fetch(klass.primary_key.to_s).sql_type
+          probe = rel.unscope(:select, :order, :limit, :offset)
+                     .where(Arel.sql("#{pk} = CAST(#{id_sql} AS #{sql_type})"))
+                     .select(Arel.sql("1"))
+          "(CASE WHEN #{type_sql} = #{conn.quote(klass.name)} THEN EXISTS (#{probe.to_sql}) ELSE FALSE END)"
         end
         "(#{clauses.join(' OR ')})"
       end

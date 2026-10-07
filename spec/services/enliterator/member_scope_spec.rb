@@ -149,6 +149,25 @@ RSpec.describe "v0.83 audience scope" do
     expect(labels).not_to include("Withheld C")
   end
 
+  # v0.83.1: the predicate probes the host's pk per candidate row instead of
+  # materializing the visible set — and must never cast another type's id.
+  it "correlates on the host primary key (no materialized IN over a cast projection)" do
+    sql = with_scope do
+      Enliterator::MemberScope.restrict(Enliterator::Claim.all, type_sql: "enliterator_claims.tendable_type",
+                                                              id_sql: "enliterator_claims.tendable_id").to_sql
+    end
+    expect(sql).to include("CASE WHEN enliterator_claims.tendable_type = 'Widget' THEN EXISTS (")
+    expect(sql).to include("CAST(enliterator_claims.tendable_id AS bigint)")
+    expect(sql).not_to match(/IN \(SELECT CAST/)
+  end
+
+  it "a row of ANOTHER type with a non-numeric id never reaches the cast (CASE guards it)" do
+    stray = holding!("Stray")
+    stray.enliterator_claims.update_all(tendable_type: "Ghost", tendable_id: "not-a-number")
+    out = with_scope { call_tool("subject_search", key: "keywords", value: "election security") }
+    expect(out[:total]).to eq(2)
+  end
+
   it "the scope is restored after the block, even on error" do
     expect { with_scope { raise "boom" } }.to raise_error("boom")
     expect(Enliterator::MemberScope.active?).to be(false)
