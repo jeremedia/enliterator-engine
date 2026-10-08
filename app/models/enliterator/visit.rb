@@ -16,7 +16,11 @@ module Enliterator
     belongs_to :escalated_from, class_name: "Enliterator::Visit", optional: true
     has_many :escalations, class_name: "Enliterator::Visit", foreign_key: :escalated_from_id, dependent: :nullify, inverse_of: :escalated_from
 
-    STATUSES = %w[pending running succeeded failed].freeze
+    # v0.90.1: `deferred` — attempted while the backend was transiently
+    # unavailable (expired gateway credential, timeout, 5xx); nothing was
+    # learned. Distinct from `failed` so the planner's failure backoff does not
+    # hold the record back from the very next beat.
+    STATUSES = %w[pending running succeeded failed deferred].freeze
 
     # Visits whose reconciliation was actually applied (the final tier in a loop).
     # Junior visits superseded by escalation are recorded with applied: false.

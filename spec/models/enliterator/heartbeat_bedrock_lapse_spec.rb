@@ -41,7 +41,7 @@ RSpec.describe "Enliterator::Heartbeat bedrock auth lapse (v0.41.1)" do
   # (a real failure). `decide` raises the lapse when decide_lapses is set.
   class LapseStubLLM
     Result = Struct.new(:parsed, :raw, :tokens, keyword_init: true)
-    attr_accessor :decide_lapses, :decide_times_out
+    attr_accessor :decide_lapses, :decide_times_out, :recovered
 
     def initialize
       @decide_lapses = false
@@ -51,7 +51,7 @@ RSpec.describe "Enliterator::Heartbeat bedrock auth lapse (v0.41.1)" do
     def model_id = "model-cheap"
 
     def tend(text:, facet:, state:, neighbors:, tags: [], contract: nil, required: nil)
-      raise LAPSE_MSG   if text.include?("bedrock-down")
+      raise LAPSE_MSG   if text.include?("bedrock-down") && !recovered
       raise TIMEOUT_MSG if text.include?("timeout")
       raise "boom"      if text.include?("boom")
       Result.new(parsed: { "claims" => [], "confidence" => 0.9 }, raw: {},
@@ -81,6 +81,40 @@ RSpec.describe "Enliterator::Heartbeat bedrock auth lapse (v0.41.1)" do
       started_at: 40.days.ago, finished_at: 40.days.ago + 5.seconds
     )
     w
+  end
+
+  # v0.90.1 (HSDL 2026-10-08): the heartbeat deferred all 56 items correctly,
+  # but each left a `failed` Visit row — and the planner's 24h failure backoff
+  # then held those records out of the NEXT beat too. A transient outage is
+  # recorded as `deferred`, which the backoff does not read.
+  describe "the deferred visit row (v0.90.1)" do
+    it "is recorded as deferred, not failed, and the record comes back on the very next beat" do
+      llm = LapseStubLLM.new
+      configure!(llm)
+      seed_history!
+      down = widget!("bedrock-down")
+
+      Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true)
+      visit = down.enliterator_visits.order(:id).last
+      expect(visit.status).to eq("deferred")
+      expect(visit.error).to match(/security token included in the request is expired/)
+
+      llm.recovered = true
+      row = Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true, force: true)
+      expect(row.executed.dig("frontier", "succeeded")).to eq(1)
+      expect(down.enliterator_visits.where(status: "succeeded")).to exist
+    end
+
+    it "a real failure stays failed and is still backed off" do
+      configure!(LapseStubLLM.new)
+      seed_history!
+      boom = widget!("boom")
+      Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true)
+      expect(boom.enliterator_visits.order(:id).last.status).to eq("failed")
+
+      row = Enliterator::Heartbeat.beat!(budget: 10_000, skip_consider: true, force: true)
+      expect(row.executed.dig("frontier", "succeeded").to_i + row.executed.dig("frontier", "failed").to_i).to eq(0)
+    end
   end
 
   it "DEFERS a lapsing item, keeps tending the rest, and finishes clean" do

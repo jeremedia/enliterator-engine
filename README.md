@@ -557,6 +557,10 @@ neighborhood, and vocabulary re-reads, because the share existed to protect
 first attention and there is none left to protect. Any untended shelf anywhere
 keeps the split exactly as before.
 
+A visit attempted while the backend was transiently unavailable (an expired gateway credential, a
+timeout, a 5xx) is recorded `deferred`, not `failed` (v0.90.1), so the 24-hour failure backoff never
+holds it out of the next beat.
+
 ### Portability (v0.22 — move the enliteration, don't re-buy it)
 
 Everything the engine has learned is spent inference and curation; a fresh

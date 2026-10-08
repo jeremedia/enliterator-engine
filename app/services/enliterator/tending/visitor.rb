@@ -962,15 +962,20 @@ module Enliterator
                            duration_ms: duration_ms, status: "succeeded", back_compat: true)
       end
 
+      # v0.90.1: a transient backend outage is recorded as `deferred`, not
+      # `failed` — the heartbeat already defers the work (v0.41.1), and a
+      # `failed` row would put the record in the planner's 24h failure backoff,
+      # so a 4-hour gateway outage cost two nights (HSDL, 2026-10-08).
       def fail_visit!(visit, error)
+        status = Enliterator::Adapters::LLM::Bedrock.unavailable?(error) ? "deferred" : "failed"
         visit.update_columns(
-          status:      "failed",
+          status:      status,
           error:       error.message,
           finished_at: Time.current,
           updated_at:  Time.current
         )
         log_event("fail", visit_id: visit.id, facet: facet, tier: visit.tier,
-                          status: "failed", error: error.message)
+                          status: status, error: error.message)
       end
 
       def input_refs_for(visit, neighbors:, state:)

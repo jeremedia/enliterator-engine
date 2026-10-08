@@ -110,7 +110,11 @@ module Enliterator
           error:  v.error.to_s[0, ERROR_MAX].presence
         }.compact
       end
-      { count: scope.count, sample: sample, truncated: scope.count > FAILURE_SAMPLE }
+      # v0.90.1: transient-outage visits are not failures, but an outage is
+      # news — count them beside the failures (key absent when none).
+      deferred = Enliterator::Visit.where("created_at > ?", start).where(status: "deferred").count
+      { count: scope.count, sample: sample, truncated: scope.count > FAILURE_SAMPLE,
+        deferred_outage: (deferred if deferred.positive?) }.compact
     end
 
     # Deep-read activity (v0.25): part reads roll up to the records they

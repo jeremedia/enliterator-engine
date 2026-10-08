@@ -197,6 +197,7 @@
         '<span class="mono">' + v.tendable + '</span> ' +
         '<span class="chip tier">' + (v.tier || "") + '</span>' +
         (v.status === "failed"  ? ' <span class="warn">failed</span>'
+         : v.status === "deferred" ? ' <span class="muted samples">deferred — backend unavailable</span>'
          : v.status === "running" ? ' <span class="muted samples">tending…</span>'
          : ' <span class="muted">conf ' + (v.confidence == null ? "—" : v.confidence) + '</span>') +
         (v.tokens ? ' <span class="muted samples">' + fmt(v.tokens) + ' tok</span>' : '');

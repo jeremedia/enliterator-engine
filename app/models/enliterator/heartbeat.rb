@@ -153,7 +153,7 @@ module Enliterator
     def reap!
       last_life  = pulse_at || updated_at || started_at
       died_in    = phase.presence || "unknown (pre-v0.23 row)"
-      reconstructed = Hash.new { |h, k| h[k] = { "succeeded" => 0, "failed" => 0, "skipped" => 0, "enqueued" => 0 } }
+      reconstructed = Hash.new { |h, k| h[k] = { "succeeded" => 0, "failed" => 0, "skipped" => 0, "enqueued" => 0, "deferred" => 0 } }
       visits.group(:reason, :status).count.each do |(reason, status), n|
         reconstructed[reason || "unknown"][status] = n if reconstructed[reason || "unknown"].key?(status)
       end
