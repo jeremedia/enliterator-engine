@@ -611,6 +611,15 @@
   })();
   </script>
   <main class="enl">
+    <%# v0.89: an import target is read-only for curation — say so, and hide the
+        controls whose writes the server would refuse (and the next import erase). %>
+    <% unless Enliterator.curation_writes? %>
+      <style>
+        main.enl form[action*="/review/verdict"], main.enl form[action*="/vocabulary/"],
+        main.enl form[action*="/suggestions/"] { display: none !important; }
+      </style>
+      <div class="flash flash-alert"><%= Enliterator.curation_refusal %></div>
+    <% end %>
     <% flash.each do |type, msg| %>
       <div class="flash flash-<%= type %>"><%= msg %></div>
     <% end %>

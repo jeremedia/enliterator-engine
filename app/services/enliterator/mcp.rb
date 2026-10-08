@@ -25,6 +25,7 @@ module Enliterator
     class InvalidArguments < StandardError; end
     # v0.83: a tool that does not honor the audience scope, called inside one.
     class ScopeNotHonored < StandardError; end
+    class CurationWritesDisabled < StandardError; end   # v0.89
 
     # The engine's own tools, in listing order. An explicit list, not a
     # descendants scan — see the boot-order note above.
@@ -128,6 +129,9 @@ module Enliterator
         raise ScopeNotHonored, "#{name} does not honor the audience scope and cannot run inside " \
                                "Enliterator.with_member_scope — its answer would include records " \
                                "this reader may not see"
+      end
+      if tool.curation_write? && !Enliterator.curation_writes?
+        raise CurationWritesDisabled, "#{name}: #{Enliterator.curation_refusal}"
       end
       args = (args || {}).transform_keys(&:to_s)
       validate!(tool.input_schema, args)

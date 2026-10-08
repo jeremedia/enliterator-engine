@@ -7,6 +7,8 @@ module Enliterator
       # weight in the accuracy instrument (the v0.26 scoping rule): the
       # flag's whole purpose is to reach a human, never to be a verdict.
       class FlagClaim < Tool
+        curation_write!   # v0.89
+
         name_and_description "flag_claim",
           "Flag a claim for human review with your suspected verdict and reasoning. " \
           "This files an agent audit — it changes no accuracy number and never edits " \

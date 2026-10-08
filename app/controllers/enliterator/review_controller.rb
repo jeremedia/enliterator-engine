@@ -12,6 +12,8 @@ module Enliterator
   # headline. Without it the anchor only ever sees what the examiner already
   # doubted.
   class ReviewController < ApplicationController
+    include Enliterator::CurationGuard
+    guard_curation_writes :verdict   # v0.89
     QUEUE_SIZE = 24
     # v0.62: the focus view's source pane cap — bounded payload; the pane labels the cut.
     SOURCE_CAP = 200_000

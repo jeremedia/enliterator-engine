@@ -9,6 +9,8 @@ module Enliterator
   # verdicts write to their own context). Root shows the root-scope (NULL) queue —
   # the entire pre-v0.13 universe, so flat installs are unchanged.
   class SuggestionsController < ApplicationController
+    include Enliterator::CurationGuard
+    guard_curation_writes :verdict, :consider   # v0.89
     # The page renders the QUEUE_CAP highest-pressure keys, never the whole field — a
     # context deep in accumulated warrant (chds-theses: 65K pending rows over 2K keys)
     # was rendering 2,066 evidence-bearing cards plus their focus templates in one

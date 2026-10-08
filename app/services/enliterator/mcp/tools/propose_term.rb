@@ -6,6 +6,8 @@ module Enliterator
       # queue, where pressure accumulates, the considerer weighs it, and a
       # curator ratifies. Never a direct vocabulary write.
       class ProposeTerm < Tool
+        curation_write!   # v0.89
+
         name_and_description "propose_term",
           "Propose a new vocabulary term through authority control. Requires the record " \
           "that prompted it (proposals arise from reading something). The suggestion " \

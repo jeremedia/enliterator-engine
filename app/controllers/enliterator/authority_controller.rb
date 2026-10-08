@@ -4,6 +4,8 @@ module Enliterator
   # that has never had a proposal renders the zero-state card, not an empty frame (and a
   # flat install with no proposals at all stays byte-identical: an empty page body).
   class AuthorityController < ApplicationController
+    include Enliterator::CurationGuard
+    guard_curation_writes :reroute, :promote, :demote, :merge, :split   # v0.89
     def index
       @adopted = Enliterator::Suggestion.where(context_id: current_context&.id).exists?
       return unless @adopted

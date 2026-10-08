@@ -297,6 +297,29 @@ namespace :enliterator do
   #
   #   N=25 bin/rails enliterator:audit
   desc "Examine a stratified sample of claims against their sources (quality review). N=count"
+  # v0.89: carry human curation filed on an import TARGET back to the
+  # authoring host (CurationTransfer). Export on the target; import on the
+  # authoring host — a dry run (the plan) unless APPLY=1.
+  desc "Export this host's human audit verdicts (and their corrections). FILE="
+  task export_curation: :environment do
+    file = ENV.fetch("FILE") { abort "[enliterator:export_curation] FILE= is required" }
+    n = Enliterator::CurationTransfer.export(file)
+    puts "[enliterator:export_curation] #{n} human verdict(s) → #{file}"
+  end
+
+  desc "Re-attach exported human curation here. FILE= [APPLY=1] (dry run by default)"
+  task import_curation: :environment do
+    file  = ENV.fetch("FILE") { abort "[enliterator:import_curation] FILE= is required" }
+    apply = ENV["APPLY"].present?
+    out   = Enliterator::CurationTransfer.import(file, apply: apply)
+    puts "[enliterator:import_curation] #{apply ? 'APPLIED' : 'DRY RUN (APPLY=1 to write)'}: " \
+         "#{out[:counts].map { |k, v| "#{k}=#{v}" }.join(' ')}"
+    out[:rows].reject { |r| %w[attach already_present].include?(r[:outcome]) }.each do |r|
+      puts "  #{r[:outcome].ljust(18)} prod audit ##{r[:prod_audit_id]} claim ##{r[:prod_claim_id]} " \
+           "#{r[:record]} #{r[:key]} → #{r[:verdict]}#{r[:held_correction] ? " (correction: #{r[:held_correction]['kind']})" : ''}"
+    end
+  end
+
   # v0.88: measure the examiner's agreement with itself — re-examine N
   # already-audited claims whose source is unchanged, under the current
   # configuration. Writes AuditRepeat rows (never audits). N= (default 20)

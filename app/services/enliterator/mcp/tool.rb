@@ -24,6 +24,11 @@ module Enliterator
         def honors_member_scope! = (@honors_member_scope = true)
         def honors_member_scope? = !!@honors_member_scope
 
+        # v0.89: tools that WRITE curation (term proposals, audit flags) declare
+        # it; Mcp.dispatch refuses them where `config.curation_writes = false`.
+        def curation_write! = (@curation_write = true)
+        def curation_write? = !!@curation_write
+
         def name_and_description(name, desc)
           @tool_name   = name
           @description = desc

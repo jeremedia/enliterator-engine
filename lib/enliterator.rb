@@ -181,6 +181,19 @@ module Enliterator
     # ⇒ no repeats, byte-identical.
     attr_accessor :audit_repeat_sample
 
+    # ---- v0.89 Where curation happens ----------------------------------------
+
+    # false ⇒ this deployment is NOT where curation happens (an import target:
+    # its enliteration is replaced wholesale by the next import). Review
+    # verdicts, vocabulary decisions, suggestion verdicts and the MCP
+    # propose_term / flag_claim tools refuse; their controls are hidden. nil
+    # (default) or true ⇒ curation allowed, byte-identical.
+    attr_accessor :curation_writes
+
+    # Optional: where curation DOES happen (a URL or a short label), named in
+    # the refusal and the read-only banner.
+    attr_accessor :curation_home
+
     # ---- v0.21 The Atlas ---------------------------------------------------
 
     # Node ceiling for the atlas graph. Over it, the most-connected nodes are
@@ -588,6 +601,16 @@ module Enliterator
     # models plus the engine's own Part — parts carry claims and deserve an
     # entry page, but they are deliberately NOT in the registry (no root
     # lanes, no corpus census).
+    # v0.89: may this deployment take curation writes? (Only an explicit false refuses.)
+    def curation_writes? = configuration.curation_writes != false
+
+    def curation_refusal
+      home = configuration.curation_home.presence
+      "Curation is read-only here: review, vocabulary and term decisions are made " \
+        "#{home ? "at #{home}" : 'on the authoring deployment'} — anything filed here would be " \
+        "replaced by the next import."
+    end
+
     def tendable_type?(klass)
       return false if klass.nil?
       klass == Enliterator::Part || tendable_models.include?(klass)

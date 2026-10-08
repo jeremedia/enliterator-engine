@@ -571,6 +571,12 @@ Desk history stays home too (v0.81): chat conversations, turns and persona
 versions are the target's own records — never exported, truncated or loaded.
 A target holding human audit verdicts refuses even a forced replace unless
 `DISCARD_AUDITS=1` (they point at claim ids the import replaces).
+One deployment curates (v0.89): on an import target set `config.curation_writes = false` (and
+optionally `config.curation_home = "<where curation happens>"`) — review verdicts, vocabulary and
+suggestion decisions and the MCP `propose_term` / `flag_claim` tools refuse there, and the UI says so.
+Curation already filed on a target goes home with `rake enliterator:export_curation FILE=` (target) →
+`rake enliterator:import_curation FILE= [APPLY=1]` (authoring host; dry run by default): verdicts
+re-attach to the same claims, corrections re-mint where the claim is still live, the rest is reported.
 Deploying a host app for the first time? The checklist: push/bundle the engine
 version the initializer expects, wrap the mount in auth, set the gateway key,
 adopt a scheduler for the heartbeat, then import the enliteration.
