@@ -53,6 +53,7 @@ module Enliterator
       enliterator_chat_conversations
       enliterator_chat_turns
       enliterator_chat_personas
+      enliterator_lineage_events
     ].freeze
 
     # v0.81: raised when a forced import would discard human audit verdicts
@@ -69,6 +70,7 @@ module Enliterator
       manifest = {
         "generated_at" => Time.current.iso8601,
         "host"         => (defined?(Rails) ? Rails.application.class.module_parent_name : nil),
+        "exported_from" => Enliterator.deployment_label,   # v0.90: a copy can say what it copies
         "tables"       => tables.each_with_object({}) do |t, h|
           h[t] = { "rows" => conn.select_value("SELECT COUNT(*) FROM #{t}").to_i,
                    "columns" => conn.columns(t).map(&:name) }
@@ -121,6 +123,8 @@ module Enliterator
       end
       log "import: note — the first heartbeat here may carry a source_change wave (this host's " \
           "records may genuinely differ from the ones the imported visits read)."
+      # v0.90: this database is now a copy — record where it came from.
+      record_import!(manifest)
       # v0.86: the import replaced every claim, so the edge indexes are cold.
       Enliterator::Atlas.warm!.each { |key, outcome| log "import: atlas warm #{key} → #{outcome}" }
       manifest
@@ -226,10 +230,23 @@ module Enliterator
       end
       return if counts.empty?
 
-      human = counts.key?("enliterator_audits") ? Enliterator::Audit.human.count : 0
+      # v0.90: only verdicts filed HERE count — those created after this
+      # database's last recorded import. Verdicts that arrived WITH an import
+      # came from the source and go back in with the next one (HSDL prod's 45
+      # were dev's own; v0.81 refused over them). No recorded import ⇒ count
+      # them all, as v0.81 did.
+      since = Enliterator::LineageEvent.last_import&.created_at
+      human = if counts.key?("enliterator_audits")
+                scope = Enliterator::Audit.human
+                scope = scope.where("created_at > ?", since) if since
+                scope.count
+              else
+                0
+              end
       if human.positive? && !discard_audits
         raise TargetCurationAtRisk,
-              "target holds #{human} human audit verdict(s) that a replace would discard — " \
+              "target holds #{human} human audit verdict(s)#{since ? " filed since its last import (#{since.to_date.iso8601})" : ''} " \
+              "that a replace would discard — " \
               "audits ride the claims they judge, so they cannot be kept across a replace. " \
               "Export them first if they matter, then pass discard_audits (DISCARD_AUDITS=1) to proceed"
       end
@@ -237,6 +254,15 @@ module Enliterator
           "#{human.positive? ? " (discarding #{human} human audit verdict(s), as requested)" : ''}; " \
           "target-local tables kept: #{(TARGET_LOCAL & engine_tables(conn)).join(', ').presence || 'none'}"
       conn.execute("TRUNCATE #{transferable_tables(conn).join(', ')} RESTART IDENTITY")
+    end
+
+    # v0.90: record that this database now holds an imported enliteration. The
+    # engine's `import` calls it; a host importing table by table (HSDL's
+    # maintenance task) calls it once the last table is in.
+    def record_import!(manifest)
+      event = Enliterator::LineageEvent.record_import!(manifest)
+      log "import: lineage — this deployment is now a copy of #{event.source_label || 'an unlabelled source'}" if event
+      event
     end
 
     # v0.81: the manifest's tables in FK-safe load order, minus target-local

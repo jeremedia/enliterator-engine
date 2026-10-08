@@ -297,6 +297,26 @@ namespace :enliterator do
   #
   #   N=25 bin/rails enliterator:audit
   desc "Examine a stratified sample of claims against their sources (quality review). N=count"
+  # v0.90: this database's lineage — where its enliteration came from — and
+  # the act that makes it the place curation happens.
+  desc "Show this database's lineage (imports and authority declarations)"
+  task lineage: :environment do
+    events = Enliterator::LineageEvent.available? ? Enliterator::LineageEvent.order(:created_at, :id).to_a : []
+    puts "[enliterator:lineage] #{events.empty? ? 'no events — the authoring deployment (never imported)' : "#{events.size} event(s)"}"
+    events.each do |e|
+      puts "  #{e.created_at.iso8601}  #{e.kind.ljust(9)} #{e.source_label}#{e.note.present? ? "  (#{e.note})" : ''}"
+    end
+    puts "  curation writes here: #{Enliterator.curation_writes? ? 'ALLOWED' : 'refused'}" \
+         "#{Enliterator.configuration.curation_writes.nil? ? ' (decided by lineage)' : ' (set in config)'}"
+  end
+
+  desc "Declare THIS deployment the curation authority (after an import, a deliberate act). NOTE="
+  task declare_authority: :environment do
+    Enliterator::LineageEvent.declare_authority!(note: ENV["NOTE"].presence)
+    puts "[enliterator:declare_authority] this deployment now takes curation writes " \
+         "#{Enliterator.configuration.curation_writes == false ? '— but config.curation_writes = false still refuses' : ''}"
+  end
+
   # v0.89: carry human curation filed on an import TARGET back to the
   # authoring host (CurationTransfer). Export on the target; import on the
   # authoring host — a dry run (the plan) unless APPLY=1.

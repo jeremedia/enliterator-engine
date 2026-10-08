@@ -577,6 +577,12 @@ suggestion decisions and the MCP `propose_term` / `flag_claim` tools refuse ther
 Curation already filed on a target goes home with `rake enliterator:export_curation FILE=` (target) →
 `rake enliterator:import_curation FILE= [APPLY=1]` (authoring host; dry run by default): verdicts
 re-attach to the same claims, corrections re-mint where the claim is still live, the rest is reported.
+Since v0.90 the data decides when `curation_writes` is unset: every import records a lineage event
+(the archive's `exported_from`, `config.deployment_label`), and a database whose latest event is an
+import refuses curation until `rake enliterator:declare_authority NOTE=` makes it the authority. The
+import guard counts only human verdicts filed since the last import. `rake enliterator:lineage` shows
+where this database's enliteration came from. Hosts importing table by table call
+`Enliterator::Portability.record_import!(manifest)` after the last table.
 Deploying a host app for the first time? The checklist: push/bundle the engine
 version the initializer expects, wrap the mount in auth, set the gateway key,
 adopt a scheduler for the heartbeat, then import the enliteration.

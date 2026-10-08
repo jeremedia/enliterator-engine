@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_210000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -586,6 +586,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_200000) do
     t.index ["status"], name: "index_enliterator_lacunae_on_status"
     t.index ["tendable_type", "tendable_id", "facet", "key", "context_id"], name: "idx_enliterator_lacunae_open", unique: true, where: "((status)::text = 'open'::text)", nulls_not_distinct: true
     t.index ["tendable_type", "tendable_id"], name: "idx_enliterator_lacunae_on_tendable"
+  end
+
+  create_table "enliterator_lineage_events", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.string "note"
+    t.datetime "source_exported_at"
+    t.string "source_label"
+    t.index ["created_at"], name: "index_enliterator_lineage_events_on_created_at"
   end
 
   create_table "enliterator_measures", force: :cascade do |t|

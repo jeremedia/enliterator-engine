@@ -194,6 +194,10 @@ module Enliterator
     # the refusal and the read-only banner.
     attr_accessor :curation_home
 
+    # v0.90: this deployment's name in exported archives (`exported_from`), so
+    # a copy can say what it is a copy of. Default: "<HostApp>:<Rails.env>".
+    attr_accessor :deployment_label
+
     # ---- v0.21 The Atlas ---------------------------------------------------
 
     # Node ceiling for the atlas graph. Over it, the most-connected nodes are
@@ -601,14 +605,32 @@ module Enliterator
     # models plus the engine's own Part — parts carry claims and deserve an
     # entry page, but they are deliberately NOT in the registry (no root
     # lanes, no corpus census).
-    # v0.89: may this deployment take curation writes? (Only an explicit false refuses.)
-    def curation_writes? = configuration.curation_writes != false
+    # v0.89/v0.90: may this deployment take curation writes? An explicit
+    # `config.curation_writes` (true/false) decides. Unset, the data decides:
+    # a COPY — a database whose latest lineage event is an import — refuses;
+    # the authoring deployment (never imported, or declared authoritative
+    # since) does not. A host that never imports is byte-identical.
+    def curation_writes?
+      explicit = configuration.curation_writes
+      return explicit != false unless explicit.nil?
+
+      !Enliterator::LineageEvent.copy?
+    end
 
     def curation_refusal
-      home = configuration.curation_home.presence
+      imported = Enliterator::LineageEvent.copy? ? Enliterator::LineageEvent.last_import : nil
+      home = configuration.curation_home.presence || imported&.source_label.presence
+      copy = imported ? " This deployment is a copy#{imported.source_label.present? ? " of #{imported.source_label}" : ''}, " \
+                        "imported #{imported.created_at.to_date.iso8601}." : ""
       "Curation is read-only here: review, vocabulary and term decisions are made " \
         "#{home ? "at #{home}" : 'on the authoring deployment'} — anything filed here would be " \
-        "replaced by the next import."
+        "replaced by the next import.#{copy}"
+    end
+
+    # v0.90: this deployment's name in exported archives.
+    def deployment_label
+      configuration.deployment_label.presence ||
+        [ (defined?(Rails) ? Rails.application.class.module_parent_name : nil), (defined?(Rails) ? Rails.env : nil) ].compact.join(":")
     end
 
     def tendable_type?(klass)
