@@ -91,10 +91,21 @@ Add the engine to the host Gemfile and mount it.
 
 ```ruby
 # Gemfile
-gem "enliterator"
+gem "enliterator", git: "https://github.com/jeremedia/enliterator-engine.git", tag: "v0.90.1"
 gem "aws-sdk-bedrockruntime"   # only if using the Bedrock LLM adapter
 gem "openai"                   # only if using the OpenAI embedder adapter
 ```
+
+The engine ships as git tags, not on RubyGems. Pin a released tag so dev and
+prod bundle the same engine; the gem version is the release (`Enliterator::VERSION`,
+which `rake release` tags as `v#{VERSION}`), so a host can also require a floor and
+let Bundler refuse a stale pin:
+
+```ruby
+gem "enliterator", "~> 0.91", git: "https://github.com/jeremedia/enliterator-engine.git", tag: "v0.91.0"
+```
+
+(Tags through v0.90.1 predate this and all report version 0.1.0; pin those by tag alone.)
 
 Run the engine's migrations into the host (they're appended automatically; the
 engine owns its pgvector enablement):
